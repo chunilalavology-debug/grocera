@@ -1,0 +1,507 @@
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+img {
+    max-width: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+/* ----- Milestone 1: Hero ----- */
+.home-hero {
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.home-hero__image-wrap {
+    position: relative;
+    width: 100%;
+    max-height: 85vh;
+    min-height: 280px;
+}
+
+.home-hero__image {
+    width: 100%;
+    height: 100%;
+    min-height: 280px;
+    max-height: 85vh;
+    object-fit: cover;
+    object-position: center;
+}
+
+.home-hero__overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.25) 0%,
+        rgba(0, 0, 0, 0.5) 100%
+    );
+    pointer-events: none;
+}
+
+.home-hero__content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem 1.5rem;
+    z-index: 1;
+}
+
+.home-hero__logo {
+    display: inline-block;
+    margin-bottom: 1rem;
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.35));
+    transition: transform 0.2s ease;
+}
+
+.home-hero__logo:hover {
+    transform: scale(1.05);
+}
+
+.home-hero__logo-img {
+    height: 52px;
+    width: auto;
+    display: block;
+}
+
+@media (min-width: 768px) {
+    .home-hero__logo-img {
+        height: 64px;
+    }
+}
+
+.home-hero__title {
+    font-size: clamp(1.75rem, 5vw, 2.75rem);
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.02em;
+}
+
+.home-hero__subtitle {
+    font-size: clamp(0.9375rem, 2.5vw, 1.125rem);
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    margin-bottom: 1.5rem;
+    max-width: 420px;
+}
+
+.home-hero__cta {
+    padding: 0.75rem 1.75rem;
+    border-radius: 12px;
+    font-weight: 700;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-hero__cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 768px) {
+    .home-hero__image-wrap {
+        min-height: 320px;
+    }
+    .home-hero__image {
+        min-height: 320px;
+    }
+}
+
+/* 1. Section Headers */
+.section-header-center {
+    text-align: center;
+    margin-bottom: 30px;
+    margin-top: 20px;
+}
+
+.home-section-heading {
+    font-weight: 700;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    color: var(--text-dark);
+    margin-bottom: 0.5rem;
+}
+
+.home-section-subheading {
+    color: var(--text-medium);
+    font-size: 1rem;
+    margin-top: 0;
+}
+
+.primary-heading {
+    font-weight: 600;
+    font-size: 38px;
+    color: var(--text-dark);
+}
+
+.sub-heading {
+    color: var(--text-medium);
+    font-size: 16px;
+    margin-top: 0;
+}
+
+/* 2. Section Backgrounds*/
+.indian-section,
+.american-section,
+.chinese-section,
+.turkish-section {
+    padding: 40px 0;
+}
+
+/* 3. Card Styles*/
+.indian-card,
+.simple-category-card {
+    background: var(--bg-light);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition-normal);
+    border: 1px solid var(--border-light);
+    width: 100%;
+    max-width: 320px;
+    border-radius: 12px;
+}
+
+.indian-card:hover,
+.simple-category-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* Home Page Base */
+.home-page {
+    padding: 0;
+    position: relative;
+    overflow-x: hidden;
+    min-height: 100vh;
+    animation: fadeIn 0.6s ease-out;
+}
+
+/* Hero Section */
+.hero-section {
+    max-width: 100%;
+}
+
+.banner-image {
+    width: 100%;
+    height: auto;
+}
+
+/* Home section spacing (Milestone 1) */
+.home-category-section {
+    background: var(--bg-white);
+}
+
+/* 4. Indian Section */
+.indian-content {
+    text-align: center;
+    padding-bottom: 1rem;
+}
+
+.indian-product-content {
+    display: grid;
+    gap: 20px;
+    margin-top: 10px;
+}
+
+.indian-card {
+    background: var(--bg-light);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition-normal);
+    border: 1px solid var(--border-dark);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    
+}
+
+.indian-card-img {
+    width: 100%;
+    height: 175px;
+    object-fit: contain;
+}
+
+.indian-card-title {
+    font-weight: 600;
+    font-size: 16px;
+    margin-top: 10px;
+    text-align: center;
+    color: var(--text-dark);
+}
+
+/*5. Promo Carousel*/
+.promo-carousel-section {
+    padding: 20px 10px;
+    background: var(--bg-white);
+}
+
+.promo-swiper {
+    width: 100%;
+    margin-top: 1rem;
+}
+
+.promo-slide {
+    min-width: 35%;
+    border-radius: 12px;
+    overflow: hidden;
+    transform: scale(0.95);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.swiper-slide {
+    width: auto;
+}
+
+.swiper-slide-active {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.promo-slide img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+}
+
+/* Pagination dots container */
+.promo-swiper .swiper-pagination {
+    bottom: -18px;
+}
+
+.promo-swiper .swiper-pagination-bullet {
+    width: 11px;
+    height: 11px;
+    background: var(--bg-dark);
+    opacity: 1;
+    transition: all 0.3s ease;
+}
+
+.promo-swiper .swiper-pagination-bullet-active {
+    background: var(--primary-color);
+    border-radius: 10px;
+}
+
+.promo-swiper {
+    padding-bottom: 2rem;
+
+}
+
+.promo-swiper .swiper-pagination {
+    position: inherit;
+    margin-top: 2rem;
+    text-align: center;
+}
+
+/*  6. American Section*/
+
+.card-off {
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 14px;
+    padding: 6px 24px;
+    border-bottom-right-radius: 9px;
+    background: var(--bg-dark);
+    color: var(--text-white);
+    z-index: 2;
+}
+
+.fresho {
+    font-size: 16px;
+    color: var(--text-dark);
+    font-weight: 500;
+    margin: 0;
+}
+
+/* 7. Deals and Natchiyar Section*/
+.deals-section,
+.natchiyar-section {
+    width: 100%;
+    max-width: 100%;
+    padding: 0;
+    margin: 0;
+    line-height: 0;
+    background: var(--bg-white);
+}
+
+.deals-img,
+.natchiyar-img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+/*  8. Chinese and Turkish Section  */
+.simple-category-grid {
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.simple-category-card {
+    flex: 0 1 320px;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.simple-card-img-wrapper {
+    width: 100%;
+    height: 220px;
+    background-color: var(--bg-gray);
+}
+
+.simple-card-img-wrapper img {
+    width: 100%;
+    height: 100%;
+}
+
+.american-card-img-data {
+    position: relative;
+}
+
+.simple-card-title {
+    padding: 15px 10px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+@media (min-width: 1101px) {
+    .indian-product-content {
+        grid-template-columns: repeat(6, 1fr);
+    }
+}
+
+@media (max-width: 1100px) and (min-width: 769px) {
+    .indian-product-content {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) and (min-width: 577px) {
+    .indian-product-content {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 576px) {
+    .indian-product-content {
+        grid-template-columns: 1fr;
+
+    }
+
+    .indian-card {
+        max-width: 350px;
+    }
+
+    .indian-card {
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+
+    .indian-section,
+    .american-section,
+    .chinese-section,
+    .turkish-section {
+        padding: 0;
+    }
+
+    .primary-heading {
+        font-size: 28px;
+    }
+
+    .indian-card {
+        width: 100%;
+        margin: 0 auto;
+        min-height: fit-content;
+    }
+
+    .indian-card-img {
+        height: 200px;
+    }
+
+    .promo-slide {
+        min-width: 80%;
+        opacity: 1;
+        transform: none;
+    }
+
+    .american-content {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .american-card {
+        width: 100%;
+        max-width: 80%;
+        margin-bottom: 10px;
+    }
+
+    .american-card-img-data {
+        height: 200px;
+    }
+
+    .american-content,
+    .simple-category-grid {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .american-card,
+    .simple-category-card {
+        width: 100%;
+    }
+
+    .simple-category-card {
+        flex: auto;
+    }
+
+    .american-content {
+        gap: 10px;
+    }
+
+}
+
+@media (max-width: 500px) {
+    .promo-slide {
+        min-width: 100%;
+    }
+}
+
+@media (max-width:468px) {
+    .american-card {
+        max-width: 100%;
+    }
+}
+
+/* ----- Featured Categories (below hero) ----- */
+/* Hide scrollbar on all devices; content still scrollable */
+.featured-categories__scroll {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+}
+.featured-categories__scroll::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+}
+.featured-categories__card-title {
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+
+/* ///// */

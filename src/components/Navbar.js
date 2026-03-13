@@ -1,0 +1,441 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
+import { useWishlist } from '../context/WishlistContext';
+import '../styles/components/Navbar.css';
+import logoRemo from "../assets-copy/navbar/logoRemo.svg";
+import {
+  User,
+  ShoppingCart,
+  Search,
+  ChevronDown,
+  Menu,
+  X,
+  Headphones,
+  Grid3X3,
+  Heart,
+  Plus,
+} from 'lucide-react';
+import { MAIN_CATEGORIES, SUBCATEGORIES_BY_MAIN } from '../config/categories';
+
+const SEARCH_CATEGORIES = [
+  { value: '', label: 'All Categories' },
+  { value: 'Daily Essentials', label: 'Daily Essentials' },
+  { value: 'Milks and Dairies', label: 'Milks and Dairies' },
+  { value: 'Spices & Masalas', label: 'Spices & Masalas' },
+  { value: 'Fresh Vegetables', label: 'Fresh Vegetables' },
+  { value: 'Fresh Fruits', label: 'Fresh Fruits' },
+  { value: 'Rice & Grains', label: 'Rice & Grains' },
+  { value: 'Beverages', label: 'Beverages' },
+  { value: 'Snacks & Sweets', label: 'Snacks & Sweets' },
+  { value: 'Chinese Noodles', label: 'Chinese Noodles' },
+  { value: 'Turkish Desserts', label: 'Turkish Desserts' },
+  { value: 'American Breakfast Fusions', label: 'American Breakfast' },
+  { value: 'Frozen Foods', label: 'Frozen Foods' },
+  { value: 'Sauces & Condiments', label: 'Sauces & Condiments' },
+  { value: 'Pooja Items', label: 'Pooja Items' },
+];
+
+/* Browse card uses MAIN_CATEGORIES + SUBCATEGORIES_BY_MAIN from config (grouped by main) */
+
+function Navbar() {
+  const { user, isAuthenticated, logout, isAdmin, isCoAdmin } = useAuth();
+  const { itemCount } = useCart();
+  const { wishlistCount, openDrawer: openWishlist } = useWishlist();
+
+  const handleOpenWishlist = () => {
+    openWishlist();
+    setIsMobileMenuOpen(false);
+  };
+  const navigate = useNavigate();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchCategory, setSearchCategory] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [browseDropdownOpen, setBrowseDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const categoryDropdownRef = useRef(null);
+  const browseDropdownRef = useRef(null);
+  const navRef = useRef(null);
+  const thresholdRef = useRef(0);
+  const [isNavPinned, setIsNavPinned] = useState(false);
+  const [navPlaceholderHeight, setNavPlaceholderHeight] = useState(0);
+
+  useEffect(() => {
+    const updateThreshold = () => {
+      if (navRef.current) thresholdRef.current = navRef.current.offsetTop;
+    };
+    updateThreshold();
+    window.addEventListener('resize', updateThreshold);
+    return () => window.removeEventListener('resize', updateThreshold);
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y >= thresholdRef.current - 2) {
+        if (!isNavPinned && navRef.current) {
+          setNavPlaceholderHeight(navRef.current.offsetHeight);
+          setIsNavPinned(true);
+        }
+      } else {
+        if (isNavPinned) setIsNavPinned(false);
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [isNavPinned]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setIsDropdownOpen(false);
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target)) setIsCategoryDropdownOpen(false);
+      if (browseDropdownRef.current && !browseDropdownRef.current.contains(e.target)) setBrowseDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [navigate]);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+    setIsMobileMenuOpen(false);
+    setIsDropdownOpen(false);
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    const params = new URLSearchParams();
+    if (searchQuery.trim()) params.set('search', searchQuery.trim());
+    if (searchCategory) params.set('category', searchCategory);
+    navigate(`/products${params.toString() ? `?${params.toString()}` : ''}`);
+    setIsMobileMenuOpen(false);
+  };
+
+  const toggleMobileMenu = () => setIsMobileMenuOpen((prev) => !prev);
+
+  const filteredCategories = categoryFilter.trim()
+    ? SEARCH_CATEGORIES.filter((c) =>
+        c.label.toLowerCase().includes(categoryFilter.toLowerCase())
+      )
+    : SEARCH_CATEGORIES;
+
+  const selectCategory = (value) => {
+    setSearchCategory(value);
+    setIsCategoryDropdownOpen(false);
+    setCategoryFilter('');
+  };
+
+  return (
+    <header className="header-nest">
+      {/* ----- 1. Top bar (dark) ----- */}
+      <div className="header-top">
+        <div className="header-top__inner container">
+          <div className="header-top__left">
+            <Link to="/about" className="header-top__link">About Us</Link>
+            {isAuthenticated ? (
+              <Link to="/profile" className="header-top__link">My Account</Link>
+            ) : (
+              <Link to="/login" className="header-top__link">My Account</Link>
+            )}
+            <button type="button" className="header-top__link header-top__link--btn" onClick={handleOpenWishlist}>Wishlist</button>
+            {isAuthenticated && (
+              <Link to="/orders" className="header-top__link">Order Tracking</Link>
+            )}
+          </div>
+          <div className="header-top__center">
+            <span className="header-top__promo">Fresh groceries delivered to your door – shop with ease</span>
+          </div>
+          <div className="header-top__right">
+            <a href="tel:9342604322" className="header-top__link header-top__phone">Need help? Call Us: <span className="header-top__phone-num">(934) 260-4322</span></a>
+            <div className="header-top__select-wrap">
+              <select className="header-top__select" aria-label="Language">
+                <option>English</option>
+              </select>
+            </div>
+            <div className="header-top__select-wrap">
+              <select className="header-top__select" aria-label="Currency">
+                <option>USD</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ----- 2. Main bar (logo + browse, search, location, compare, wishlist, cart, account, support) ----- */}
+      <div className="header-main">
+        <div className="header-main__inner container">
+          <Link to="/" className="header-main__logo">
+            <img src={logoRemo} alt="Zippyyy Grocery" className="header-main__logo-img" />
+          </Link>
+
+          <form className="header-search desktop-only" onSubmit={handleSearchSubmit}>
+            <div className="header-search__category" ref={categoryDropdownRef}>
+              <button
+                type="button"
+                className="header-search__category-btn"
+                onClick={() => setIsCategoryDropdownOpen((p) => !p)}
+                aria-expanded={isCategoryDropdownOpen}
+                aria-haspopup="listbox"
+              >
+                <span>{SEARCH_CATEGORIES.find((c) => c.value === searchCategory)?.label || 'All Categories'}</span>
+                <ChevronDown className="header-search__chevron" size={16} />
+              </button>
+              <div className={`header-search__category-dropdown ${isCategoryDropdownOpen ? 'open' : ''}`}>
+                <input
+                  type="text"
+                  className="header-search__category-filter"
+                  placeholder="Filter categories..."
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Filter categories"
+                />
+                <ul className="header-search__category-list" role="listbox">
+                  {filteredCategories.map((cat) => (
+                    <li key={cat.value || 'all'}>
+                      <button
+                        type="button"
+                        role="option"
+                        className={`header-search__category-option ${searchCategory === cat.value ? 'selected' : ''}`}
+                        onClick={() => selectCategory(cat.value)}
+                      >
+                        {cat.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <input
+              type="search"
+              className="header-search__input"
+              placeholder="Search for items..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search products"
+            />
+            <button type="submit" className="header-search__btn" aria-label="Search">
+              <Search size={22} />
+            </button>
+          </form>
+
+          <div className="header-main__actions">
+            <button
+              type="button"
+              className="header-main__action header-main__icon-action desktop-only"
+              aria-label="Wishlist"
+              onClick={handleOpenWishlist}
+            >
+              <Heart size={22} className="header-main__action-icon" />
+              <span className="header-main__action-label">Wishlist</span>
+              <span className="header-main__badge">{wishlistCount}</span>
+            </button>
+            {!isAdmin && (
+              <Link to="/cart" className="header-main__action header-main__icon-action header-main__cart" aria-label="Cart">
+                <ShoppingCart size={22} className="header-main__action-icon" />
+                <span className="header-main__action-label">Cart</span>
+                <span className="header-main__badge">{itemCount}</span>
+              </Link>
+            )}
+            <div className="header-main__action header-main__account" ref={dropdownRef}>
+              <button
+                type="button"
+                className="header-main__account-btn"
+                onClick={() => setIsDropdownOpen((p) => !p)}
+                aria-expanded={isDropdownOpen}
+                aria-haspopup="true"
+              >
+                <User size={22} className="header-main__action-icon" />
+                <span className="desktop-only">Account</span>
+                <ChevronDown size={14} className="desktop-only" />
+              </button>
+              <div className={`header-main__dropdown ${isDropdownOpen ? 'show' : ''}`}>
+                {isAuthenticated ? (
+                  <>
+                    {!isAdmin && !isCoAdmin && (
+                      <>
+                        <Link to="/profile" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>Profile</Link>
+                        <Link to="/orders" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>My Orders</Link>
+                      </>
+                    )}
+                    {isCoAdmin && !isAdmin && (
+                      <Link to="/co-admin/dashboard" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>Co-Admin Panel</Link>
+                    )}
+                    {isAdmin && (
+                      <>
+                        <Link to="/admin/dashboard" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>Dashboard</Link>
+                        <Link to="/admin/products" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>Products</Link>
+                        <Link to="/admin/orders" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>Orders</Link>
+                        <Link to="/admin/users" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>Users</Link>
+                        <Link to="/admin/contacts" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>Contacts</Link>
+                      </>
+                    )}
+                    <div className="header-main__dropdown-divider" />
+                    <button type="button" className="header-main__dropdown-item header-main__dropdown-logout" onClick={handleLogout}>Logout</button>
+                  </>
+                ) : (
+                  <>
+                    <Link to="/login" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>Sign In</Link>
+                    <Link to="/register" className="header-main__dropdown-item" onClick={() => setIsDropdownOpen(false)}>Sign Up</Link>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="header-main__menu-btn mobile-only"
+              onClick={toggleMobileMenu}
+              aria-label="Toggle menu"
+              aria-expanded={isMobileMenuOpen}
+            >
+              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile search bar (visible when not desktop) */}
+        <form className="header-search header-search--mobile mobile-only" onSubmit={handleSearchSubmit}>
+          <input
+            type="search"
+            className="header-search__input"
+            placeholder="Search for items..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search products"
+          />
+          <button type="submit" className="header-search__btn" aria-label="Search">
+            <Search size={22} />
+          </button>
+        </form>
+      </div>
+
+      {/* ----- 3. Nav bar: Browse left (with card dropdown), menu center, Support right (pinned on scroll) ----- */}
+      {isNavPinned && <div className="header-nav__placeholder" style={{ height: navPlaceholderHeight }} aria-hidden="true" />}
+      <div ref={navRef} className={`header-nav ${isNavPinned ? 'header-nav--pinned' : ''}`}>
+        <div className="header-nav__inner container">
+          <div className="header-nav__browse-wrap desktop-only" ref={browseDropdownRef}>
+            <button
+              type="button"
+              className={`header-nav__browse ${browseDropdownOpen ? 'open' : ''}`}
+              onClick={() => setBrowseDropdownOpen((p) => !p)}
+              aria-expanded={browseDropdownOpen}
+              aria-haspopup="true"
+            >
+              <Grid3X3 size={20} />
+              <span>Browse All Categories</span>
+              <ChevronDown size={16} className={browseDropdownOpen ? 'rotate' : ''} />
+            </button>
+            <div className={`header-nav__browse-card ${browseDropdownOpen ? 'open' : ''}`}>
+              <div className="header-nav__browse-groups">
+                {MAIN_CATEGORIES.filter((m) => m.id !== 'all').map((main) => (
+                  <div key={main.id} className="header-nav__browse-group">
+                    <div className="header-nav__browse-group-title">{main.name}</div>
+                    <div className="header-nav__browse-group-list">
+                      {(SUBCATEGORIES_BY_MAIN[main.id] || []).map((sub) => (
+                        <Link
+                          key={sub.value}
+                          to={`/products?category=${encodeURIComponent(sub.value)}&main=${main.id}`}
+                          className="header-nav__browse-item"
+                          onClick={() => setBrowseDropdownOpen(false)}
+                        >
+                          <span className="header-nav__browse-name">{sub.name}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Link
+                to="/products"
+                className="header-nav__browse-more"
+                onClick={() => setBrowseDropdownOpen(false)}
+              >
+                <Plus size={18} />
+                <span>Show more...</span>
+              </Link>
+            </div>
+          </div>
+          <nav className="header-nav__links desktop-only" aria-label="Main navigation">
+            {!isAdmin ? (
+              <>
+                <NavLink to="/" end className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Home</NavLink>
+                <NavLink to="/about" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>About</NavLink>
+                <NavLink to="/products" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Shop</NavLink>
+                <NavLink to="/contact" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Contact</NavLink>
+              </>
+            ) : (
+              <>
+                <NavLink to="/admin/dashboard" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
+                <NavLink to="/admin/products" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Products</NavLink>
+                <NavLink to="/admin/orders" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Orders</NavLink>
+                <NavLink to="/admin/users" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Users</NavLink>
+              </>
+            )}
+          </nav>
+          <div className="header-nav__support desktop-only">
+            <a href="tel:9342604322" className="header-nav__support-link">
+              <Headphones size={24} className="header-nav__support-icon" />
+              <div>
+                <span className="header-nav__support-number">(934) 260-4322</span>
+                <span className="header-nav__support-text">24/7 Support Center</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* ----- Mobile menu drawer ----- */}
+      <div className={`header-mobile-menu ${isMobileMenuOpen ? 'open' : ''}`}>
+        <div className="header-mobile-menu__content">
+          <NavLink to="/" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Home</NavLink>
+          <NavLink to="/products" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Shop</NavLink>
+          <NavLink to="/about" className="header-mobile-menu__link" onClick={toggleMobileMenu}>About</NavLink>
+          <NavLink to="/contact" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Contact</NavLink>
+          <Link to="/products" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Browse All Categories</Link>
+          <button type="button" className="header-mobile-menu__link" onClick={handleOpenWishlist}>Wishlist{wishlistCount > 0 ? ` (${wishlistCount})` : ''}</button>
+          {isAuthenticated && (
+            <>
+              <div className="header-mobile-menu__divider" />
+              <Link to="/profile" className="header-mobile-menu__link" onClick={toggleMobileMenu}>My Account</Link>
+              <Link to="/orders" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Order Tracking</Link>
+              {isAdmin && (
+                <>
+                  <Link to="/admin/dashboard" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Dashboard</Link>
+                  <Link to="/admin/products" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Products</Link>
+                  <Link to="/admin/orders" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Orders</Link>
+                </>
+              )}
+              <button type="button" className="header-mobile-menu__link header-mobile-menu__logout" onClick={handleLogout}>Logout</button>
+            </>
+          )}
+          {!isAuthenticated && (
+            <div className="header-mobile-menu__auth">
+              <Link to="/login" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Sign In</Link>
+              <Link to="/register" className="header-mobile-menu__link header-mobile-menu__link--primary" onClick={toggleMobileMenu}>Sign Up</Link>
+            </div>
+          )}
+          <div className="header-mobile-menu__support">
+            <Headphones size={20} />
+            <span>1900 - 888 · 24/7 Support</span>
+          </div>
+        </div>
+      </div>
+      <div
+        className={`header-mobile-menu__backdrop ${isMobileMenuOpen ? 'open' : ''}`}
+        aria-hidden="true"
+        onClick={toggleMobileMenu}
+      />
+    </header>
+  );
+}
+
+export default Navbar;
