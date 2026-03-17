@@ -12,6 +12,8 @@ import {
 const ProductTableRow = React.memo(({ product, onEdit, onDelete, calculateProfit }) => {
   const profit = calculateProfit(product.price, product.cost);
   const isHighProfit = profit !== 'N/A' && parseFloat(profit) > 20;
+  const orderCount = Number(product.orderCount ?? product.timesOrdered ?? product.salesCount ?? 0) || 0;
+  const showsHot = orderCount > 5;
 
   return (
     <tr className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors group">
@@ -41,6 +43,8 @@ const ProductTableRow = React.memo(({ product, onEdit, onDelete, calculateProfit
         </div>
       </td>
 
+      <td className="py-4 px-4 text-sm text-gray-600">{product.category || '–'}</td>
+
       <td className="py-4 px-4 font-semibold text-gray-800">${product.price}</td>
 
       <td className="py-4 px-4 text-gray-500 text-sm">${product.cost || 0}</td>
@@ -54,6 +58,12 @@ const ProductTableRow = React.memo(({ product, onEdit, onDelete, calculateProfit
       <td className="py-4 px-4 text-center">
         <span className="font-mono bg-gray-50 border border-gray-200 px-2 py-1 rounded text-xs font-bold text-gray-700">
           {product.quantity || 0}
+        </span>
+      </td>
+
+      <td className="py-4 px-4 text-center">
+        <span className={`font-mono px-2 py-0.5 rounded text-[11px] font-bold ${showsHot ? 'bg-orange-100 text-orange-700' : 'bg-gray-50 text-gray-600'}`} title={showsHot ? 'Shows Hot badge on storefront' : 'Hot when > 5'}>
+          {orderCount}
         </span>
       </td>
 
@@ -99,7 +109,7 @@ function AdminProducts() {
 
   const [formData, setFormData] = useState({
     name: '', price: '', category: 'Daily Essentials', description: '',
-    image: '', inStock: true, cost: '', quantity: '0'
+    image: '', inStock: true, cost: '', quantity: '0', orderCount: ''
   });
 
   const [showQuickModal, setShowQuickModal] = useState(false);
@@ -211,6 +221,7 @@ function AdminProducts() {
   const openModal = useCallback((product = null) => {
     if (product) {
       setEditingProduct(product);
+      const orderCount = product.orderCount ?? product.timesOrdered ?? product.salesCount ?? '';
       setFormData({
         name: product.name,
         price: product.price != null ? String(product.price) : '',
@@ -219,7 +230,8 @@ function AdminProducts() {
         image: product.image || '',
         inStock: product.inStock,
         cost: product.cost != null ? String(product.cost) : '',
-        quantity: product.quantity?.toString() || ''
+        quantity: product.quantity?.toString() || '',
+        orderCount: orderCount !== '' && orderCount != null ? String(orderCount) : ''
       });
     } else {
       setEditingProduct(null);
@@ -231,7 +243,8 @@ function AdminProducts() {
         image: '',
         inStock: true,
         cost: '',
-        quantity: ''
+        quantity: '',
+        orderCount: ''
       });
     }
     setShowModal(true);
@@ -248,7 +261,8 @@ function AdminProducts() {
       image: '',
       inStock: true,
       cost: '',
-      quantity: ''
+      quantity: '',
+      orderCount: ''
     });
   }, []);
 
@@ -297,7 +311,8 @@ function AdminProducts() {
         cost: formData.cost ? parseFloat(formData.cost) : 0,
         quantity,
         inStock: quantity > 0,
-        image: formData.image || ""   // ✅ direct URL bhej raha hai
+        image: formData.image || "",
+        ...(formData.orderCount !== '' && formData.orderCount != null && { orderCount: parseInt(formData.orderCount, 10) || 0 })
       };
 
       if (editingProduct) {
@@ -522,40 +537,17 @@ function AdminProducts() {
         ))}
       </div>
 
-      {/* Filters & Search */}
+      {/* Filters & Search – search bar only; category is shown in table column below */}
       <div className="max-w-7xl mx-auto bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
-        {/* Container: Mobile pe stack hoga (col), LG screen pe row ban jayega */}
-        <div className="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
-
-          {/* Search Input: Mobile pe full width rahega, LG pe max-width-md */}
-          <div className="relative w-full lg:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
-            <input
-              type="text"
-              placeholder="Search by name..."
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all text-sm sm:text-base"
-              value={searchTerm}
-              onChange={handleSearchChange}
-            />
-          </div>
-
-          {/* Categories: Mobile pe horizontal scrollable rahega bina scrollbar ke */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0 scrollbar-hide">
-            <div className="flex gap-2 shrink-0"> {/* shrink-0 zaroori hai scroll ke liye */}
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 ${selectedCategory === cat
-                    ? 'bg-green-600 text-white shadow-md shadow-green-100 scale-95'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:scale-95'
-                    }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search by name..."
+            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all text-sm sm:text-base"
+            value={searchTerm}
+            onChange={handleSearchChange}
+          />
         </div>
       </div>
 
@@ -567,19 +559,21 @@ function AdminProducts() {
               <tr>
                 <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Image</th>
                 <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
+                <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
                 <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Price</th>
                 <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost</th>
                 <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Profit</th>
                 <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Qty</th>
+                <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center" title="Hot badge when > 5">Orders</th>
                 <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="py-4 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="8" className="py-20 text-center text-gray-400">Loading inventory...</td></tr>
+                <tr><td colSpan="10" className="py-20 text-center text-gray-400">Loading inventory...</td></tr>
               ) : products.length === 0 ? (
-                <tr><td colSpan="8" className="py-20 text-center text-gray-400 text-lg">No products found matching filters.</td></tr>
+                <tr><td colSpan="10" className="py-20 text-center text-gray-400 text-lg">No products found matching filters.</td></tr>
               ) : (
                 products.map(p => (
                   <ProductTableRow
@@ -681,6 +675,11 @@ function AdminProducts() {
                   <div className="col-span-2 sm:col-span-1">
                     <label className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Stock Qty</label>
                     <input name="quantity" type="number" value={formData.quantity} onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none bg-gray-50/50" />
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Times ordered</label>
+                    <input name="orderCount" type="number" min="0" value={formData.orderCount} onChange={handleInputChange} placeholder="e.g. 6 → Hot badge" className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none bg-gray-50/50" />
+                    <p className="text-[10px] text-gray-400 mt-1">Storefront shows &quot;Hot&quot; when &gt; 5. Leave empty if backend fills from orders.</p>
                   </div>
                 </div>
 

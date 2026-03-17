@@ -13,7 +13,7 @@ export default function About() {
         <div className="about-content-body">
           <div className="intro-section">
             <p>
-              <strong className="highlight-text">Zippyyy</strong> is your one-stop shop for world-class groceries, delivering the freshest products from Indian, American, Chinese, Turkish, and global brands right to your doorstep. We pride ourselves on our <strong className="highlight-text">fast turnaround</strong>. Most orders are delivered within <strong>2 to 24 hours</strong> across NYC, Queens, and Long Island.
+              <strong className="highlight-text">Zippyyy</strong> is your one-stop shop for world-class groceries, delivering the freshest products from Indian, American, Chinese, Turkish, and global brands right to your doorstep. We pride ourselves on our <strong className="highlight-text">fast turnaround</strong>. Most orders are delivered within <strong>24-48 hours</strong> nationwide.
             </p>
           </div>
 

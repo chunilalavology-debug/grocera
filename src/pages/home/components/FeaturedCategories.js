@@ -131,7 +131,7 @@ export default function FeaturedCategories() {
             <Link
               key={sub.value}
               to={`/products?category=${encodeURIComponent(sub.value)}&main=${activeMain}`}
-              className={`featured-categories__card flex-shrink-0 w-[180px] sm:w-[200px] bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-lg hover:border-[#3090cf]/30 transition-all duration-300 group`}
+              className="featured-categories__card flex-shrink-0 w-[180px] sm:w-[200px] bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-lg hover:border-[#3090cf]/30 transition-all duration-300 group"
             >
               <div
                 className={`h-32 sm:h-36 flex items-center justify-center overflow-hidden ${CARD_BG_COLORS[idx % CARD_BG_COLORS.length]}`}

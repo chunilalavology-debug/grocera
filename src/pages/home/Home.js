@@ -1,22 +1,31 @@
 import "../../styles/pages/Home.css";
+import ScrollReveal from "../../components/ScrollReveal";
 import CustomSlider from "./components/CustomSlider";
-import GroceryBanner from "./components/GroceryBanner";
-import GroceryBannerTrue from "./components/GroceryBannerTrue";
-import GroceryPage from "./components/GroceryPage";
-import GroceryPageend from "./components/GroceryPageend";
 import HomeHero from "./components/HomeHero";
 import FeaturedCategories from "./components/FeaturedCategories";
+import PopularProducts from "./components/PopularProducts";
+import ProductColumns from "./components/ProductColumns";
+import RecentlyViewedProducts from "./components/RecentlyViewedProducts";
 
 export default function Home() {
     return (
-        <>
+        <div className="home-page-wrapper">
             <HomeHero />
-            <FeaturedCategories />
-            <CustomSlider />
-            <GroceryBanner />
-            <GroceryPage />
-            <GroceryBannerTrue />
-            <GroceryPageend />
-        </>
-    )
+            <ScrollReveal>
+                <FeaturedCategories />
+            </ScrollReveal>
+            <ScrollReveal>
+                <CustomSlider />
+            </ScrollReveal>
+            <ScrollReveal>
+                <PopularProducts />
+            </ScrollReveal>
+            <ScrollReveal>
+                <ProductColumns />
+            </ScrollReveal>
+            <ScrollReveal>
+                <RecentlyViewedProducts />
+            </ScrollReveal>
+        </div>
+    );
 }

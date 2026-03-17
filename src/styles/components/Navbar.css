@@ -39,6 +39,7 @@
   color: var(--header-top-text);
   font-size: 0.9375rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  overflow: visible;
 }
 
 .header-top__inner {
@@ -49,6 +50,7 @@
   gap: 0.5rem;
   padding: 0.6rem 0;
   min-height: 44px;
+  box-sizing: border-box;
 }
 
 .header-top__left,
@@ -65,9 +67,36 @@
   text-align: center;
 }
 
+/* Desktop marquee in yellow bar (2–3 quotes) */
+.header-top__marquee-wrap.header-top__marquee--desktop {
+  overflow: hidden;
+  width: 100%;
+}
+
+.header-top__marquee-wrap .header-top__marquee {
+  overflow: hidden;
+  width: 100%;
+}
+
+.header-top__marquee-inner--desktop {
+  display: flex;
+  width: max-content;
+  white-space: nowrap;
+  animation: header-top-marquee 35s linear infinite;
+}
+
+.header-top__marquee-inner--desktop span {
+  padding-right: 3rem;
+  color: var(--header-top-text);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
 .header-top__promo {
   color: var(--header-top-text);
   font-size: 0.9rem;
+  display: block;
+  line-height: 1.4;
 }
 
 .header-top__link {
@@ -118,6 +147,16 @@
 .header-top__select option {
   background: #fff;
   color: #253D4E;
+}
+
+/* Top bar: mobile-only marquee / desktop-only content */
+.header-top__mobile-only {
+  display: none;
+}
+
+/* Hide mobile header search bar (no search in header on mobile) */
+.header-search--mobile-hidden {
+  display: none !important;
 }
 
 /* ----- 2. Main bar ----- */
@@ -743,6 +782,54 @@ button.header-main__action {
   background: rgba(48, 144, 207, 0.1);
 }
 
+.header-nav__link--hot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  background: #e9aa42;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.header-nav__link--hot:hover {
+  color: #fff;
+  background: #d99a3a;
+  box-shadow: 0 2px 6px rgba(233, 170, 66, 0.4);
+}
+.header-nav__link--hot.active {
+  color: #fff;
+  background: #d99a3a;
+}
+.header-nav__fire-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  position: relative;
+}
+.header-nav__fire-lottie {
+  width: 30px;
+  height: 30px;
+  margin: -1px 0;
+}
+.header-nav__fire-lottie svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+.header-nav__fire-emoji {
+  display: inline;
+  font-size: 1.5rem;
+  line-height: 1;
+  animation: fire-emoji-flicker 0.8s ease-in-out infinite;
+}
+@keyframes fire-emoji-flicker {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.15); filter: brightness(1.2); }
+}
+
 .header-nav__support {
   margin-left: auto;
 }
@@ -826,7 +913,7 @@ button.header-main__action {
 
 .header-mobile-menu__content {
   padding: 2rem 1.25rem 2rem;
-  display: flex;
+    display: flex;
   flex-direction: column;
   gap: 0.25rem;
 }
@@ -857,6 +944,42 @@ button.header-main__action {
 .header-mobile-menu__link--primary:hover {
   background: var(--header-green-dark);
   color: #fff;
+}
+
+.header-mobile-menu__link--hot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  background: #e9aa42;
+  color: #fff;
+  font-weight: 600;
+}
+.header-mobile-menu__link--hot:hover {
+  background: #d99a3a;
+  color: #fff;
+}
+.header-mobile-menu__fire-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+}
+.header-mobile-menu__fire-lottie {
+  width: 30px;
+  height: 30px;
+}
+.header-mobile-menu__fire-lottie svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+.header-mobile-menu__fire-emoji {
+  display: inline;
+  font-size: 1.5rem;
+  line-height: 1;
+  animation: fire-emoji-flicker 0.8s ease-in-out infinite;
 }
 
 .header-mobile-menu__logout {
@@ -901,6 +1024,12 @@ button.header-main__action {
 }
 
 /* Tablet & mobile: single column layout, consistent padding */
+/* Marquee animation (mobile top bar) */
+@keyframes header-top-marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
 @media (max-width: 992px) {
   .desktop-only {
     display: none !important;
@@ -910,8 +1039,43 @@ button.header-main__action {
     display: flex !important;
   }
 
-  .header-top__center {
-    display: none;
+  /* On mobile: hide desktop top bar content, show marquee only */
+  .header-top__desktop-only {
+    display: none !important;
+  }
+
+  .header-top__mobile-only {
+    display: block !important;
+    width: 100%;
+    flex: 1 1 100%;
+    order: -1;
+  }
+
+  .header-top__marquee-wrap {
+    overflow: hidden;
+    padding: 0.4rem 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .header-top__marquee {
+    overflow: hidden;
+    width: 100%;
+  }
+
+  .header-top__marquee-inner {
+    display: flex;
+    width: max-content;
+    white-space: nowrap;
+    animation: header-top-marquee 25s linear infinite;
+  }
+
+  .header-top__marquee-inner span {
+    padding-right: 3rem;
+    color: var(--header-top-text);
+    font-size: 0.8125rem;
+    font-weight: 500;
   }
 
   .header-top__left {
@@ -931,7 +1095,7 @@ button.header-main__action {
 
   .header-top__inner {
     padding: 0.5rem 0;
-    min-height: 44px;
+    min-height: 48px;
     align-items: center;
   }
 
@@ -995,8 +1159,8 @@ button.header-main__action {
   }
 
   .header-top__inner {
-    padding: 0.5rem 0;
-    min-height: 42px;
+    padding: 0.65rem 0.5rem;
+    min-height: 52px;
   }
 
   .header-top__left .header-top__link:not(:first-child) {
@@ -1004,7 +1168,8 @@ button.header-main__action {
   }
 
   .header-top__promo {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.4;
   }
 
   .header-top__link {
@@ -1049,8 +1214,12 @@ button.header-main__action {
 
   .header-search--mobile {
     margin-top: 0.625rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    max-width: min(320px, 92vw);
+    width: 100%;
   }
 
   .header-search--mobile .header-search__input {
@@ -1064,7 +1233,7 @@ button.header-main__action {
   }
 }
 
-/* Small phones: maximum use of width, consistent padding */
+/* Small phones: top bar readable, no clipping */
 @media (max-width: 480px) {
   .header-nest .container {
     padding-left: 0.875rem;
@@ -1072,8 +1241,13 @@ button.header-main__action {
   }
 
   .header-top__inner {
-    padding: 0.45rem 0;
-    min-height: 40px;
+    padding: 0.6rem 0.5rem;
+    min-height: 50px;
+  }
+
+  .header-top__promo {
+    font-size: 0.75rem;
+    line-height: 1.4;
   }
 
   .header-top__right .header-top__select-wrap {

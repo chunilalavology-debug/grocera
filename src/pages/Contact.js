@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import api from '../services/api';
+import '../styles/pages/Contact.css';
 
 function Contact() {
   const [formData, setFormData] = useState({
@@ -27,7 +28,7 @@ function Contact() {
     }
 
     setIsSubmitting(true);
-    const loadingToast = toast.loading('Bheja ja raha hai...');
+    const loadingToast = toast.loading('Sending your message...');
 
     try {
       const payload = {
@@ -67,163 +68,176 @@ function Contact() {
     }
   };
 
+  const SITE_COLOR = '#3090cf';
+  const SITE_COLOR_DARK = '#2680b8';
+
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-[#f8fafc] py-10 sm:py-14 px-4 sm:px-6 lg:px-8 font-sans">
       <Toaster position="top-center" reverseOrder={false} />
 
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
-          <h1 className="text-4xl font-extrabold text-slate-900 sm:text-5xl mb-4 italic">
-            Zippyyy <span className="text-blue-600">Support</span>
+        {/* Header */}
+        <div className="text-center mb-12 sm:mb-14">
+          <div className="inline-block mb-4 w-14 h-1 rounded-full" style={{ backgroundColor: SITE_COLOR }} aria-hidden />
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 mb-3 tracking-tight">
+            Contact <span style={{ color: SITE_COLOR }}>Us</span>
           </h1>
-          <p className="text-gray-500 text-lg max-w-xl mx-auto">
-            Have questions about our services or need assistance with an order? We're here to help you 24/7.
+          <p className="text-slate-500 text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
+            Have questions or need help with an order? We're here for you.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-
-          {/* Info Section */}
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-              <h3 className="text-blue-600 font-bold mb-4 flex items-center gap-2">
-                <span>📍</span> Delivery Locations
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10 items-start">
+          {/* Left: Info cards */}
+          <div className="space-y-5 order-2 lg:order-1">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+              <div className="w-10 h-1 rounded-full mb-4" style={{ backgroundColor: SITE_COLOR }} />
+              <h3 className="text-slate-800 font-bold text-lg mb-2 flex items-center gap-2">
+                <span aria-hidden>📍</span> Delivery
               </h3>
-              <div className="flex flex-wrap gap-2">
-                {['Queens', 'Brooklyn', 'Manhattan', 'Long Island'].map(city => (
-                  <span key={city} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold">
-                    {city}
-                  </span>
-                ))}
-              </div>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                We provide nationwide delivery across the United States, ensuring fast and reliable service to customers in all 50 states.
+              </p>
             </div>
 
-            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-2xl shadow-lg text-white">
-              <h3 className="font-bold text-xl mb-2">24/7 Service</h3>
-              <p className="text-blue-100 text-sm leading-relaxed">
-                Our systems are operational 365 days a year to ensure your deliveries never stop.
+            <div
+              className="p-6 rounded-2xl shadow-md text-white"
+              style={{ background: `linear-gradient(135deg, ${SITE_COLOR} 0%, ${SITE_COLOR_DARK} 100%)` }}
+            >
+              <h3 className="font-bold text-lg mb-2">24/7 Support</h3>
+              <p className="text-white/90 text-sm leading-relaxed">
+                We're operational 365 days a year so your orders and questions are always handled.
+              </p>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+              <div className="w-10 h-1 rounded-full mb-4" style={{ backgroundColor: SITE_COLOR }} />
+              <h3 className="text-slate-800 font-bold text-lg mb-2">Quick response</h3>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                We aim to reply within 24 hours. For urgent order issues, mention your order number in the message.
               </p>
             </div>
           </div>
 
-          {/* Form Section */}
-          <div className="lg:col-span-2 bg-white rounded-3xl shadow-2xl shadow-slate-200/50 p-8 border border-white">
-            <h2 className="text-2xl font-bold text-slate-800 mb-8 border-l-4 border-blue-600 pl-4">
-              Send us a Message
-            </h2>
-
-            {/* Contact Form */}
-            <div className="lg:col-span-8 bg-white rounded-3xl shadow-xl shadow-gray-200/40 p-10 border border-gray-50">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 ml-1">First Name</label>
-                    <input
-                      type="text"
-                      name="firstName"
-                      required
-                      value={formData.firstName}
-                      onChange={handleInputChange}
-                      className="w-full px-5 py-3.5 rounded-2xl bg-gray-50 border border-transparent focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all outline-none border"
-                      placeholder="Enter your first name" // Professional & Clear
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 ml-1">Last Name</label>
-                    <input
-                      type="text"
-                      name="lastName"
-                      required
-                      value={formData.lastName}
-                      onChange={handleInputChange}
-                      className="w-full px-5 py-3.5 rounded-2xl bg-gray-50 border border-transparent focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all outline-none border"
-                      placeholder="Enter your last name" // Consistent
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 ml-1">Email Address</label>
-                    <input
-                      type="email"
-                      name="email"
-                      required
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      className="w-full px-5 py-3.5 rounded-2xl bg-gray-50 border border-transparent focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all outline-none border"
-                      placeholder="example@domain.com" // Standard email hint
-                    />
-                  </div>
-                  <div className="space-y-2 relative">
-                    <label className="text-sm font-semibold text-gray-700 ml-1">Inquiry Type</label>
-                    <select
-                      name="inquiryType"
-                      value={formData.inquiryType}
-                      onChange={handleInputChange}
-                      className="w-full px-5 py-3.5 rounded-2xl bg-gray-50 border border-transparent focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all outline-none appearance-none cursor-pointer border"
-                    >
-                      <option value="general">Select inquiry type...</option> {/* Placeholder-like first option */}
-                      <option value="general">General Inquiry</option>
-                      <option value="order">Order & Logistics</option>
-                      <option value="technical">Technical Support</option>
-                      <option value="business">Business Partnership</option>
-                    </select>
-                    {/* Custom Arrow for Select */}
-                    <div className="absolute right-5 top-[46px] pointer-events-none text-gray-400">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+          {/* Right: Form */}
+          <div className="lg:col-span-2 order-1 lg:order-2">
+            <div className="bg-white rounded-2xl shadow-lg border border-slate-200/80 overflow-hidden">
+              <div className="px-6 sm:px-8 pt-8 pb-2 border-b border-slate-100">
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-3">
+                  <span className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: SITE_COLOR }} />
+                  Send us a message
+                </h2>
+              </div>
+              <div className="p-6 sm:p-8">
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-semibold text-slate-700">First name</label>
+                      <input
+                        type="text"
+                        name="firstName"
+                        required
+                        value={formData.firstName}
+                        onChange={handleInputChange}
+                        className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
+                        placeholder="Your first name"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-semibold text-slate-700">Last name</label>
+                      <input
+                        type="text"
+                        name="lastName"
+                        required
+                        value={formData.lastName}
+                        onChange={handleInputChange}
+                        className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
+                        placeholder="Your last name"
+                      />
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 ml-1">Subject</label>
-                  <input
-                    type="text"
-                    name="subject"
-                    required
-                    minLength={5}
-                    value={formData.subject}
-                    onChange={handleInputChange}
-                    className="w-full px-5 py-3.5 rounded-2xl bg-gray-50 border border-transparent focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all outline-none border"
-                    placeholder="How can we assist you today?" // Engaging question
-                  />
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-semibold text-slate-700">Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        required
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
+                        placeholder="you@example.com"
+                      />
+                    </div>
+                    <div className="space-y-1.5 relative">
+                      <label className="text-sm font-semibold text-slate-700">Inquiry type</label>
+                      <select
+                        name="inquiryType"
+                        value={formData.inquiryType}
+                        onChange={handleInputChange}
+                        className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="general">General inquiry</option>
+                        <option value="order">Order & logistics</option>
+                        <option value="technical">Technical support</option>
+                        <option value="business">Business partnership</option>
+                      </select>
+                      <div className="absolute right-4 top-[38px] pointer-events-none text-slate-400">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                      </div>
+                    </div>
+                  </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 ml-1">Message Detail</label>
-                  <textarea
-                    name="message"
-                    required
-                    rows="5"
-                    value={formData.message}
-                    onChange={handleInputChange}
-                    className="w-full px-5 py-3.5 rounded-2xl bg-gray-50 border border-transparent focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all outline-none resize-none border"
-                    placeholder="Please provide as much detail as possible, including order numbers if applicable..." // Specific guidance
-                  ></textarea>
-                </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-slate-700">Subject</label>
+                    <input
+                      type="text"
+                      name="subject"
+                      required
+                      minLength={5}
+                      value={formData.subject}
+                      onChange={handleInputChange}
+                      className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
+                      placeholder="How can we help?"
+                    />
+                  </div>
 
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full bg-gray-900 hover:bg-blue-600 text-white font-bold py-4 rounded-2xl transition-all duration-300 shadow-xl shadow-gray-200 active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-3 group"
-                >
-                  {isSubmitting ? (
-                    <span className="flex items-center gap-2 font-medium">
-                      <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Processing Request...
-                    </span>
-                  ) : (
-                    <>
-                      Submit Inquiry
-                      <span className="text-lg group-hover:translate-x-1 transition-transform">→</span>
-                    </>
-                  )}
-                </button>
-              </form>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-slate-700">Message</label>
+                    <textarea
+                      name="message"
+                      required
+                      rows={5}
+                      value={formData.message}
+                      onChange={handleInputChange}
+                      className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all resize-none"
+                      placeholder="Include as much detail as you can, and your order number if it's about an order."
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="contact-submit-btn w-full text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2 mt-2"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24" aria-hidden>
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        Send message
+                        <span className="text-lg" aria-hidden>→</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         </div>

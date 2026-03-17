@@ -17,7 +17,7 @@ const CHAT_FAQ = [
   {
     id: 'delivery',
     question: 'What are the delivery options and times?',
-    answer: 'We deliver to Manhattan, Queens, Long Island, Nassau & Suffolk County, and more NY areas. Delivery typically takes 4–24 hours. Exact options and time slots are shown at checkout.',
+    answer: 'We provide nationwide delivery. Orders are delivered within 24-48 hours. Exact options and time slots are shown at checkout.',
   },
   {
     id: 'returns',
@@ -154,9 +154,9 @@ function ChatWidget() {
         type="button"
         className={`chat-widget__toggle ${isOpen ? 'chat-widget__toggle--open' : ''}`}
         onClick={() => setIsOpen((o) => !o)}
-        aria-label={isOpen ? 'Close chat' : 'Open chat'}
+        aria-label={isOpen ? 'Close help' : 'Open help'}
       >
-        <MessageCircle size={24} />
+        <MessageCircle size={24} strokeWidth={1.5} />
       </button>
     </div>
   );

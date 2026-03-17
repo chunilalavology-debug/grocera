@@ -17,7 +17,10 @@ import {
   Heart,
   Plus,
 } from 'lucide-react';
+import Lottie from 'lottie-react';
 import { MAIN_CATEGORIES, SUBCATEGORIES_BY_MAIN } from '../config/categories';
+
+const FIRE_JSON_URL = process.env.PUBLIC_URL + '/fire.json';
 
 const SEARCH_CATEGORIES = [
   { value: '', label: 'All Categories' },
@@ -63,6 +66,14 @@ function Navbar() {
   const thresholdRef = useRef(0);
   const [isNavPinned, setIsNavPinned] = useState(false);
   const [navPlaceholderHeight, setNavPlaceholderHeight] = useState(0);
+  const [fireAnimation, setFireAnimation] = useState(null);
+
+  useEffect(() => {
+    fetch(FIRE_JSON_URL)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then(setFireAnimation)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const updateThreshold = () => {
@@ -138,32 +149,28 @@ function Navbar() {
       {/* ----- 1. Top bar (dark) ----- */}
       <div className="header-top">
         <div className="header-top__inner container">
-          <div className="header-top__left">
-            <Link to="/about" className="header-top__link">About Us</Link>
-            {isAuthenticated ? (
-              <Link to="/profile" className="header-top__link">My Account</Link>
-            ) : (
-              <Link to="/login" className="header-top__link">My Account</Link>
-            )}
-            <button type="button" className="header-top__link header-top__link--btn" onClick={handleOpenWishlist}>Wishlist</button>
-            {isAuthenticated && (
-              <Link to="/orders" className="header-top__link">Order Tracking</Link>
-            )}
-          </div>
-          <div className="header-top__center">
-            <span className="header-top__promo">Fresh groceries delivered to your door – shop with ease</span>
-          </div>
-          <div className="header-top__right">
-            <a href="tel:9342604322" className="header-top__link header-top__phone">Need help? Call Us: <span className="header-top__phone-num">(934) 260-4322</span></a>
-            <div className="header-top__select-wrap">
-              <select className="header-top__select" aria-label="Language">
-                <option>English</option>
-              </select>
+          {/* Desktop: marquee only */}
+          <div className="header-top__center header-top__desktop-only">
+            <div className="header-top__marquee-wrap header-top__marquee--desktop">
+              <div className="header-top__marquee">
+                <div className="header-top__marquee-inner header-top__marquee-inner--desktop">
+                  <span>🥦 Fresh groceries delivered to your door – shop with ease 🥕</span>
+                  <span>🥦 Free delivery on orders over $50 – order now! 🥕</span>
+                  <span>🥦 Best quality, best prices – Zippyyy has it all 🥕</span>
+                  <span>🥦 Fresh groceries delivered to your door – shop with ease 🥕</span>
+                  <span>🥦 Free delivery on orders over $50 – order now! 🥕</span>
+                  <span>🥦 Best quality, best prices – Zippyyy has it all 🥕</span>
+                </div>
+              </div>
             </div>
-            <div className="header-top__select-wrap">
-              <select className="header-top__select" aria-label="Currency">
-                <option>USD</option>
-              </select>
+          </div>
+          {/* Mobile: marquee only */}
+          <div className="header-top__marquee-wrap header-top__mobile-only" aria-hidden="true">
+            <div className="header-top__marquee">
+              <div className="header-top__marquee-inner">
+                <span>🥦 Hot deals this week – Free delivery on orders over $50 – Fresh groceries to your door 🥕</span>
+                <span>🥦 Hot deals this week – Free delivery on orders over $50 – Fresh groceries to your door 🥕</span>
+              </div>
             </div>
           </div>
         </div>
@@ -258,7 +265,7 @@ function Navbar() {
                 <ChevronDown size={14} className="desktop-only" />
               </button>
               <div className={`header-main__dropdown ${isDropdownOpen ? 'show' : ''}`}>
-                {isAuthenticated ? (
+            {isAuthenticated ? (
                   <>
                     {!isAdmin && !isCoAdmin && (
                       <>
@@ -288,7 +295,7 @@ function Navbar() {
                   </>
                 )}
               </div>
-            </div>
+              </div>
 
             <button
               type="button"
@@ -302,8 +309,8 @@ function Navbar() {
           </div>
         </div>
 
-        {/* Mobile search bar (visible when not desktop) */}
-        <form className="header-search header-search--mobile mobile-only" onSubmit={handleSearchSubmit}>
+        {/* Mobile search bar hidden on mobile per design – use main search from menu or product pages */}
+        <form className="header-search header-search--mobile header-search--mobile-hidden" onSubmit={handleSearchSubmit} aria-hidden="true">
           <input
             type="search"
             className="header-search__input"
@@ -367,6 +374,17 @@ function Navbar() {
           <nav className="header-nav__links desktop-only" aria-label="Main navigation">
             {!isAdmin ? (
               <>
+                <NavLink to="/hot-deals" className={({ isActive }) => `header-nav__link header-nav__link--hot ${isActive ? 'active' : ''}`}>
+                  <span className="header-nav__fire-wrap">
+                    {fireAnimation ? (
+                      <Lottie animationData={fireAnimation} loop className="header-nav__fire-lottie" />
+                    ) : (
+                      <span className="header-nav__fire-emoji" aria-hidden>🥦</span>
+                    )}
+                  </span>
+                  Hot Deals
+                </NavLink>
+                <NavLink to="/zippyyy-ships" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Zippyyy Ships</NavLink>
                 <NavLink to="/" end className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Home</NavLink>
                 <NavLink to="/about" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>About</NavLink>
                 <NavLink to="/products" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Shop</NavLink>
@@ -396,6 +414,17 @@ function Navbar() {
       {/* ----- Mobile menu drawer ----- */}
       <div className={`header-mobile-menu ${isMobileMenuOpen ? 'open' : ''}`}>
         <div className="header-mobile-menu__content">
+          <Link to="/hot-deals" className="header-mobile-menu__link header-mobile-menu__link--hot" onClick={toggleMobileMenu}>
+            <span className="header-mobile-menu__fire-wrap">
+              {fireAnimation ? (
+                <Lottie animationData={fireAnimation} loop className="header-mobile-menu__fire-lottie" />
+              ) : (
+                <span className="header-mobile-menu__fire-emoji" aria-hidden>🥦</span>
+              )}
+            </span>
+            Hot Deals
+          </Link>
+          <NavLink to="/zippyyy-ships" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Zippyyy Ships</NavLink>
           <NavLink to="/" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Home</NavLink>
           <NavLink to="/products" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Shop</NavLink>
           <NavLink to="/about" className="header-mobile-menu__link" onClick={toggleMobileMenu}>About</NavLink>

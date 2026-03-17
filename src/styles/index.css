@@ -154,6 +154,17 @@ body::before {
   background: var(--primary-dark);
 }
 
+/* Hide scrollbar but keep scrollable (e.g. horizontal filter strips) */
+.no-scrollbar,
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

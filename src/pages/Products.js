@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
-import { useRef, useCallback } from "react";
-// import '../styles/pages/Products.css';
+import '../styles/pages/Products.css';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { Heart } from 'lucide-react';
+import { Heart, ShoppingCart, Star } from 'lucide-react';
+import '../styles/pages/HotDeals.css';
 import { MAIN_CATEGORIES, getSubcategories, getMainForCategory } from '../config/categories';
+import ScrollReveal from '../components/ScrollReveal';
+import StarRating from '../components/StarRating';
 
 const NON_SUBSCRIPTION_CATEGORIES = [
   "spices",
@@ -23,11 +25,10 @@ const NON_SUBSCRIPTION_CATEGORIES = [
   "idol",
 ];
 const weightOptions = [1, 2, 3, 5];
+const DISCOUNT_BADGE_PCT = 5;
 
 function Products() {
-  const observer = useRef();
   const [searchParams, setSearchParams] = useSearchParams();
-  const isInitialLoad = useRef(true);
   const navigate = useNavigate();
   const { state } = useLocation();
   const { addToCart } = useCart();
@@ -39,11 +40,13 @@ function Products() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [products, setProducts] = useState([]);
-  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [cursor, setCursor] = useState(null);
   const [totalData, setTotalData] = useState(0);
   const resultsTopRef = useRef(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagesCache, setPagesCache] = useState({});
+  const [nextCursorByPage, setNextCursorByPage] = useState({});
+  const [isMobileView, setIsMobileView] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
 
   const isSubscribableProduct = (product) => {
     if (!product?.category) return false;
@@ -78,31 +81,20 @@ function Products() {
     }
   }, [categoryFromUrl, mainFromUrl]);
 
-  const [productQuantities, setProductQuantities] = useState({});
   const [productWeights, setProductWeights] = useState({});
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
+  const [sortBy, setSortBy] = useState('default');
+  const [inStockOnly, setInStockOnly] = useState(false);
 
-  const handleQuantityChange = (productId, change) => {
-    setProductQuantities(prev => {
-      const currentQty = prev[productId] || 1;
-      const newQty = Math.max(1, currentQty + change);
-      const product = products.find(p => (p._id || p.id) === productId);
-      const maxQty = product?.quantity || product?.stockQuantity || 999;
-      return {
-        ...prev,
-        [productId]: Math.min(newQty, maxQty)
-      };
-    });
-  };
+  const SITE_COLOR = '#3090cf';
+  const STAR_GOLD = '#f5c542';
 
-  const handleQuantityInputChange = (productId, value) => {
-    const numValue = parseInt(value) || 1;
-    const product = products.find(p => (p._id || p.id) === productId);
-    const maxQty = product?.quantity || product?.stockQuantity || 999;
-    setProductQuantities(prev => ({
-      ...prev,
-      [productId]: Math.max(1, Math.min(numValue, maxQty))
-    }));
-  };
+  useEffect(() => {
+    const onResize = () => setIsMobileView(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const isVegetable = (category) => {
     return category?.toLowerCase().includes('vegetable') ||
@@ -133,8 +125,7 @@ function Products() {
       }
       navigate('/cart');
     } else {
-      const quantity = productQuantities[productId] || 1;
-      const result = addToCart(product, quantity);
+      const result = addToCart(product, 1);
       if (!result.success) {
         toast.error(result.message || "Could not add to cart");
         return;
@@ -143,39 +134,46 @@ function Products() {
     }
   };
 
-  const loadProductsData = async (isLoadMore = false) => {
+  const perPage = isMobileView ? 6 : 12;
+
+  const fetchPage = async (page) => {
+    if (pagesCache[page]) {
+      setProducts(pagesCache[page]);
+      return;
+    }
     try {
       setLoading(true);
+
+      const cursorToUse = page === 1 ? undefined : nextCursorByPage[page - 1];
+      if (page > 1 && !cursorToUse) {
+        setLoading(false);
+        return;
+      }
 
       const response = await api.get("/user/products", {
         params: {
           category: selectedCategory !== "All" ? selectedCategory : undefined,
+          ...(selectedMain && selectedMain !== "all" && { main: selectedMain }),
           ...(debouncedSearch && {
             search: debouncedSearch
           }),
-          limit: 12,
-          cursor: isLoadMore ? cursor : undefined
+          limit: perPage,
+          cursor: cursorToUse
         }
       });
 
       if (!response?.success) return;
 
-      const productsArray = response.data || [];
+      const productsArrayRaw = response.data || [];
+      const productsArray = Array.isArray(productsArrayRaw) ? productsArrayRaw.slice(0, perPage) : [];
 
-      setProducts(prev => {
-        const existingIds = new Set(prev.map(p => p._id));
-        const filtered = productsArray.filter(p => !existingIds.has(p._id));
-        return isLoadMore ? [...prev, ...filtered] : productsArray;
-      });
-      if (!isLoadMore && response.totalCount !== null) {
+      setPagesCache((prev) => ({ ...prev, [page]: productsArray }));
+      setProducts(productsArray);
+
+      if (response.totalCount !== null && response.totalCount !== undefined) {
         setTotalData(response.totalCount);
       }
-      setCursor(response.nextCursor || null);
-      setHasMore(response.hasNextPage);
-
-      if (!isLoadMore) {
-        isInitialLoad.current = false;
-      }
+      setNextCursorByPage((prev) => ({ ...prev, [page]: response.nextCursor || null }));
 
     } catch (error) {
       console.error("Error fetching products:", error);
@@ -184,31 +182,23 @@ function Products() {
     }
   };
 
-  const lastProductRef = useCallback(
-    (node) => {
-      if (loading || !hasMore) return;
-
-      if (observer.current) observer.current.disconnect();
-
-      observer.current = new IntersectionObserver(entries => {
-        if (entries[0].isIntersecting) {
-          loadProductsData(true);
-        }
-      });
-
-      if (node) observer.current.observe(node);
-    },
-    [loading, hasMore, cursor]
-  );
-
 
   useEffect(() => {
     setProducts([]);
-    setCursor(null);
-    setHasMore(true);
-    isInitialLoad.current = true;
-    loadProductsData(false);
-  }, [selectedCategory, debouncedSearch]);
+    setPagesCache({});
+    setNextCursorByPage({});
+    setCurrentPage(1);
+    fetchPage(1);
+  }, [selectedCategory, selectedMain, debouncedSearch]);
+
+  // When switching between mobile/desktop, reset cursor pagination so perPage stays correct (6 on mobile, 12 on desktop)
+  useEffect(() => {
+    setProducts([]);
+    setPagesCache({});
+    setNextCursorByPage({});
+    setCurrentPage(1);
+    fetchPage(1);
+  }, [perPage]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -270,6 +260,62 @@ function Products() {
 
   const subcategories = getSubcategories(selectedMain);
 
+  const minPriceNum = priceMin !== '' ? parseFloat(priceMin) : null;
+  const maxPriceNum = priceMax !== '' ? parseFloat(priceMax) : null;
+  const hasValidMin = minPriceNum != null && !Number.isNaN(minPriceNum) && minPriceNum >= 0;
+  const hasValidMax = maxPriceNum != null && !Number.isNaN(maxPriceNum) && maxPriceNum >= 0;
+
+  const filteredProducts = products
+    .filter((p) => {
+      const price = p.hasDeal ? p.finalPrice : p.price;
+      const numPrice = parseFloat(price);
+      const hasValidPrice = !Number.isNaN(numPrice) && numPrice >= 0;
+      if (hasValidMin || hasValidMax) {
+        if (!hasValidPrice) return false;
+        if (hasValidMin && numPrice < minPriceNum) return false;
+        if (hasValidMax && numPrice > maxPriceNum) return false;
+      }
+      if (inStockOnly && (p.inStock === false || String(p.inStock).toLowerCase() === 'false')) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'price-asc') {
+        const pa = a.hasDeal ? a.finalPrice : a.price;
+        const pb = b.hasDeal ? b.finalPrice : b.price;
+        return (parseFloat(pa) || 0) - (parseFloat(pb) || 0);
+      }
+      if (sortBy === 'price-desc') {
+        const pa = a.hasDeal ? a.finalPrice : a.price;
+        const pb = b.hasDeal ? b.finalPrice : b.price;
+        return (parseFloat(pb) || 0) - (parseFloat(pa) || 0);
+      }
+      if (sortBy === 'newest') {
+        const da = new Date(a.createdAt || a.addedAt || a.created_at || 0).getTime();
+        const db = new Date(b.createdAt || b.addedAt || b.created_at || 0).getTime();
+        return db - da;
+      }
+      if (sortBy === 'discount') {
+        const pctA = a.dealId?.dealType === 'PERCENT' && a.dealId?.discountValue != null ? Number(a.dealId.discountValue) : 0;
+        const pctB = b.dealId?.dealType === 'PERCENT' && b.dealId?.discountValue != null ? Number(b.dealId.discountValue) : 0;
+        return pctB - pctA;
+      }
+      return 0;
+    });
+
+  const trendingProducts = products
+    .slice()
+    .sort((a, b) => (Number(b.orderCount ?? b.timesOrdered ?? b.salesCount ?? 0) || 0) - (Number(a.orderCount ?? a.timesOrdered ?? a.salesCount ?? 0) || 0))
+    .slice(0, 5);
+
+  const handleSidebarCategorySelect = (categoryValue) => {
+    const main = getMainForCategory(categoryValue);
+    setSelectedMain(main);
+    setSelectedCategory(categoryValue);
+    updateUrlFromFilters(main, categoryValue);
+  };
+
+  const totalPages = totalData > 0 ? Math.max(1, Math.ceil(totalData / perPage)) : 1;
+
   useEffect(() => {
     if (resultsTopRef.current) {
       resultsTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -279,25 +325,147 @@ function Products() {
   }, [selectedCategory, selectedMain]);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] overflow-x-hidden animate-fadeIn">
+    <div className="products-page-wrapper min-h-screen bg-[#f8fafc] overflow-x-hidden w-full min-w-0 animate-fadeIn">
 
       {/* Header Section */}
-      <div className="py-12 text-center border-b-2 border-blue-50/50 bg-white shadow-sm mb-4">
-        <div className="max-w-7xl mx-auto px-6">
-          <h1 className="text-4xl md:text-5xl font-extrabold mb-3 tracking-tight bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
+      <div className="py-8 sm:py-10 md:py-12 text-center border-b-2 border-[#3090cf]/10 bg-white shadow-sm mb-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold mb-2 sm:mb-3 tracking-tight bg-gradient-to-r from-[#3090cf] to-[#2680b8] bg-clip-text text-transparent">
             Premium Grocery Store
           </h1>
-          <p className="text-gray-500 text-lg max-w-2xl mx-auto leading-relaxed">
+          <p className="text-gray-500 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed px-1">
             Fresh ingredients delivered from our trusted suppliers directly to your doorstep.
           </p>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-8">
+      <div className="hot-deals-layout max-w-7xl mx-auto w-full min-w-0">
+        {/* Left: Filters + Trending Now */}
+        <aside className="hot-deals-sidebar">
+          <div className="hot-deals-filter">
+            <h3 className="hot-deals-filter__title">Filters</h3>
+            <div className="hot-deals-filter__accent" style={{ backgroundColor: SITE_COLOR }} />
+            <div className="hot-deals-filter__group">
+              <label className="hot-deals-filter__label">Price</label>
+              <div className="hot-deals-filter__price-row">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Min"
+                  value={priceMin}
+                  onChange={(e) => setPriceMin(e.target.value)}
+                  className="hot-deals-filter__input"
+                />
+                <span className="hot-deals-filter__price-sep">–</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Max"
+                  value={priceMax}
+                  onChange={(e) => setPriceMax(e.target.value)}
+                  className="hot-deals-filter__input"
+                />
+              </div>
+            </div>
+            <div className="hot-deals-filter__group">
+              <label className="hot-deals-filter__label">Category</label>
+              <select
+                value={selectedCategory}
+                onChange={(e) => handleSidebarCategorySelect(e.target.value)}
+                className="hot-deals-filter__select"
+              >
+                {apiCategories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+            <div className="hot-deals-filter__group">
+              <label className="hot-deals-filter__label">Sort by</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="hot-deals-filter__select"
+              >
+                <option value="default">Default</option>
+                <option value="price-asc">Price: Low to High</option>
+                <option value="price-desc">Price: High to Low</option>
+                <option value="newest">Newest</option>
+                <option value="discount">Biggest discount</option>
+              </select>
+            </div>
+            <div className="hot-deals-filter__group hot-deals-filter__group--checkbox">
+              <label className="hot-deals-filter__checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={inStockOnly}
+                  onChange={(e) => setInStockOnly(e.target.checked)}
+                  className="hot-deals-filter__checkbox"
+                />
+                <span>In stock only</span>
+              </label>
+            </div>
+          </div>
+          <div className="hot-deals-trending">
+            <h2 className="hot-deals-trending__title">Trending Now</h2>
+            <div className="hot-deals-trending__accent" style={{ backgroundColor: SITE_COLOR }} />
+            <ul className="hot-deals-trending__list">
+              {trendingProducts.length === 0 && !loading ? (
+                <li className="hot-deals-trending__empty">No trending products yet.</li>
+              ) : (
+                trendingProducts.map((product) => {
+                  const pid = product._id || product.id;
+                  const price = product.hasDeal ? product.finalPrice : product.price;
+                  const orig = product.originalPrice ?? product.compareAtPrice;
+                  const reviewCount = product.reviews?.length ?? product.reviewCount ?? 0;
+                  const avgRating = reviewCount
+                    ? Math.round((product.reviews || []).reduce((a, r) => a + (r.rating || 0), 0) / (product.reviews?.length || 1))
+                    : product.rating ?? 0;
+                  return (
+                    <li key={pid} className="hot-deals-trending__item">
+                      <Link to={`/products/${pid}`} className="hot-deals-trending__link">
+                        <span className="hot-deals-trending__img-wrap">
+                          <img src={product.image} alt="" className="hot-deals-trending__img" />
+                        </span>
+                        <span className="hot-deals-trending__info">
+                          <span className="hot-deals-trending__name">{product.name}</span>
+                          {avgRating > 0 && (
+                            <span className="hot-deals-trending__stars">
+                              {[1, 2, 3, 4, 5].map((s) => (
+                                <Star
+                                  key={s}
+                                  size={12}
+                                  fill="currentColor"
+                                  className={s <= avgRating ? 'hot-deals-trending__star--on' : 'hot-deals-trending__star--off'}
+                                  style={s <= avgRating ? { color: STAR_GOLD } : {}}
+                                />
+                              ))}
+                            </span>
+                          )}
+                          <span className="hot-deals-trending__prices">
+                            {orig != null && orig > price && (
+                              <span className="hot-deals-trending__old">${Number(orig).toFixed(2)}</span>
+                            )}
+                            <span className="hot-deals-trending__price" style={{ color: SITE_COLOR }}>
+                              ${Number(price).toFixed(2)}
+                            </span>
+                          </span>
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </div>
+        </aside>
+
+        <div className="w-full min-w-0 px-0 sm:px-2">
         {/* Filter – responsive bar, larger text, touch-friendly */}
         <div className="products-filter-sticky sticky top-[100px] sm:top-[110px] md:top-[120px] z-20 mb-6 -mt-6 overflow-visible">
           <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 shadow-sm relative z-10 overflow-visible">
-            <div className="max-w-5xl mx-auto px-4 sm:px-5 md:px-6 py-4 sm:py-5">
+            <div className="products-filter-inner max-w-5xl mx-auto px-4 sm:px-5 md:px-6 py-4 sm:py-5">
               {/* Search + main categories – stack on small, row on larger */}
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
                 <div className="relative flex-1 min-w-0 w-full">
@@ -307,17 +475,17 @@ function Products() {
                     placeholder="Search products..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 sm:pl-11 pr-4 py-3 sm:py-3.5 text-sm sm:text-base bg-slate-50 border border-slate-200 rounded-xl text-gray-800 placeholder:text-slate-400 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 outline-none transition-all min-h-[44px]"
+                    className="w-full pl-10 sm:pl-11 pr-4 py-3 sm:py-3.5 text-sm sm:text-base bg-slate-50 border border-slate-200 rounded-xl text-gray-800 placeholder:text-slate-400 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all min-h-[44px]"
                   />
                 </div>
                 {/* Main categories – segment control, scroll on small screens */}
-                <div className="flex items-stretch gap-1 p-1 bg-slate-100 rounded-xl overflow-x-auto overflow-y-hidden no-scrollbar min-h-[44px] sm:min-h-0 sm:w-fit">
+                <div className="products-filter-scroll flex items-stretch gap-1 p-1 bg-slate-100 rounded-xl overflow-x-auto overflow-y-hidden no-scrollbar min-h-[44px] sm:min-h-0 sm:w-fit">
                   {MAIN_CATEGORIES.map((main) => (
                     <button
                       key={main.id}
                       type="button"
                       className={`flex-shrink-0 px-4 sm:px-5 py-2.5 sm:py-2 rounded-lg text-sm sm:text-base font-semibold whitespace-nowrap transition-all duration-200 min-h-[40px] flex items-center justify-center ${selectedMain === main.id
-                        ? 'bg-white text-blue-600 shadow-sm border border-slate-200/50'
+                        ? 'bg-white text-[#3090cf] shadow-sm border border-slate-200/50'
                         : 'text-slate-600 hover:text-slate-800 hover:bg-white/50'
                         }`}
                       onClick={() => handleMainSelect(main.id)}
@@ -330,11 +498,11 @@ function Products() {
 
               {/* Subcategories – wrap + scroll on very small; larger tap targets */}
               {selectedMain && selectedMain !== 'all' && (
-                <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-2 sm:gap-2.5 overflow-x-auto no-scrollbar animate-fadeIn">
+                <div className="products-filter-scroll mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-2 sm:gap-2.5 overflow-x-auto no-scrollbar animate-fadeIn">
                   <button
                     type="button"
                     className={`px-4 py-2.5 sm:py-2 rounded-lg text-sm sm:text-base font-medium transition-colors min-h-[44px] sm:min-h-[40px] flex items-center justify-center ${selectedCategory === 'All'
-                      ? 'bg-blue-500 text-white'
+                      ? 'bg-[#3090cf] text-white'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                       }`}
                     onClick={() => handleSubSelect('All')}
@@ -346,7 +514,7 @@ function Products() {
                       key={sub.value}
                       type="button"
                       className={`px-4 py-2.5 sm:py-2 rounded-lg text-sm sm:text-base font-medium transition-colors min-h-[44px] sm:min-h-[40px] flex items-center justify-center flex-shrink-0 ${selectedCategory === sub.value
-                        ? 'bg-blue-500 text-white'
+                        ? 'bg-[#3090cf] text-white'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                         }`}
                       onClick={() => handleSubSelect(sub.value)}
@@ -364,14 +532,14 @@ function Products() {
         <div ref={resultsTopRef} className="scroll-mt-4" />
 
         {/* Stats Section */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-12">
+        <div className="products-stats-section grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5 mb-8 sm:mb-12">
           {[
             { label: 'Products Available', value: totalData, icon: '📦' },
-            { label: 'Delivery Time', value: '4-24h', icon: '⚡' },
+            { label: 'Delivery Time', value: '24-48h', icon: '⚡' },
             { label: 'Daily Stock', value: 'Fresh', icon: '🌿' }
           ].map((stat, i) => (
-            <div key={i} className="group bg-white p-6 rounded-3xl border-2 border-blue-50/50 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 text-center">
-              <span className="block text-3xl font-black text-blue-600 mb-1 group-hover:scale-110 transition-transform">{stat.value}</span>
+            <div key={i} className="group bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border-2 border-[#3090cf]/10 shadow-sm hover:shadow-xl hover:border-[#3090cf]/30 transition-all duration-300 text-center">
+              <span className="block text-2xl sm:text-3xl font-black text-[#3090cf] mb-1 group-hover:scale-110 transition-transform">{stat.value}</span>
               <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{stat.label}</span>
             </div>
           ))}
@@ -379,135 +547,195 @@ function Products() {
 
         {/* Main Content */}
         {loading && products.length === 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-8 justify-items-center max-w-[520px] sm:max-w-none mx-auto">
             {[...Array(8)].map((_, i) => (
-              <div key={i} className="bg-white rounded-[28px] p-5 border-2 border-slate-50 animate-pulse">
-                <div className="bg-slate-200 h-52 rounded-2xl mb-4"></div>
+              <div key={i} className="bg-white rounded-2xl sm:rounded-[28px] p-4 sm:p-5 border-2 border-slate-50 animate-pulse">
+                <div className="bg-slate-200 h-44 sm:h-52 rounded-xl sm:rounded-2xl mb-3 sm:mb-4"></div>
                 <div className="h-4 bg-slate-200 rounded-full w-2/3 mb-2"></div>
-                <div className="h-3 bg-slate-100 rounded-full w-1/2 mb-6"></div>
+                <div className="h-3 bg-slate-100 rounded-full w-1/2 mb-4 sm:mb-6"></div>
                 <div className="flex justify-between items-center"><div className="h-6 bg-slate-200 rounded w-16"></div><div className="h-10 bg-slate-100 rounded-xl w-24"></div></div>
               </div>
             ))}
           </div>
-        ) : products.length === 0 ? (
-          <div className="py-20 text-center">
-            <div className="text-7xl mb-6 opacity-30">⏳</div>
-            <h3 className="text-2xl font-bold text-gray-800">New Collection Arriving Soon</h3>
-            <p className="text-gray-500 mt-2">Try switching categories or check back later!</p>
+        ) : filteredProducts.length === 0 ? (
+          <div className="py-12 sm:py-20 text-center px-4">
+            <div className="text-5xl sm:text-7xl mb-4 sm:mb-6 opacity-30">⏳</div>
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-800">No products match your filters</h3>
+            <p className="text-gray-500 mt-2 text-sm sm:text-base">Try adjusting price, category or in-stock filter.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
-            {products.map((product, index) => {
+          <>
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 md:gap-6 justify-items-center max-w-[520px] sm:max-w-none mx-auto">
+            {filteredProducts.map((product, index) => {
               const productId = product._id || product.id;
-              const isLast = index === products.length - 1;
-              const qty = productQuantities[productId] || 1;
               const price = product.hasDeal ? product.finalPrice : product.price;
+              const dealDiscountPct = product.dealId?.dealType === 'PERCENT' && product.dealId?.discountValue != null
+                ? Number(product.dealId.discountValue)
+                : product.hasDeal && product.originalPrice > 0
+                  ? Math.round((1 - product.finalPrice / product.originalPrice) * 100)
+                  : 0;
+              const originalPrice = product.originalPrice ?? product.compareAtPrice;
+              const computedPct = (originalPrice != null && originalPrice > 0 && price < originalPrice)
+                ? Math.round((1 - price / originalPrice) * 100)
+                : 0;
+              const discountPct = product.discountPercentage != null ? Number(product.discountPercentage) : (dealDiscountPct || computedPct);
+              const hasDiscount = discountPct > 0;
+              const inStock = product.inStock !== false;
+              const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
+              const isNewlyAdded = (() => {
+                const date = product.createdAt || product.addedAt || product.created_at;
+                if (!date) return false;
+                return new Date(date).getTime() >= Date.now() - FIFTEEN_DAYS_MS;
+              })();
+              const orderCount = Number(product.orderCount ?? product.timesOrdered ?? product.salesCount ?? 0) || 0;
+              const isHot = orderCount > 5;
+              const rightBadge = !inStock ? null : isHot ? 'hot' : isNewlyAdded ? 'new' : 'sale';
               return (
+                <ScrollReveal key={productId}>
                 <div
-                  key={productId}
-                  ref={isLast ? lastProductRef : null}
-                  className="group relative bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:border-slate-300/80 transition-all duration-300 flex flex-col overflow-hidden"
+                  className="group relative bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:border-slate-300/80 transition-all duration-300 flex flex-col overflow-hidden w-full"
                 >
+                  {/* Top-left: same discount % for all products */}
+                  <span
+                    className="product-card__discount-tag absolute top-0 left-0 z-20 text-white text-xs font-bold pl-3 pr-4 py-1.5 min-w-[3rem] text-center rounded-tl-none rounded-bl-none rounded-tr-none rounded-br-xl shadow-sm"
+                    style={{ backgroundColor: '#e9aa42', color: '#fff' }}
+                  >
+                    {DISCOUNT_BADGE_PCT}%
+                  </span>
+                  {/* Top-right: single badge only – Hot (>5 orders) > New (≤15 days) > Sale (in stock) */}
+                  {rightBadge && (
+                    <div className="absolute top-0 right-0 z-20 pointer-events-none flex flex-col items-end gap-1">
+                      <span className="product-card__sale-tag inline-block text-[11px] font-bold uppercase tracking-wide px-4 py-1.5 rounded-tr-xl rounded-br-none rounded-bl-xl rounded-tl-none text-white shadow-sm" style={{ backgroundColor: '#3090cf' }}>
+                        {rightBadge === 'hot' ? 'Hot' : rightBadge === 'new' ? 'New' : 'Sale'}
+                      </span>
+                    </div>
+                  )}
                   <Link to={`/products/${productId}`} className="relative block aspect-square overflow-hidden bg-slate-100">
                     <img
                       src={product.image}
                       alt={product.name}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
-                    {isSubscribableProduct(product) && (
-                      <span className="absolute top-2 left-2 bg-emerald-500 text-white text-[10px] font-semibold px-2 py-0.5 rounded-md shadow-sm">
-                        Subscribe
-                      </span>
-                    )}
                     {!product.inStock && (
-                      <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10">
                         <span className="bg-slate-800 text-white text-xs font-semibold px-3 py-1.5 rounded-full">Out of stock</span>
                       </div>
                     )}
                   </Link>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.preventDefault(); toggleWishlist(product); }}
-                    className="absolute top-2 right-2 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-white/90 shadow-sm border border-slate-200/80 text-[#3090cf] hover:bg-white hover:shadow-md transition-all"
-                    aria-label={isInWishlist(productId) ? 'Remove from wishlist' : 'Add to wishlist'}
-                  >
-                    <Heart
-                      size={20}
-                      className={isInWishlist(productId) ? 'text-[#3090cf]' : ''}
-                      fill={isInWishlist(productId) ? 'currentColor' : 'none'}
-                      strokeWidth={2}
-                    />
-                  </button>
 
-                  <div className="p-4 flex flex-col flex-grow">
+                  <div className="p-3 sm:p-4 flex flex-col flex-grow">
                     <span className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">{product.category}</span>
-                    <h3 className="text-slate-800 font-semibold text-[15px] leading-snug mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
-                      {product.name}
-                    </h3>
-                    <p className="text-xs text-slate-500 mb-3">{product.unit || 'piece'}</p>
-
-                    <div className="flex items-baseline gap-2 mb-4">
-                      <span className="text-xl font-bold text-slate-900">${price.toFixed(2)}</span>
-                      {product.hasDeal && (
-                        <span className="text-sm text-slate-400 line-through">${product.originalPrice.toFixed(2)}</span>
-                      )}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h3 className="text-slate-800 font-semibold text-sm sm:text-[15px] leading-snug line-clamp-2 group-hover:text-[#3090cf] transition-colors">
+                        {product.name}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); toggleWishlist(product); }}
+                        className="flex-shrink-0 w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center rounded-full bg-slate-100 border border-slate-200 text-[#3090cf] hover:bg-slate-200 hover:border-[#3090cf]/50 transition-all touch-manipulation min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 -mt-1"
+                        aria-label={isInWishlist(productId) ? 'Remove from wishlist' : 'Add to wishlist'}
+                      >
+                        <Heart
+                          size={20}
+                          className={isInWishlist(productId) ? 'text-[#3090cf]' : ''}
+                          fill={isInWishlist(productId) ? 'currentColor' : 'none'}
+                          strokeWidth={2}
+                        />
+                      </button>
                     </div>
+                    <StarRating
+                      rating={product.rating ?? (product.reviews?.length ? (product.reviews || []).reduce((a, r) => a + (Number(r?.rating) || 0), 0) / (product.reviews?.length || 1) : 0)}
+                      count={product.reviews?.length ?? product.reviewCount ?? 0}
+                      className="mb-2"
+                    />
+                    <p className="text-xs text-slate-500 mb-2 sm:mb-3">{product.unit || 'piece'}</p>
 
-                    <div className="mt-auto flex items-center gap-2">
-                      <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50/80 overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.preventDefault(); handleQuantityChange(productId, -1); }}
-                          className="w-9 h-9 flex items-center justify-center text-slate-600 hover:bg-slate-200 hover:text-slate-800 transition-colors font-medium"
-                        >
-                          −
-                        </button>
-                        <span className="w-8 text-center text-sm font-semibold text-slate-700 tabular-nums">{qty}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.preventDefault(); handleQuantityChange(productId, 1); }}
-                          className="w-9 h-9 flex items-center justify-center text-slate-600 hover:bg-slate-200 hover:text-slate-800 transition-colors font-medium"
-                        >
-                          +
-                        </button>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 sm:mb-4">
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="text-lg sm:text-xl font-bold text-[#3090cf]">${price.toFixed(2)}</span>
+                        {product.hasDeal && (
+                          <span className="text-xs sm:text-sm text-slate-400 line-through">${product.originalPrice.toFixed(2)}</span>
+                        )}
                       </div>
                       <button
                         type="button"
                         onClick={(e) => handleAddToCart(e, product)}
                         disabled={!product.inStock}
-                        className="flex-1 min-w-0 py-2.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-semibold transition-colors active:scale-[0.98]"
+                        className="min-h-[40px] px-4 rounded-lg bg-[#3090cf] hover:bg-[#2680b8] disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-semibold transition-colors active:scale-[0.98] inline-flex items-center justify-center gap-1.5 touch-manipulation w-full sm:w-auto whitespace-nowrap"
                       >
-                        Add to cart
+                        <ShoppingCart size={18} strokeWidth={2.5} />
+                        Add
                       </button>
                     </div>
                   </div>
                 </div>
+                </ScrollReveal>
               );
             })}
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 mt-10 flex-wrap">
+              <button
+                type="button"
+                className="min-h-[44px] px-5 py-2.5 rounded-xl font-bold text-white bg-[#3090cf] hover:bg-[#2680b8] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                disabled={currentPage <= 1 || loading}
+                onClick={() => {
+                  const next = Math.max(1, currentPage - 1);
+                  setCurrentPage(next);
+                  setProducts(pagesCache[next] || []);
+                  if (!pagesCache[next]) fetchPage(next);
+                  resultsTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+              >
+                Previous
+              </button>
+              <span className="text-sm font-bold text-slate-600">
+                Page {Math.min(currentPage, totalPages)} of {totalPages}
+              </span>
+              <button
+                type="button"
+                className="min-h-[44px] px-5 py-2.5 rounded-xl font-bold text-white bg-[#3090cf] hover:bg-[#2680b8] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                disabled={loading || currentPage >= totalPages || !nextCursorByPage[currentPage]}
+                onClick={() => {
+                  const next = Math.min(totalPages, currentPage + 1);
+                  setCurrentPage(next);
+                  if (pagesCache[next]) {
+                    setProducts(pagesCache[next]);
+                  } else {
+                    fetchPage(next);
+                  }
+                  resultsTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+              >
+                Next
+              </button>
+            </div>
+          )}
+          </>
         )}
 
-        {/* Loading More Spinner */}
+        {/* Page Loading Spinner */}
         {loading && products.length > 0 && (
-          <div className="flex justify-center py-12">
-            <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="flex justify-center py-10">
+            <div className="w-10 h-10 border-4 border-[#3090cf] border-t-transparent rounded-full animate-spin" aria-label="Loading" />
           </div>
         )}
 
         {/* Benefits Footer Section */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 my-20">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 my-12 sm:my-16 md:my-20">
           {[
             { icon: '🚚', title: 'Fast Delivery', desc: 'Same-day express delivery across NYC' },
             { icon: '🌿', title: 'Fresh Quality', desc: 'Daily fresh stock, premium ingredients' },
             { icon: '🇮🇳', title: 'Authentic', desc: 'Directly sourced from trusted suppliers' },
             { icon: '💰', title: 'Best Prices', desc: 'Competitive pricing on all products' }
           ].map((benefit, i) => (
-            <div key={i} className="group bg-white p-8 rounded-[32px] border-2 border-blue-50 hover:border-blue-400 hover:shadow-2xl transition-all duration-500 text-center">
-              <div className="text-4xl mb-4 group-hover:scale-125 transition-transform duration-500 inline-block drop-shadow-md">{benefit.icon}</div>
-              <h4 className="font-black text-gray-800 text-lg mb-2">{benefit.title}</h4>
-              <p className="text-gray-500 text-sm leading-relaxed">{benefit.desc}</p>
+            <div key={i} className="group bg-white p-5 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border-2 border-[#3090cf]/10 hover:border-[#3090cf]/40 hover:shadow-2xl transition-all duration-500 text-center">
+              <div className="text-3xl sm:text-4xl mb-3 sm:mb-4 group-hover:scale-125 transition-transform duration-500 inline-block drop-shadow-md">{benefit.icon}</div>
+              <h4 className="font-black text-gray-800 text-base sm:text-lg mb-1.5 sm:mb-2">{benefit.title}</h4>
+              <p className="text-gray-500 text-xs sm:text-sm leading-relaxed">{benefit.desc}</p>
             </div>
           ))}
+        </div>
         </div>
       </div>
     </div>

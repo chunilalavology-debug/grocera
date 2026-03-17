@@ -14,9 +14,14 @@ export default function Checkout() {
     }
   }, [itemCount, navigate]);
 
-  // Calculation Constants
-  const NY_TAX_RATE = 0.08875;
-  const [tipPercent, setTipPercent] = useState(0); // % buttons
+  // Billing constants (user spec)
+  const TAX_AND_CONVENIENCE_RATE = 0.0887;   // 8.87% of order value
+  const TAX_AND_CONVENIENCE_FIXED = 1.99;    // + $1.99 for all orders
+  const PACKAGING_FEE = 2;
+  const EXPRESS_EXTRA = 10;                   // $10 extra for 1-day priority
+
+  const [deliveryType, setDeliveryType] = useState('standard'); // 'standard' | 'express'
+  const [tipPercent, setTipPercent] = useState(0);
   const [tipInput, setTipInput] = useState('');
 
   const [showStripe, setShowStripe] = useState(false);
@@ -56,27 +61,38 @@ export default function Checkout() {
     nameOnCard: ''
   });
 
-  const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [paymentMethod, setPaymentMethod] = useState('card');
 
   const subtotal = total;
-  const serviceFee = 5
-  const taxAmount = subtotal * NY_TAX_RATE;
-  const shippingAmount = subtotal < 35 ? 10 : 0;
+
+  // Standard delivery: $50+ free, $25–$49 → $4.99, below $25 → $9.99
+  const standardDeliveryFee =
+    subtotal >= 50 ? 0 : subtotal >= 25 ? 4.99 : 9.99;
+  const deliveryFee =
+    deliveryType === 'express' ? standardDeliveryFee + EXPRESS_EXTRA : standardDeliveryFee;
+
+  const taxAndConvenienceFee =
+    subtotal * TAX_AND_CONVENIENCE_RATE + TAX_AND_CONVENIENCE_FIXED;
 
   let tip = 0;
-  let tipLabel = "";
+  let tipLabel = '';
 
   if (tipInput) {
-    // 🟢 Input = direct dollar amount
     tip = parseFloat(tipInput) || 0;
-    tipLabel = "Shopper Tip";
+    tipLabel = 'Tip / Support your delivery partner';
   } else if (tipPercent > 0) {
-    // 🟢 Button = percentage
     tip = (subtotal * tipPercent) / 100;
-    tipLabel = `Shopper Tip (${tipPercent}%)`;
+    tipLabel = `Tip (${tipPercent}%)`;
   }
+
   const discountAmount = appliedCoupon ? appliedCoupon.discount : 0;
-  const finalTotal = subtotal + taxAmount + shippingAmount + tip + serviceFee - discountAmount;
+  const finalTotal =
+    subtotal +
+    deliveryFee +
+    taxAndConvenienceFee +
+    PACKAGING_FEE +
+    tip -
+    discountAmount;
 
 
   const handleFinalCheckout = async () => {
@@ -111,7 +127,14 @@ export default function Checkout() {
         })),
         tip,
         driverNote,
-        paymentMethod: paymentMethod === 'cod' ? 'cod' : paymentMethod,
+        paymentMethod,
+        deliveryType,
+        subtotal,
+        deliveryFee,
+        taxAndConvenienceFee,
+        packagingFee: PACKAGING_FEE,
+        discountAmount: discountAmount || 0,
+        finalTotal,
       };
       if (isGuest && guestAddr) {
         payload.address = {
@@ -290,34 +313,41 @@ export default function Checkout() {
     fetchVouchers();
   }, [showCouponModal]);
 
-  // Discount Process
+  // Discount Process – trim code, support both response shapes, validate discount
   const handleApplyCoupon = async () => {
-    if (!coupon) return;
+    const code = (coupon || '').trim().toUpperCase();
+    if (!code) {
+      toast.error('Please enter a coupon code.');
+      return;
+    }
     setIsApplying(true);
+    setAppliedCoupon(null); // clear previous so UI doesn't show stale discount while loading
 
     try {
-      const res = await api.post("/user/applyCoupon", { code: coupon, subtotal });
+      const res = await api.post("/user/applyCoupon", { code, subtotal });
 
-      if (res.success) {
-        setAppliedCoupon({
-          code: coupon,
-          discount: res.data.discountAmount
-        });
-        setShowCouponModal(false); // Modal band hoga
+      // Backend may return discount in res.data.discountAmount or res.discountAmount
+      const rawDiscount = res?.data?.discountAmount ?? res?.discountAmount;
+      const discountValue = Number(rawDiscount);
+      const isValidDiscount = !Number.isNaN(discountValue) && discountValue >= 0;
+
+      if (res?.success && isValidDiscount) {
+        setAppliedCoupon({ code, discount: discountValue });
+        setCoupon(code); // keep input in sync (trimmed + uppercase)
+        setShowCouponModal(false);
         toast.success(
-          `Success! You saved $${res.data.discountAmount.toFixed(2)} with "${coupon}".`
+          `Success! You saved $${discountValue.toFixed(2)} with "${code}".`
         );
+      } else if (res?.success && !isValidDiscount) {
+        toast.error(res?.message || "This coupon code is not applicable to your current order.");
       } else {
-        // Agar backend success false bhejta hai
-        toast.error(res.message || "This coupon code is not applicable to your current items.");
+        toast.error(res?.message || "This coupon code is not applicable to your current items.");
       }
     } catch (err) {
-      // API error handling
       const errorMessage =
-        err?.response?.data?.message ||
         err?.message ||
+        err?.response?.data?.message ||
         "Invalid coupon code. Please check and try again.";
-
       toast.error(errorMessage);
     } finally {
       setIsApplying(false);
@@ -436,41 +466,29 @@ export default function Checkout() {
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('otc')}
-                    className={`w-full flex items-center gap-4 p-4 min-h-[52px] sm:min-h-0 text-left transition-colors border-b border-slate-100 last:border-b-0 ${paymentMethod === 'otc' ? 'bg-blue-50 border-l-4 border-l-[#3090cf]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
+                    className={`w-full flex items-center gap-4 p-4 min-h-[52px] sm:min-h-0 text-left transition-colors ${paymentMethod === 'otc' ? 'bg-blue-50 border-l-4 border-l-[#3090cf]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
                   >
                     <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${paymentMethod === 'otc' ? 'border-[#3090cf] bg-white' : 'border-slate-300'}`}>
                       {paymentMethod === 'otc' && <span className="w-2 h-2 rounded-full bg-[#3090cf]" />}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900">OTC</p>
-                      <p className="text-sm text-slate-500">Pay at the counter or on delivery</p>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('cod')}
-                    className={`w-full flex items-center gap-4 p-4 min-h-[52px] sm:min-h-0 text-left transition-colors ${paymentMethod === 'cod' ? 'bg-blue-50 border-l-4 border-l-[#3090cf]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
-                  >
-                    <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${paymentMethod === 'cod' ? 'border-[#3090cf] bg-white' : 'border-slate-300'}`}>
-                      {paymentMethod === 'cod' && <span className="w-2 h-2 rounded-full bg-[#3090cf]" />}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900">Cash on delivery</p>
-                      <p className="text-sm text-slate-500">Pay with cash when your order is delivered</p>
+                      <p className="font-semibold text-slate-900">OTC Card</p>
+                      <p className="text-sm text-slate-500">Pay with OTC card number and PIN</p>
                     </div>
                   </button>
                 </div>
 
-                {paymentMethod === 'cod' && (
-                  <p className="mt-3 text-sm text-slate-500">
-                    You’ll pay with cash when our team delivers your order. No card needed.
-                  </p>
-                )}
-
                 {paymentMethod === 'otc' && (
-                  <div className="mt-6 p-6 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
-                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-2">OTC details</h4>
+                  <div className="mt-6 space-y-4">
+                    <div className="p-4 bg-blue-50/80 rounded-xl border border-[#3090cf]/30">
+                      <h4 className="text-sm font-bold text-slate-800 mb-2">OTC Card Payment & Privacy Notice</h4>
+                      <p className="text-sm text-slate-600 leading-relaxed">
+                        When you enter your OTC Card number and PIN to complete your purchase, the information is securely encrypted and used only to process your order.
+                        In some cases, a temporary encrypted record of the card details may be stored.
+                      </p>
+                    </div>
+                    <div className="p-6 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+                      <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-2">OTC details</h4>
 
                     <PremiumInput
                       label="Name on Card"
@@ -494,6 +512,7 @@ export default function Checkout() {
                       value={cardDetails.cvv}
                       onChange={(e) => setCardDetails({ ...cardDetails, cvv: e.target.value })}
                     />
+                  </div>
                   </div>
                 )}
               </div>
@@ -561,13 +580,48 @@ export default function Checkout() {
               </div>
               {/* --- END COUPON SECTION --- */}
 
-              {/* Tip Selection */}
-              <div className="mb-8">
+              {/* Delivery option */}
+              <div className="mb-6">
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-3 ml-1">
-                  Support your Shopper
+                  Delivery
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                  {[5, 10, 15].map(percent => (
+                <div className="space-y-2">
+                  <label className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${deliveryType === 'express' ? 'border-[#3090cf] bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                    <input
+                      type="radio"
+                      name="deliveryType"
+                      checked={deliveryType === 'express'}
+                      onChange={() => setDeliveryType('express')}
+                      className="mt-1 accent-[#3090cf]"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-800">Express</span>
+                      <p className="text-xs text-slate-500 mt-0.5">$10 extra for priority 1-day delivery. Shipped within 24 hours.</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${deliveryType === 'standard' ? 'border-[#3090cf] bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                    <input
+                      type="radio"
+                      name="deliveryType"
+                      checked={deliveryType === 'standard'}
+                      onChange={() => setDeliveryType('standard')}
+                      className="mt-1 accent-[#3090cf]"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-800">Standard</span>
+                      <p className="text-xs text-slate-500 mt-0.5">Orders $50+ → Free. $25–$49 → $4.99. Below $25 → $9.99. Shipped within 24–48 hours.</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Tip / Support your delivery partner */}
+              <div className="mb-6">
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-3 ml-1">
+                  Tip / Support your delivery partner
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
+                  {[5, 10, 15, 20].map(percent => (
                     <button
                       key={percent}
                       type="button"
@@ -609,23 +663,18 @@ export default function Checkout() {
                     )}
                   </div>
                 </div>
-                {serviceFee === 0 && (
-                  <p className="text-xs text-green-600 font-bold mt-2">
-                    🎉 You have {remainingFreeOrders} free service orders remaining!
-                  </p>
-                )}
               </div>
 
-              {/* Costs */}
+              {/* Billing section */}
               <div className="space-y-3 pt-6 border-t border-gray-50">
                 <SummaryRow label="Subtotal" value={subtotal} />
                 <SummaryRow
-                  label="Service Fee"
-                  value={serviceFee}
-                  isFree={serviceFee === 0}
+                  label="Delivery fee"
+                  value={deliveryFee}
+                  isFree={deliveryFee === 0}
                 />
-                <SummaryRow label="Estimated Tax" value={taxAmount} />
-                <SummaryRow label="Delivery Fee" value={shippingAmount} isFree={shippingAmount === 0} />
+                <SummaryRow label="Tax & Convenience Fee (8.87% + $1.99)" value={taxAndConvenienceFee} />
+                <SummaryRow label="Packaging fee" value={PACKAGING_FEE} />
                 {tip > 0 && (
                   <SummaryRow
                     label={tipLabel}
@@ -646,6 +695,7 @@ export default function Checkout() {
                   <span className="text-base font-bold text-slate-900">Total</span>
                   <span className="text-xl font-bold text-[#3090cf]">USD ${finalTotal.toFixed(2)}</span>
                 </div>
+                <p className="text-xs text-slate-500 mt-2">Proceed to payment below to complete your order.</p>
               </div>
 
               <div className="mt-8">
@@ -675,9 +725,7 @@ export default function Checkout() {
                   ? "Processing..."
                   : paymentMethod === 'card'
                     ? "Pay with Card"
-                    : paymentMethod === 'cod'
-                      ? "Complete order (Cash on delivery)"
-                      : "Place Order (OTC)"}
+                    : "Place Order (OTC)"}
               </button>
 
               {!selectedAddressId && (

@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import './styles/App.css';
 
@@ -7,8 +7,10 @@ import './styles/App.css';
 // Components (always loaded)
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import AdminLayout from './components/AdminLayout';
 import ChatWidget from './components/ChatWidget';
 import WishlistDrawer from './components/WishlistDrawer';
+import ProductSalePopup from './components/ProductSalePopup';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // Critical pages (loaded immediately)
@@ -28,6 +30,8 @@ const Home = lazy(() => import('./pages/home/Home'));
 const Products = lazy(() => import('./pages/Products'));
 const Category = lazy(() => import('./pages/Category'));
 const ProductDetail = lazy(() => import('./pages/ProductDetail'));
+const HotDeals = lazy(() => import('./pages/HotDeals'));
+const ZippyyyShips = lazy(() => import('./pages/ZippyyyShips'));
 const Cart = lazy(() => import('./pages/Cart'));
 const Checkout = lazy(() => import('./pages/Checkout'));
 const OrderSuccess = lazy(() => import('./pages/OrderSuccess'));
@@ -58,15 +62,19 @@ const AdminDeals = lazy(() => import('./pages/admin/AdminDeals'));
 // Lazy loaded co-admin pages
 const CoAdminOrders = lazy(() => import('./pages/admin/CoAdminOrders'));
 const CoAdminDashboard = lazy(() => import('./pages/admin/CoAdminDashboard'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 
 // Initialize Stripe
 
 function App() {
+    const location = useLocation();
+    const isAdminArea = location.pathname.startsWith('/admin') || location.pathname.startsWith('/co-admin');
+
     return (
         <div className="App">
-            <Navbar />
-            <main className="main-content">
+            {!isAdminArea && <Navbar />}
+            <main className={isAdminArea ? 'main-content main-content--admin' : 'main-content'}>
                 <Suspense fallback={<Loader />}>
                     <Routes>
                         {/* Public Routes */}
@@ -74,6 +82,8 @@ function App() {
                         <Route path="/products" element={<Products />} />
                         <Route path="/categories" element={<Category />} />
                         <Route path="/products/:id" element={<ProductDetail />} />
+                        <Route path="/hot-deals" element={<HotDeals />} />
+                        <Route path="/zippyyy-ships" element={<ZippyyyShips />} />
                         <Route path="/contact" element={<Contact />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/register" element={<Register />} />
@@ -102,63 +112,22 @@ function App() {
                         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                         <Route path="/terms-and-conditions" element={<TermsConditions />} />
 
-
-
-                        {/* Protected Admin Routes */}
-                        <Route path="/admin/dashboard" element={
+                        {/* Protected Admin Routes – own layout (no frontend Navbar/Footer) */}
+                        <Route path="/admin" element={
                             <ProtectedRoute adminOnly>
-                                <AdminDashboard />
+                                <AdminLayout />
                             </ProtectedRoute>
-                        } />
-                        {/* <Route path="/admin/pricing" element={
-                            <ProtectedRoute adminOnly>
-                                <AdminPricing />
-                            </ProtectedRoute>
-                        } /> */}
-                        <Route path="/admin/categories" element={
-                            <ProtectedRoute adminOnly>
-                                <CategoryDashboard />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/admin/products" element={
-                            <ProtectedRoute adminOnly>
-                                <AdminProducts />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/admin/orders" element={
-                            <ProtectedRoute adminOnly>
-                                <AdminOrders />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/admin/messages" element={
-                            <ProtectedRoute adminOnly>
-                                <AdminMessages />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/admin/users" element={
-                            <ProtectedRoute adminOnly>
-                                <AdminUsers />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/admin/contacts" element={
-                            <ProtectedRoute adminOnly>
-                                <AdminContacts />
-                            </ProtectedRoute>
-                        } />
-
-                        {/* --- NEW ADMIN ROUTES ADDED --- */}
-                        <Route path="/admin/voucher" element={
-                            <ProtectedRoute adminOnly>
-                                <AdminVoucher />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/admin/deals" element={
-                            <ProtectedRoute adminOnly>
-                                <AdminDeals />
-                            </ProtectedRoute>
-                        } />
-                        {/* --- END NEW ADMIN ROUTES --- */}
-
+                        }>
+                            <Route path="dashboard" element={<AdminDashboard />} />
+                            <Route path="categories" element={<CategoryDashboard />} />
+                            <Route path="products" element={<AdminProducts />} />
+                            <Route path="orders" element={<AdminOrders />} />
+                            <Route path="messages" element={<AdminMessages />} />
+                            <Route path="users" element={<AdminUsers />} />
+                            <Route path="contacts" element={<AdminContacts />} />
+                            <Route path="voucher" element={<AdminVoucher />} />
+                            <Route path="deals" element={<AdminDeals />} />
+                        </Route>
 
                         {/* Protected Co-Admin Routes */}
                         <Route path="/co-admin/orders" element={
@@ -172,14 +141,16 @@ function App() {
                             </ProtectedRoute>
                         } />
 
-                        {/* Fallback Route */}
-                        <Route path="*" element={<div className="not-found">Page Not Found</div>} />
+                        {/* 404 – Not Found */}
+                        <Route path="*" element={<NotFound />} />
                     </Routes>
                 </Suspense>
             </main>
-            <Footer />
-            <WishlistDrawer />
-            <ChatWidget />
+            {!isAdminArea && <Footer />}
+            {!isAdminArea && <WishlistDrawer />}
+            {/* Frontend-only: do not show on admin / co-admin */}
+            {!isAdminArea && <ChatWidget />}
+            {!isAdminArea && <ProductSalePopup />}
             <Toaster
               position="top-right"
               reverseOrder={false}

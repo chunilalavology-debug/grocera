@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import ScrollReveal from '../components/ScrollReveal';
 import '../styles/pages/Products.css';
+import StarRating from '../components/StarRating';
 
 export default function Category() {
   const { isAdmin } = useAuth();
@@ -21,7 +23,6 @@ export default function Category() {
       setSelectedCategory(categoryFromUrl);
     }
   }, [location.search]);
-  const [productQuantities, setProductQuantities] = useState({}); // Track quantities for each product
   const [productWeights, setProductWeights] = useState({}); // Track weights for vegetables (in lbs)
   
   const handleSearchChange = (e) => {
@@ -32,29 +33,6 @@ export default function Category() {
     setSelectedCategory(category);
   };
   
-  const handleQuantityChange = (productId, change) => {
-    setProductQuantities(prev => {
-      const currentQty = prev[productId] || 1;
-      const newQty = Math.max(1, currentQty + change);
-      const product = products.find(p => (p._id || p.id) === productId);
-      const maxQty = product?.quantity || product?.stockQuantity || 999;
-      return {
-        ...prev,
-        [productId]: Math.min(newQty, maxQty)
-      };
-    });
-  };
-
-  const handleQuantityInputChange = (productId, value) => {
-    const numValue = parseInt(value) || 1;
-    const product = products.find(p => (p._id || p.id) === productId);
-    const maxQty = product?.quantity || product?.stockQuantity || 999;
-    setProductQuantities(prev => ({
-      ...prev,
-      [productId]: Math.max(1, Math.min(numValue, maxQty))
-    }));
-  };
-
   // Check if product is a vegetable
   const isVegetable = (category) => {
     return category?.toLowerCase().includes('vegetable') || 
@@ -102,30 +80,16 @@ export default function Category() {
         return newState;
       });
     } else {
-      // For non-vegetables, use quantity
-      const quantity = productQuantities[productId] || 1;
-      
-      console.log('Adding to cart:', product, 'quantity:', quantity);
-      const result = addToCart(product, quantity);
+      // For non-vegetables, always add 1 (quantity selector is only on single product page)
+      console.log('Adding to cart:', product, 'quantity:', 1);
+      const result = addToCart(product, 1);
       
       if (result && result.success) {
-        alert(`✅ ${quantity} x ${product.name} added to cart!`);
-        // Reset quantity after adding
-        setProductQuantities(prev => {
-          const newState = { ...prev };
-          delete newState[productId];
-          return newState;
-        });
+        alert(`✅ 1 x ${product.name} added to cart!`);
       } else if (result) {
         alert(`❌ ${result.message}`);
       } else {
-        alert(`✅ ${quantity} x ${product.name} added to cart!`);
-        // Reset quantity after adding
-        setProductQuantities(prev => {
-          const newState = { ...prev };
-          delete newState[productId];
-          return newState;
-        });
+        alert(`✅ 1 x ${product.name} added to cart!`);
       }
     }
   };
@@ -297,7 +261,7 @@ export default function Category() {
             <span className="category-stat-label">Products Available</span>
           </div>
           <div className="category-stat-item">
-            <span className="category-stat-number">4-24h</span>
+            <span className="category-stat-number">24-48h</span>
             <span className="category-stat-label">Delivery Time</span>
           </div>
           <div className="category-stat-item">
@@ -315,7 +279,8 @@ export default function Category() {
         ) : (
           <div className="products-grid">
             {filteredProducts.map(product => (
-              <div key={product.id || product._id} className="product-card">
+              <ScrollReveal key={product.id || product._id}>
+              <div className="product-card">
                 <Link to={`/products/${product.id || product._id}`} className="product-link">
                   <div className="product-image">
                     <img 
@@ -331,6 +296,13 @@ export default function Category() {
                   <div className="product-info">
                     <h3 className="product-name">{product.name}</h3>
                     <p className="product-category">{product.category}</p>
+                    <div style={{ margin: '0.25rem 0 0.35rem' }}>
+                      <StarRating
+                        rating={product.rating ?? (product.reviews?.length ? (product.reviews || []).reduce((a, r) => a + (Number(r?.rating) || 0), 0) / (product.reviews?.length || 1) : 0)}
+                        count={product.reviews?.length ?? product.reviewCount ?? 0}
+                        size={14}
+                      />
+                    </div>
                     <p className="product-description">{product.description}</p>
                     <div className="product-footer">
                       <span className="product-price">${product.price.toFixed(2)}</span>
@@ -367,57 +339,18 @@ export default function Category() {
                         </button>
                       </div>
                     ) : (
-                      // Quantity selector for non-vegetables
-                      <>
-                        <div className="quantity-selector-small">
-                          <button
-                            className="qty-btn-small"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleQuantityChange(product._id || product.id, -1);
-                            }}
-                            type="button"
-                          >
-                            −
-                          </button>
-                          <input
-                            type="number"
-                            min="1"
-                            max={product.quantity || product.stockQuantity || 999}
-                            value={productQuantities[product._id || product.id] || 1}
-                            onChange={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleQuantityInputChange(product._id || product.id, e.target.value);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="qty-input-small"
-                          />
-                          <button
-                            className="qty-btn-small"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleQuantityChange(product._id || product.id, 1);
-                            }}
-                            type="button"
-                          >
-                            +
-                          </button>
-                        </div>
-                        <button 
-                          className="btn btn-primary btn-sm"
-                          onClick={(e) => handleAddToCart(e, product)}
-                          type="button"
-                        >
-                          Add to Cart
-                        </button>
-                      </>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={(e) => handleAddToCart(e, product)}
+                        type="button"
+                      >
+                        Add to Cart
+                      </button>
                     )}
                   </div>
                 )}
               </div>
+              </ScrollReveal>
             ))}
           </div>
         )}

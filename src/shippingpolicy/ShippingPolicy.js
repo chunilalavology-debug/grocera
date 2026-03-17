@@ -36,8 +36,7 @@ return(
           <h2>2. Delivery Timeframes</h2>
           <ul>
             <li>
-              We aim to deliver orders on the same day, often within a few hours of
-              order confirmation.
+              Orders are delivered within 24-48 hours of order confirmation.
             </li>
             <li>
               Delivery times are estimates and may vary due to traffic, weather

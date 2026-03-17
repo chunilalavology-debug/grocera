@@ -335,3 +335,15 @@ textarea {
     gap: 0.25rem;
   }
 }
+
+/* Contact page – site colors (#3090cf) */
+.contact-submit-btn {
+  background-color: #3090cf;
+}
+.contact-submit-btn:hover:not(:disabled) {
+  background-color: #2680b8;
+}
+.contact-submit-btn:disabled {
+  background-color: #94a3b8;
+  cursor: not-allowed;
+}
