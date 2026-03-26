@@ -78,6 +78,20 @@ function Profile() {
     }
   };
 
+  const handleCopyReferralCode = async () => {
+    const code = user?.referralCode;
+    if (!code) {
+      toast.error('Referral code is not available yet. Please refresh once.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success('Referral code copied!');
+    } catch (error) {
+      toast.error('Could not copy code. Please copy it manually.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f8fafc] py-12 px-4 sm:px-6 lg:px-8 font-sans">
       <Toaster position="top-right" reverseOrder={false} />
@@ -265,6 +279,24 @@ function Profile() {
             <h2 className="text-xl font-black text-slate-900 px-2 uppercase tracking-tight">Your Dashboard</h2>
 
             <div className="space-y-4">
+              {/* Referral Code */}
+              <div className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm">
+                <h4 className="font-bold text-slate-900">Your Referral Code</h4>
+                <p className="text-xs text-slate-500 mt-1">Share this with friends to unlock referral discounts.</p>
+                <div className="mt-4 flex items-center gap-3">
+                  <div className="flex-1 px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-black tracking-widest text-slate-800">
+                    {user?.referralCode || 'Not generated yet'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyReferralCode}
+                    className="px-4 py-3 rounded-2xl bg-blue-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-blue-700 transition-colors"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+
               {/* Order History */}
               <a href="/orders" className="flex items-center p-6 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all group">
                 <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">📦</div>

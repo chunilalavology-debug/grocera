@@ -13,7 +13,7 @@
   width: 40px;
   height: 40px;
   border: 3px solid #e2e8f0;
-  border-top-color: #1e40af;
+  border-top-color: #3090cf;
   border-radius: 50%;
   animation: admin-overview-spin 0.8s linear infinite;
 }
@@ -116,7 +116,7 @@
 }
 
 .admin-overview__period-tab--active {
-  color: #1e40af;
+  color: #3090cf;
   background: #eff6ff;
 }
 
@@ -162,13 +162,13 @@
 }
 
 .admin-overview-kpi--revenue .admin-overview-kpi__icon {
-  background: #ecfdf5;
-  color: #059669;
+  background: #eff6ff;
+  color: #3090cf;
 }
 
 .admin-overview-kpi--profit .admin-overview-kpi__icon {
   background: #eff6ff;
-  color: #2563eb;
+  color: #3090cf;
 }
 
 .admin-overview-kpi--orders .admin-overview-kpi__icon {
@@ -276,7 +276,7 @@
 
 .admin-overview-action:hover .admin-overview-action__icon {
   background: #e2e8f0;
-  color: #1e40af;
+  color: #3090cf;
 }
 
 .admin-overview-action__text {
@@ -361,7 +361,7 @@
 }
 
 .admin-overview-summary__bar--success {
-  background: #10b981;
+  background: #3090cf;
 }
 
 .admin-overview-summary__bar--warning {

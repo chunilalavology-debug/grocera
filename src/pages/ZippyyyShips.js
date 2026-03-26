@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Package, CreditCard, Download, ListOrdered } from 'lucide-react';
 import '../styles/pages/ZippyyyShips.css';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 
 const SITE_COLOR = '#3090cf';
 const SITE_COLOR_DARK = '#2680b8';
 
 export default function ZippyyyShips() {
+  const navigate = useNavigate();
+  const { isAuthenticated, isLoading } = useAuth() || {};
+
   const [formData, setFormData] = useState({
     length: '',
     width: '',
@@ -27,14 +33,32 @@ export default function ZippyyyShips() {
 
   const handleGetQuote = async (e) => {
     e.preventDefault();
+    const token = localStorage.getItem("token");
+    if (!token || (!isLoading && !isAuthenticated)) {
+      toast.error("Please login to book shipping.");
+      setTimeout(() => navigate('/login'), 400);
+      return;
+    }
+
     setQuoteLoading(true);
     setQuoteResult(null);
-    // TODO: Replace with your shipping provider API – fetch rate, then show quote
-    // When ready: create shipping order → redirect to Stripe → on success trigger label download & show in Orders
-    setTimeout(() => {
+
+    try {
+      const res = await api.post("/user/shipping/checkout", formData);
+      if (!res?.success || !res?.url) {
+        toast.error(res?.message || "Failed to create shipping checkout");
+        setQuoteResult({ message: res?.message || "Failed to start payment." });
+        setQuoteLoading(false);
+        return;
+      }
+      // Redirect to Stripe hosted checkout.
+      window.location.href = res.url;
+    } catch (err) {
+      const message = err?.message || err?.response?.data?.message || "Failed to start payment.";
+      toast.error(message);
+      setQuoteResult({ message });
       setQuoteLoading(false);
-      setQuoteResult({ message: 'Connect your shipping API and Stripe here. Quote and payment flow will run from this form.' });
-    }, 800);
+    }
   };
 
   return (

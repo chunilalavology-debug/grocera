@@ -25,7 +25,6 @@ const NON_SUBSCRIPTION_CATEGORIES = [
   "idol",
 ];
 const weightOptions = [1, 2, 3, 5];
-const DISCOUNT_BADGE_PCT = 5;
 
 function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -580,6 +579,7 @@ function Products() {
                 : 0;
               const discountPct = product.discountPercentage != null ? Number(product.discountPercentage) : (dealDiscountPct || computedPct);
               const hasDiscount = discountPct > 0;
+              const displayDiscountPct = Math.max(0, Number(discountPct) || 0);
               const inStock = product.inStock !== false;
               const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
               const isNewlyAdded = (() => {
@@ -600,7 +600,7 @@ function Products() {
                     className="product-card__discount-tag absolute top-0 left-0 z-20 text-white text-xs font-bold pl-3 pr-4 py-1.5 min-w-[3rem] text-center rounded-tl-none rounded-bl-none rounded-tr-none rounded-br-xl shadow-sm"
                     style={{ backgroundColor: '#e9aa42', color: '#fff' }}
                   >
-                    {DISCOUNT_BADGE_PCT}%
+                    {displayDiscountPct}%
                   </span>
                   {/* Top-right: single badge only – Hot (>5 orders) > New (≤15 days) > Sale (in stock) */}
                   {rightBadge && (

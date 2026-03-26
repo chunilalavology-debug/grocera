@@ -56,6 +56,7 @@ const AdminContacts = lazy(() => import('./pages/admin/AdminContacts'));
 const AdminVoucher = lazy(() => import('./pages/admin/AdminVoucher'));
 // Placeholder for Deals page (Assuming it will be separate from Pricing)
 const AdminDeals = lazy(() => import('./pages/admin/AdminDeals'));
+const AdminSliderSettings = lazy(() => import('./pages/admin/AdminSliderSettings'));
 // --- END NEW LAZY IMPORTS ---
 
 
@@ -127,6 +128,7 @@ function App() {
                             <Route path="contacts" element={<AdminContacts />} />
                             <Route path="voucher" element={<AdminVoucher />} />
                             <Route path="deals" element={<AdminDeals />} />
+                            <Route path="slider-settings" element={<AdminSliderSettings />} />
                         </Route>
 
                         {/* Protected Co-Admin Routes */}

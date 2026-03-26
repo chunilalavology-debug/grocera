@@ -13,6 +13,7 @@ function Register() {
     firstName: '',
     lastName: '',
     email: '',
+    referralCode: '',
     password: '',
     confirmPassword: ''
   });
@@ -99,7 +100,8 @@ function Register() {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         email: formData.email.trim(),
-        password: formData.password
+        password: formData.password,
+        referralCode: formData.referralCode.trim().toUpperCase() || '',
       });
 
       if (result.success) {
@@ -221,6 +223,21 @@ function Register() {
                   required
                   disabled={loading}
                   autoComplete="email"
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="referralCode">Referral code (optional)</label>
+              <div className="input-wrapper">
+                <input
+                  type="text"
+                  id="referralCode"
+                  name="referralCode"
+                  value={formData.referralCode}
+                  onChange={handleChange}
+                  placeholder="REFERRAL"
+                  disabled={loading}
                 />
               </div>
             </div>

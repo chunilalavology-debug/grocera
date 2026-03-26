@@ -5,8 +5,10 @@ import api from '../services/api';
 import toast from "react-hot-toast";
 
 export default function Checkout() {
-  const { items, total, itemCount } = useCart();
+  const { items, total, itemCount, addToCart } = useCart();
   const navigate = useNavigate();
+  const [recommendedProducts, setRecommendedProducts] = useState([]);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
 
   useEffect(() => {
     if (itemCount === 0) {
@@ -62,8 +64,54 @@ export default function Checkout() {
   });
 
   const [paymentMethod, setPaymentMethod] = useState('card');
+  const isVegetableCategory = (category = '') => {
+    const c = String(category).toLowerCase();
+    return c.includes('vegetable') || c === 'fresh vegetables' || c === 'vegetables';
+  };
 
   const subtotal = total;
+  const isVoucherApplied = appliedCoupon?.isVoucher === true;
+
+  // Auto-apply referral discount (only when no voucher/coupon is manually applied)
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return; // guest checkout: no referral discount
+    if (isVoucherApplied) return; // user chose a coupon; don't override
+
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const res = await api.get("/user/referral/discount", {
+          params: { subtotal },
+        });
+
+        if (cancelled) return;
+
+        const discountAmount = Number(res?.data?.discountAmount ?? 0);
+        const eligible = Boolean(res?.data?.eligible);
+        const code = res?.data?.code || "REFERRAL";
+
+        if (eligible && discountAmount > 0) {
+          setAppliedCoupon({
+            code,
+            discount: discountAmount,
+            isVoucher: false,
+          });
+        } else {
+          setAppliedCoupon(null);
+        }
+      } catch (err) {
+        // If referral endpoint fails, don't block checkout; just don't apply auto discount.
+        if (!cancelled) setAppliedCoupon(null);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [subtotal, isVoucherApplied]);
 
   // Standard delivery: $50+ free, $25–$49 → $4.99, below $25 → $9.99
   const standardDeliveryFee =
@@ -150,7 +198,8 @@ export default function Checkout() {
         payload.addressId = selectedAddressId;
       }
 
-      if (appliedCoupon?.code) {
+      // couponCode only for manual vouchers; referral discount is computed in backend
+      if (appliedCoupon?.code && appliedCoupon?.isVoucher) {
         payload.couponCode = appliedCoupon.code;
       }
 
@@ -313,6 +362,77 @@ export default function Checkout() {
     fetchVouchers();
   }, [showCouponModal]);
 
+  useEffect(() => {
+    if (!items?.length) {
+      setRecommendedProducts([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadRecommendations = async () => {
+      try {
+        setLoadingRecommendations(true);
+        const response = await api.get('/user/products', {
+          params: { page: 1, limit: 60, category: 'All', search: '' },
+        });
+
+        const allProducts = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+            ? response
+            : [];
+
+        const cartIds = new Set(items.map((i) => i.product?._id || i.product?.id).filter(Boolean));
+        const cartCategories = items
+          .map((i) => String(i.product?.category || '').toLowerCase())
+          .filter(Boolean);
+
+        const scored = allProducts
+          .filter((p) => {
+            const pid = p?._id || p?.id;
+            return pid && !cartIds.has(pid) && p?.inStock !== false;
+          })
+          .map((p) => {
+            const productCategory = String(p?.category || '').toLowerCase();
+            const sameCategory = cartCategories.some((c) =>
+              productCategory && (productCategory === c || productCategory.includes(c) || c.includes(productCategory))
+            );
+            const hasDiscount = Number(p?.salePrice || 0) > 0 && Number(p?.price || 0) > Number(p?.salePrice || 0);
+            const dealBoost = p?.hasDeal ? 4 : 0;
+            const score = (sameCategory ? 5 : 0) + (hasDiscount ? 2 : 0) + dealBoost;
+            return { product: p, score };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 6)
+          .map((x) => x.product);
+
+        if (!cancelled) setRecommendedProducts(scored);
+      } catch (error) {
+        if (!cancelled) setRecommendedProducts([]);
+      } finally {
+        if (!cancelled) setLoadingRecommendations(false);
+      }
+    };
+
+    loadRecommendations();
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
+  const handleAddRecommended = (product) => {
+    if (!product) return;
+    const productToAdd = isVegetableCategory(product.category)
+      ? { ...product, selectedWeight: 1, displayName: `${product.name} (1 lb)` }
+      : product;
+    const result = addToCart(productToAdd, 1);
+    if (!result?.success) {
+      toast.error(result?.message || 'Could not add item');
+      return;
+    }
+    toast.success(`${product.name} added to cart`);
+  };
+
   // Discount Process – trim code, support both response shapes, validate discount
   const handleApplyCoupon = async () => {
     const code = (coupon || '').trim().toUpperCase();
@@ -332,7 +452,7 @@ export default function Checkout() {
       const isValidDiscount = !Number.isNaN(discountValue) && discountValue >= 0;
 
       if (res?.success && isValidDiscount) {
-        setAppliedCoupon({ code, discount: discountValue });
+        setAppliedCoupon({ code, discount: discountValue, isVoucher: true });
         setCoupon(code); // keep input in sync (trimmed + uppercase)
         setShowCouponModal(false);
         toast.success(
@@ -545,6 +665,48 @@ export default function Checkout() {
                     <span className="text-sm font-black text-gray-900 flex-shrink-0">${(item.product.price * item.quantity).toFixed(2)}</span>
                   </div>
                 ))}
+              </div>
+
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-slate-800">Recommended add-ons</h3>
+                  <span className="text-[11px] text-slate-500">Before checkout</span>
+                </div>
+                {loadingRecommendations ? (
+                  <div className="text-sm text-slate-400 py-3">Loading recommendations...</div>
+                ) : recommendedProducts.length === 0 ? (
+                  <div className="text-sm text-slate-400 py-3">No add-ons available right now.</div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {recommendedProducts.map((p) => (
+                      <div key={p._id || p.id} className="border border-slate-200 rounded-xl p-3 bg-slate-50/60">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-white"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-slate-800 truncate">{p.name}</p>
+                            <p className="text-[11px] text-slate-500 truncate">{p.category || 'Product'}</p>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="text-sm font-bold text-[#3090cf]">
+                            ${Number(p.salePrice > 0 ? p.salePrice : p.price || 0).toFixed(2)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleAddRecommended(p)}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#3090cf] text-white hover:bg-[#2878b3]"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* --- IMPROVED COUPON SECTION --- */}

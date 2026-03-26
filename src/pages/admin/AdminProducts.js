@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearch } from '../../hooks/usePerformance';
 import toast, { Toaster } from 'react-hot-toast';
 import api from '../../services/api';
@@ -75,24 +75,69 @@ const ProductTableRow = React.memo(({ product, onEdit, onDelete, calculateProfit
       </td>
 
       <td className="py-4 px-4 text-right">
-        <div className="flex items-center justify-end gap-1 sm:opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+        <div className="flex items-center justify-end gap-2">
           <button
             onClick={() => onEdit(product)}
             className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
             title="Edit Product"
           >
-            <Edit2 size={16} />
+            <Edit2 size={18} />
           </button>
           <button
             onClick={() => onDelete(product._id)}
             className="p-2 text-rose-600 hover:bg-rose-50 rounded-full transition-colors"
             title="Delete Product"
           >
-            <Trash2 size={16} />
+            <Trash2 size={18} />
           </button>
         </div>
       </td>
     </tr>
+  );
+});
+
+const ProductMobileCard = React.memo(({ product, onEdit, onDelete, calculateProfit }) => {
+  const profit = calculateProfit(product.price, product.cost);
+  const orderCount = Number(product.orderCount ?? product.timesOrdered ?? product.salesCount ?? 0) || 0;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="h-12 w-12 rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center border shrink-0">
+            {product.image ? (
+              <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+            ) : (
+              <Package className="text-gray-400" size={20} />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-gray-900 truncate">{product.name}</p>
+            <p className="text-xs text-gray-500 truncate">{product.category || '–'}</p>
+          </div>
+        </div>
+        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${product.inStock ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+          {product.inStock ? 'In Stock' : 'Out'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+        <div className="bg-gray-50 rounded-lg p-2"><span className="text-gray-500">Price:</span> <span className="font-semibold text-gray-800">${product.price || 0}</span></div>
+        <div className="bg-gray-50 rounded-lg p-2"><span className="text-gray-500">Cost:</span> <span className="font-semibold text-gray-800">${product.cost || 0}</span></div>
+        <div className="bg-gray-50 rounded-lg p-2"><span className="text-gray-500">Profit:</span> <span className="font-semibold text-gray-800">{profit === 'N/A' ? 'N/A' : `${profit}%`}</span></div>
+        <div className="bg-gray-50 rounded-lg p-2"><span className="text-gray-500">Qty:</span> <span className="font-semibold text-gray-800">{product.quantity || 0}</span></div>
+        <div className="bg-gray-50 rounded-lg p-2 col-span-2"><span className="text-gray-500">Orders:</span> <span className="font-semibold text-gray-800">{orderCount}</span></div>
+      </div>
+
+      <div className="flex items-center gap-2 mt-3">
+        <button onClick={() => onEdit(product)} className="flex-1 px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-semibold">
+          Edit
+        </button>
+        <button onClick={() => onDelete(product._id)} className="flex-1 px-3 py-2 rounded-lg bg-rose-50 text-rose-700 text-sm font-semibold">
+          Delete
+        </button>
+      </div>
+    </div>
   );
 });
 
@@ -109,13 +154,18 @@ function AdminProducts() {
 
   const [formData, setFormData] = useState({
     name: '', price: '', category: 'Daily Essentials', description: '',
-    image: '', inStock: true, cost: '', quantity: '0', orderCount: ''
+    image: '', inStock: true, cost: '', quantity: '0', orderCount: '',
+    salePrice: ''
   });
 
   const [showQuickModal, setShowQuickModal] = useState(false);
   const [excelFile, setExcelFile] = useState(null);
   const [fileLoader, setFileLoader] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
+
+  const [importingCsv, setImportingCsv] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const csvInputRef = useRef(null);
 
   const [productStats, setProductStats] = useState({ total: 0, inStock: 0, outOfStock: 0, totalValue: 0 });
 
@@ -216,7 +266,71 @@ function AdminProducts() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      setExportingCsv(true);
+      const blob = await api.get('/admin/products/export-csv', {
+        responseType: 'blob',
+        headers: { Accept: 'text/csv' },
+      });
 
+      if (blob?.type?.includes('application/json')) {
+        const payload = await blob.text().then((txt) => {
+          try {
+            return JSON.parse(txt);
+          } catch {
+            return {};
+          }
+        });
+        throw new Error(payload?.message || 'CSV export failed');
+      }
+
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `products-${Date.now()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      toast.success('Products CSV exported');
+    } catch (err) {
+      toast.error(err?.message || 'CSV export failed');
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
+  const handleImportCsv = async (file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Please upload a .csv file');
+      return;
+    }
+
+    try {
+      setImportingCsv(true);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await api.post('/admin/products/import-csv', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      if (response?.success) {
+        toast.success(`Imported ${response.importedCount || 0} products`);
+        if (response.failedCount > 0) toast.error(`${response.failedCount} rows failed`);
+        loadProductsData();
+      } else {
+        toast.error(response?.message || 'CSV import failed');
+      }
+    } catch (err) {
+      toast.error(err?.message || 'CSV import failed');
+    } finally {
+      setImportingCsv(false);
+      if (csvInputRef.current) csvInputRef.current.value = '';
+    }
+  };
 
   const openModal = useCallback((product = null) => {
     if (product) {
@@ -225,6 +339,7 @@ function AdminProducts() {
       setFormData({
         name: product.name,
         price: product.price != null ? String(product.price) : '',
+        salePrice: product.salePrice != null ? String(product.salePrice) : '',
         category: product.category,
         description: product.description,
         image: product.image || '',
@@ -238,6 +353,7 @@ function AdminProducts() {
       setFormData({
         name: '',
         price: '',
+        salePrice: '',
         category: 'Daily Essentials',
         description: '',
         image: '',
@@ -256,6 +372,7 @@ function AdminProducts() {
     setFormData({
       name: '',
       price: '',
+      salePrice: '',
       category: 'Daily Essentials',
       description: '',
       image: '',
@@ -302,12 +419,14 @@ function AdminProducts() {
 
     try {
       const quantity = parseInt(formData.quantity) || 0;
+      const salePrice = formData.salePrice ? parseFloat(formData.salePrice) : 0;
 
       const productData = {
         name: formData.name,
         category: formData.category,
         description: formData.description || "",
         price: parseFloat(formData.price),
+        salePrice,
         cost: formData.cost ? parseFloat(formData.cost) : 0,
         quantity,
         inStock: quantity > 0,
@@ -370,12 +489,32 @@ function AdminProducts() {
           </h1>
           <p className="text-gray-500">Manage your product catalog and stock levels</p>
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => openModal()} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-green-200 transition-all active:scale-95">
+        <div className="grid w-full md:w-auto grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          <button onClick={() => openModal()} className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-green-200 transition-all active:scale-95 w-full">
             <Plus /> Add Product
           </button>
-          <button onClick={openQuickModal} className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all">
-            <Upload /> Import
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={exportingCsv}
+            className="flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all disabled:opacity-60 w-full"
+          >
+            Export CSV
+          </button>
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => handleImportCsv(e.target.files?.[0])}
+          />
+          <button
+            type="button"
+            onClick={() => csvInputRef.current?.click()}
+            disabled={importingCsv}
+            className="flex items-center justify-center gap-2 bg-[#3090cf] hover:bg-[#246fa0] text-white px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all disabled:opacity-60 w-full"
+          >
+            {importingCsv ? 'Importing...' : 'Import CSV'}
           </button>
         </div>
       </div>
@@ -518,14 +657,14 @@ function AdminProducts() {
       )}
 
       {/* Stats Cards */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
         {[
           { label: 'Total Products', val: productStats.total, icon: <Package />, color: 'blue' },
           { label: 'In Stock', val: productStats.inStock, icon: <CheckCircle />, color: 'green' },
           { label: 'Out of Stock', val: productStats.outOfStock, icon: <XCircle />, color: 'red' },
           { label: 'Inventory Value', val: `$${productStats.totalValue.toLocaleString()}`, icon: <DollarSign />, color: 'amber' },
         ].map((stat, i) => (
-          <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div key={i} className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
             <div className={`h-12 w-12 rounded-xl flex items-center justify-center text-xl ${colorMap[stat.color]}`}>
               {stat.icon}
             </div>
@@ -551,8 +690,8 @@ function AdminProducts() {
         </div>
       </div>
 
-      {/* Table Section */}
-      <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      {/* Desktop table */}
+      <div className="hidden md:block max-w-7xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-50/50 border-b border-gray-100">
@@ -606,6 +745,45 @@ function AdminProducts() {
               className="p-2 border rounded-lg disabled:opacity-30 hover:bg-gray-50"
             >
               <ChevronRight />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden max-w-7xl mx-auto space-y-3">
+        {loading ? (
+          <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">Loading inventory...</div>
+        ) : products.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">No products found matching filters.</div>
+        ) : (
+          products.map((p) => (
+            <ProductMobileCard
+              key={p._id}
+              product={p}
+              calculateProfit={calculateProfit}
+              onEdit={openModal}
+              onDelete={handleDelete}
+            />
+          ))
+        )}
+
+        <div className="p-4 bg-white rounded-xl border border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-sm text-gray-500">Page {page} of {totalPages}</p>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button
+              disabled={page === 1}
+              onClick={() => setPage((p) => p - 1)}
+              className="flex-1 sm:flex-none p-2 border rounded-lg disabled:opacity-30 hover:bg-gray-50"
+            >
+              <ChevronLeft className="mx-auto" />
+            </button>
+            <button
+              disabled={page === totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              className="flex-1 sm:flex-none p-2 border rounded-lg disabled:opacity-30 hover:bg-gray-50"
+            >
+              <ChevronRight className="mx-auto" />
             </button>
           </div>
         </div>
@@ -671,6 +849,10 @@ function AdminProducts() {
                   <div className="col-span-2 sm:col-span-1">
                     <label className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Price ($)</label>
                     <input name="price" type="number" step="0.01" value={formData.price} onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none bg-gray-50/50" required />
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Sale Price ($)</label>
+                    <input name="salePrice" type="number" step="0.01" value={formData.salePrice} onChange={handleInputChange} placeholder="Discounted sell price" className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none bg-gray-50/50" />
                   </div>
                   <div className="col-span-2 sm:col-span-1">
                     <label className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Stock Qty</label>

@@ -9,6 +9,7 @@ function OrderSuccess() {
   const [searchParams] = useSearchParams();
   const { clearCart } = useCart();
   const [orderDetails, setOrderDetails] = useState(null);
+  const shipping = searchParams.get('shipping');
   const [loading, setLoading] = useState(true);
   const [failedImageIndices, setFailedImageIndices] = useState(() => new Set());
 
@@ -37,6 +38,47 @@ function OrderSuccess() {
     if (orderId) fetchOrderDetails();
     else setLoading(false);
   }, []);
+
+  // Poll until payment becomes "paid" for shipping orders (webhook delay)
+  useEffect(() => {
+    if (!shipping || shipping !== "1") return;
+    if (!orderDetails) return;
+    if (orderDetails.paymentStatus === "paid") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await api.get(`/user/getUserOrderById/?orderId=${orderId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response?.success) {
+          setOrderDetails(response.data);
+          if (response.data?.paymentStatus === "paid") clearInterval(interval);
+        }
+      } catch (err) {
+        // ignore transient polling errors
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [shipping, orderDetails, orderId, token]);
+
+  // Auto download shipping label when payment is paid
+  useEffect(() => {
+    if (!orderDetails) return;
+    if (orderDetails.paymentStatus !== "paid") return;
+    if (!orderDetails.shippingLabelUrl) return;
+
+    try {
+      const a = document.createElement("a");
+      a.href = orderDetails.shippingLabelUrl;
+      a.download = "shipping-label.html";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      // If auto download fails, user can still manually download via Orders modal (future enhancement).
+    }
+  }, [orderDetails?.paymentStatus, orderDetails?.shippingLabelUrl]);
 
   // useEffect(() => {
   //   if (!orderDetails) return;

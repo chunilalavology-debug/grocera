@@ -743,7 +743,7 @@ function ProductDetail() {
                   const computedPct = (originalPrice != null && originalPrice > 0 && price < originalPrice) ? Math.round((1 - price / originalPrice) * 100) : 0;
                   const discountPct = p.discountPercentage != null ? Number(p.discountPercentage) : (dealDiscountPct || computedPct);
                   const hasDiscount = discountPct > 0;
-                  const DISCOUNT_BADGE_PCT = 5;
+                  const displayDiscountPct = Math.max(0, Number(discountPct) || 0);
                   const inStock = p.inStock !== false;
                   const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
                   const isNewlyAdded = (() => {
@@ -764,7 +764,7 @@ function ProductDetail() {
                       className="group relative bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:border-slate-300/80 transition-all duration-300 flex flex-col overflow-hidden w-full"
                     >
                       <span className="product-card__discount-tag absolute top-0 left-0 z-20 text-white text-xs font-bold pl-3 pr-4 py-1.5 min-w-[3rem] text-center rounded-tl-none rounded-bl-none rounded-tr-none rounded-br-xl shadow-sm" style={{ backgroundColor: '#e9aa42', color: '#fff' }}>
-                        {DISCOUNT_BADGE_PCT}%
+                        {displayDiscountPct}%
                       </span>
                       {rightBadge && (
                         <div className="absolute top-0 right-0 z-20 pointer-events-none flex flex-col items-end gap-1">

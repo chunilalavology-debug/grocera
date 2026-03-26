@@ -72,12 +72,12 @@ function Contact() {
   const SITE_COLOR_DARK = '#2680b8';
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] py-10 sm:py-14 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-[#f8fafc] py-8 sm:py-14 px-3 sm:px-6 lg:px-8 font-sans">
       <Toaster position="top-center" reverseOrder={false} />
 
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="text-center mb-12 sm:mb-14">
+        <div className="text-center mb-8 sm:mb-14 px-1">
           <div className="inline-block mb-4 w-14 h-1 rounded-full" style={{ backgroundColor: SITE_COLOR }} aria-hidden />
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 mb-3 tracking-tight">
             Contact <span style={{ color: SITE_COLOR }}>Us</span>
@@ -89,8 +89,8 @@ function Contact() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10 items-start">
           {/* Left: Info cards */}
-          <div className="space-y-5 order-2 lg:order-1">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+          <div className="space-y-4 sm:space-y-5 order-2 lg:order-1">
+            <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/80">
               <div className="w-10 h-1 rounded-full mb-4" style={{ backgroundColor: SITE_COLOR }} />
               <h3 className="text-slate-800 font-bold text-lg mb-2 flex items-center gap-2">
                 <span aria-hidden>📍</span> Delivery
@@ -101,7 +101,7 @@ function Contact() {
             </div>
 
             <div
-              className="p-6 rounded-2xl shadow-md text-white"
+              className="p-4 sm:p-6 rounded-2xl shadow-md text-white"
               style={{ background: `linear-gradient(135deg, ${SITE_COLOR} 0%, ${SITE_COLOR_DARK} 100%)` }}
             >
               <h3 className="font-bold text-lg mb-2">24/7 Support</h3>
@@ -110,7 +110,7 @@ function Contact() {
               </p>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+            <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/80">
               <div className="w-10 h-1 rounded-full mb-4" style={{ backgroundColor: SITE_COLOR }} />
               <h3 className="text-slate-800 font-bold text-lg mb-2">Quick response</h3>
               <p className="text-slate-600 text-sm leading-relaxed">
@@ -122,15 +122,15 @@ function Contact() {
           {/* Right: Form */}
           <div className="lg:col-span-2 order-1 lg:order-2">
             <div className="bg-white rounded-2xl shadow-lg border border-slate-200/80 overflow-hidden">
-              <div className="px-6 sm:px-8 pt-8 pb-2 border-b border-slate-100">
+              <div className="px-4 sm:px-8 pt-6 sm:pt-8 pb-2 border-b border-slate-100">
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-3">
                   <span className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: SITE_COLOR }} />
                   Send us a message
                 </h2>
               </div>
-              <div className="p-6 sm:p-8">
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="p-4 sm:p-8">
+                <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                     <div className="space-y-1.5">
                       <label className="text-sm font-semibold text-slate-700">First name</label>
                       <input
@@ -139,7 +139,7 @@ function Contact() {
                         required
                         value={formData.firstName}
                         onChange={handleInputChange}
-                        className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
+                        className="contact-input w-full px-4 py-3 min-h-[46px] rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
                         placeholder="Your first name"
                       />
                     </div>
@@ -151,13 +151,13 @@ function Contact() {
                         required
                         value={formData.lastName}
                         onChange={handleInputChange}
-                        className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
+                        className="contact-input w-full px-4 py-3 min-h-[46px] rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
                         placeholder="Your last name"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                     <div className="space-y-1.5">
                       <label className="text-sm font-semibold text-slate-700">Email</label>
                       <input
@@ -166,7 +166,7 @@ function Contact() {
                         required
                         value={formData.email}
                         onChange={handleInputChange}
-                        className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
+                        className="contact-input w-full px-4 py-3 min-h-[46px] rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
                         placeholder="you@example.com"
                       />
                     </div>
@@ -176,14 +176,14 @@ function Contact() {
                         name="inquiryType"
                         value={formData.inquiryType}
                         onChange={handleInputChange}
-                        className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all appearance-none cursor-pointer"
+                        className="contact-input w-full px-4 py-3 min-h-[46px] rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all appearance-none cursor-pointer"
                       >
                         <option value="general">General inquiry</option>
                         <option value="order">Order & logistics</option>
                         <option value="technical">Technical support</option>
                         <option value="business">Business partnership</option>
                       </select>
-                      <div className="absolute right-4 top-[38px] pointer-events-none text-slate-400">
+                      <div className="absolute right-4 top-[40px] pointer-events-none text-slate-400">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                       </div>
                     </div>
@@ -198,7 +198,7 @@ function Contact() {
                       minLength={5}
                       value={formData.subject}
                       onChange={handleInputChange}
-                      className="contact-input w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
+                      className="contact-input w-full px-4 py-3 min-h-[46px] rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
                       placeholder="How can we help?"
                     />
                   </div>
@@ -219,7 +219,7 @@ function Contact() {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="contact-submit-btn w-full text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2 mt-2"
+                    className="contact-submit-btn w-full text-white font-bold py-3.5 sm:py-4 min-h-[48px] px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2 mt-2"
                   >
                     {isSubmitting ? (
                       <>
