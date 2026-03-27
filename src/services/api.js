@@ -8,6 +8,8 @@ const getDefaultApiUrl = () => {
     if (host === 'localhost' || host === '127.0.0.1') {
       return 'http://localhost:5000/api';
     }
+    // In production, default to same-origin /api when env is not set.
+    return `${window.location.origin}/api`;
   }
 
   return 'https://zippyyy.com/api';
