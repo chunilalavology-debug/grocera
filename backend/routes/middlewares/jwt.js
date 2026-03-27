@@ -15,6 +15,7 @@ const endpoints = [
   'orders/webhook',
   'user/contactForm',
   'user/products/getById',
+  'user/home-slider-settings',
   'user/categories',
   'user/getCategories',
   'products/list',
