@@ -26,9 +26,25 @@ const endpoints = [
 const pathFreeArray = endpoints.map(
   (endpoint) => `${API_END_POINT_V1}/${endpoint}`
 );
+let warnedMissingJwtSecret = false;
 
 module.exports = () => {
   return (req, res, next) => {
+    if (!JWT_SECRET_KEY || typeof JWT_SECRET_KEY !== "string" || JWT_SECRET_KEY.trim().length === 0) {
+      if (!warnedMissingJwtSecret) {
+        warnedMissingJwtSecret = true;
+        console.error("JWT_SECRET_KEY is missing. Protected routes will return 503 until configured.");
+      }
+
+      const isPublicPath = pathFreeArray.includes(req.path);
+      if (isPublicPath) return next();
+
+      return res.status(503).json({
+        success: false,
+        message: "Server auth configuration missing (JWT_SECRET_KEY)",
+      });
+    }
+
     jwt({
       secret: JWT_SECRET_KEY,
       algorithms: ["HS256"],
