@@ -23,9 +23,21 @@ const endpoints = [
   'subscription/subscribe',
   'uploadImage'
 ];
-const pathFreeArray = endpoints.map(
-  (endpoint) => `${API_END_POINT_V1}/${endpoint}`
+const normalizePath = (p = "") => {
+  const withSlash = p.startsWith("/") ? p : `/${p}`;
+  const trimmed = withSlash.replace(/\/+$/, "");
+  return trimmed || "/";
+};
+
+const apiBase = normalizePath(API_END_POINT_V1 || "/api");
+const publicPathSet = new Set(
+  endpoints.flatMap((endpoint) => {
+    const ep = normalizePath(endpoint);
+    return [normalizePath(`${apiBase}${ep}`), ep];
+  })
 );
+
+const isPublicPath = (pathName = "") => publicPathSet.has(normalizePath(pathName));
 let warnedMissingJwtSecret = false;
 
 module.exports = () => {
@@ -36,8 +48,7 @@ module.exports = () => {
         console.error("JWT_SECRET_KEY is missing. Protected routes will return 503 until configured.");
       }
 
-      const isPublicPath = pathFreeArray.includes(req.path);
-      if (isPublicPath) return next();
+      if (isPublicPath(req.path)) return next();
 
       return res.status(503).json({
         success: false,
@@ -51,7 +62,7 @@ module.exports = () => {
       credentialsRequired: true,
       requestProperty: "user",
     }).unless({
-      path: pathFreeArray,
+      custom: (req) => isPublicPath(req.path),
     })(req, res, (err) => {
       let obj = {
         path: req.url,
