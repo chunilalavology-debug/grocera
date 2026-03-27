@@ -1,0 +1,123 @@
+@token = Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM4ZmY3MzRiMDc4OGQ5NTJjYmRkYjAiLCJlbWFpbCI6InNhaGlsam95YUBnbWFpbC5jb20iLCJpYXQiOjE3NjczNDc4OTAsImV4cCI6MTc5ODg4Mzg5MH0.RQOGY9dxu6HHyIjSGHx3MnIK9-Qrtam4ty2A8HXbCes
+@url =  http://localhost:5000/api
+
+# 
+post {{url}}/auth/register
+Content-type: application/json
+
+{
+  "firstName": "Sahil",
+  "lastName": "Joya",
+  "email": "sahil.joya@example.com",
+  "password": "Sahil@123",
+  "phone": "9876543210"
+}
+
+############
+# login user
+post {{url}}/auth/login
+Content-type: application/json
+
+{
+    "email":"sahil.joya@example.com",
+    "password":"Sahil@123"
+}
+
+############
+# Profile
+GET  {{url}}/auth/profile
+Content-type: application/json
+Authorization: {{token}}
+
+
+
+############
+# updateProfile
+PUT  {{url}}/auth/updateProfile
+Content-type: application/json
+Authorization: {{token}}
+
+{
+  "firstName":"sa",
+  "lastName":"kh",
+  "phone":"",
+  "address":{
+    "street":"",
+    "city":"",
+    "state":"",
+    "zipCode":"",
+    "country":""
+  }
+}
+
+############
+# changePassword
+PUT  {{url}}/auth/changePassword
+Content-type: application/json
+Authorization: {{token}}
+
+{
+  "newPassword":"123456",
+  "currentPassword":"321654"
+}
+
+
+############
+# products
+GET {{url}}/user/products?category=&search=&page=1&limit=20
+Content-Type: application/json
+
+############
+# products get by id
+GET   {{url}}/user/products/getById?id=6981d3fc70067af2d5ec90ff
+Content-type: application/json
+
+############
+# subscription
+POST  {{url}}/user/subscription/create
+Content-Type: application/json
+Authorization: {{token}}
+
+{
+  "productId": "65f1c9a2b8f7c12345678901",
+  "quantity": 2,
+  "frequency": "DAILY",
+  "startDate": "2026-02-10",
+}
+
+
+############
+# toggleSubscription
+POST  {{url}}/user/toggleSubscription
+Content-Type: application/json
+Authorization: {{token}}
+
+{
+  "id":"65f1c9a2b8f7c12345678901"
+}
+
+
+############
+# checkSubscription
+GET {{url}}/user/checkSubscription?productId=65f1c9a2b8f7c12345678901
+Content-Type: application/json
+Authorization: {{token}}
+
+############
+# subscriptionProducts
+GET {{url}}/user/subscriptionProducts
+Content-Type: application/json
+Authorization: {{token}}
+
+############
+# contact us query
+POST  {{url}}/user/contactForm
+Content-Type: application/json
+
+{
+  "name":"",
+  "email":"",
+   "queryType":"",
+   "subject":"",
+   "message":""
+}

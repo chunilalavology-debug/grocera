@@ -1,1 +1,0 @@
-"use strict";(self.webpackChunkrbs_grocery_frontend=self.webpackChunkrbs_grocery_frontend||[]).push([[68],{2068(e,r,n){n.r(r),n.d(r,{default:()=>c});n(9950);var s=n(4414);function c(){return(0,s.jsx)("div",{className:"container",children:(0,s.jsx)("h1",{children:"Manage Contacts"})})}}}]);

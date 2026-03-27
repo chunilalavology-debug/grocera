@@ -1,0 +1,27 @@
+
+
+const STATUS = {
+    TUTOR_INFO: "TUTOR_INFO",
+    TUTOR_EDUCATION: "TUTOR_EDUCATION",
+    TUTOR_KYC: "TUTOR_KYC",
+    PARENT_INFO: "PARENT_INFO",
+    PARENT_EDUCATION: "PARENT_EDUCATION",
+    NULL:  null
+};
+
+const TYPE = {
+    PARENT: "PARENT",
+    TUTOR: "TUTOR",
+ 
+};
+const BASIC_INFO = {
+    PENDING: "PENDING",
+    COMPLETED: "COMPLETED",
+ 
+};
+
+module.exports = {
+    STATUS,
+    TYPE,
+    BASIC_INFO
+};

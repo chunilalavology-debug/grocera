@@ -1,0 +1,322 @@
+
+@token = Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM2NzA0M2E5ZjQ3NWYzMWYwNDRkNGQiLCJ1c2VyTmFtZSI6ImFkbWluIiwiaWF0IjoxNzY1MTc1MzcyLCJleHAiOjE3OTY3MTEzNzJ9.nLX2PZ0H1aI5GdH7aeUayP80owgjHaLf0Ixmn_4VLBo
+
+@url = http://localhost:9999
+
+
+###
+POST {{url}}/api/v1/admin/adminLogin HTTP/1.1
+Content-type: application/json
+
+{
+    "userName" : "admin",
+    "password" : "123456"
+}
+
+//createProperty
+###
+POST {{url}}/api/v1/admin/createProperty HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+  "propertyType": "Apartment",
+  "listingCategory": "sell",
+  "location": "Downtown, Dubai",
+  "city": "Dubai",
+  "price": "950000 AED",
+  "area": "1450 sqft",
+  "bedRoom": "3 BHK",
+  "amenities": [
+    "Swimming Pool",
+    "Gym",
+    "Parking",
+    "Security 24/7"
+  ],
+  "aroundProject":[{
+    "name":"School",
+    "details":"MDS School"
+  }],
+  "permitNo": "45236897",
+  "rera": "RERA-12345",
+  "ded": "",
+  "brn": "",
+  "bathrooms": "2",
+  "furnishing": "furnished",
+  "description": "Luxury apartment with premium interiors, prime location and full city view. Easy connectivity & all essential facilities nearby.",
+  "aveneuOverView": {
+    "projectArea": "10 Acre",
+    "size": "1100 - 1600 sqft",
+    "projectSize": "4 Towers / 28 Floors Each",
+    "launchDate": "2023",
+    "avgPrice": "900 AED / sqft",
+    "possessionStart": "2025"
+  },
+  "fullName": "Amit Sharma",
+  "email": "amit.sharma@example.com",
+  "phone": "9876543210",
+  "propertyAddress": "Tower B, Marina View Road, Dubai",
+  "language": "English",
+  "uploadedPhotos": [
+    "https://example.com/photo1.jpg",
+    "https://example.com/photo2.jpg",
+    "https://example.com/photo3.jpg"
+  ]
+}
+
+//getPropertyList
+###
+POST {{url}}/api/v1/admin/getPropertyList HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+ 
+
+  {"keyWord":"","fromDate":"","toDate":"","sortOrder":"desc","sortBy":"createdAt","pageNo":1,"size":10,"location":"","propertyType":"","listingCategory":"","price":"","area":""}
+
+
+//updatePropertyStatus
+###
+POST {{url}}/api/v1/admin/updatePropertyStatus HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+ {  
+    "propertyId": "6936818024ce03a334a1e82e",
+    "status": "approved"
+ }
+
+
+//updateProperty
+###
+POST {{url}}/api/v1/admin/updateProperty HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "id": "684bcdfe3bea7b4e070e5cc9",
+    "propertyType": "apartment",
+    "listingCategory": "sell",
+    "location": "Churchgate, Mumbai",
+    "price": "5000000",
+    "area": "1800",
+    "bathrooms": "2",
+    "furnishing": "semi-furnished",
+    "description": "Beautiful 3 BHK apartment with sea view",
+    "fullName": "Julkarnen Qureshi",
+    "email": "julkarnen@example.com",
+    "phone": "1234567890",
+    "uploadedPhotos": [
+        "http://example.com/photo1.jpg",
+        "http://example.com/photo2.jpg"
+    ]   
+}
+
+
+//deleteProperty
+###
+POST {{url}}/api/v1/admin/deleteProperty HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "id": "684bce093bea7b4e070e5ccc"
+}
+   
+
+
+//getTouchList
+###
+POST {{url}}/api/v1/admin/getTouchList HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "keyWord": "",
+    "fromDate": "",
+    "toDate": "",
+    "sortOrder": "desc",
+    "sortBy": "date",
+    "pageNo": 1,
+    "size": 10,
+    "propertyId": ""
+}
+   
+
+
+//updateTouchStatus
+###
+POST {{url}}/api/v1/admin/updateTouchStatus HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "touchId": "684be9f8ec1d8b0a32b2e470",
+    "status": "approved"
+}
+   
+
+
+//getContactUsList
+###
+POST {{url}}/api/v1/admin/getContactUsList HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "keyWord": "",
+    "fromDate": "",
+    "toDate": "",
+    "sortOrder": "desc",
+    "sortBy": "date",
+    "pageNo": 1,
+    "size": 10
+}
+   
+
+//updateContactUsStatus
+###
+POST {{url}}/api/v1/admin/updateContactUsStatus HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "contactUsId": "684bee2da67b6ee9bf18d436",
+    "status": "approved"
+}
+   
+
+//propertiesChart
+###
+POST {{url}}/api/v1/admin/propertiesChart HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "year": "",
+    "status": ""
+}
+   
+
+# Blog list
+###
+POST {{url}}/api/v1/admin/getBlogList HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{"keyWord":"","fromDate":"","toDate":"","sortOrder":"desc","sortBy":"createdAt","pageNo":1,"size":5}
+
+# Blog delete
+###
+POST {{url}}/api/v1/admin/deleteBlog HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "id": "688dc3c257effe861f711fa7" 
+}
+
+
+# Blog list
+###
+POST {{url}}/api/v1/admin/getJobList HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{"keyWord":"","fromDate":"","toDate":"","sortOrder":"desc","sortBy":"createdAt","pageNo":1,"size":5}
+
+
+# Get Blog Category List
+###
+POST {{url}}/api/v1/admin/getBlogCategoryList HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+
+# Get Blog Category List
+###
+POST {{url}}/api/v1/admin/addMetaTagsInProperty HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "id": "684bcdfe3bea7b4e070e5cc9",
+    "title": "Beautiful 3 BHK apartment with sea view",
+    "description": "A stunning 3 BHK apartment located in the heart of the city with a breathtaking sea view."
+}
+
+###
+POST {{url}}/api/v1/admin/getBlogCommentList HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "keyWord":"",
+    "fromDate":"",
+    "toDate":"",
+    "sortOrder":"desc",
+    "sortBy":"createdAt",
+    "pageNo":1,
+    "size":5
+    }
+
+###
+POST {{url}}/api/v1/admin/createBlogCategory HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "name":"rent"
+}
+
+###
+POST {{url}}/api/v1/admin/getBlogListCategory HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "keyWord":"",
+    "fromDate":"",
+    "toDate":"",
+    "sortOrder":"desc",
+    "sortBy":"createdAt",
+    "pageNo":1,
+    "size":5
+}
+
+
+###
+POST {{url}}/api/v1/admin/updateBlogCategory HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "id":"68da33f90735c04c548908ce",
+    "name":"rent"
+}
+
+###
+POST {{url}}/api/v1/admin/updateBlogCategoryStatus HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "id":"68da33f90735c04c548908ce"
+}
+
+
+
+###
+POST {{url}}/api/v1/admin/getInterestedQueryList HTTP/1.1
+Content-type: application/json
+Authorization: {{token}}
+
+{
+    "keyWord":"",
+    "fromDate":"",
+    "toDate":"",
+    "sortOrder":"desc",
+    "sortBy":"createdAt",
+    "pageNo":1,
+    "size":5
+}

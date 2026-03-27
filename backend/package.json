@@ -1,0 +1,46 @@
+{
+  "name": "Zippyyy Backend",
+  "version": "1.0.0",
+  "description": "Great things take Time.",
+  "main": "app.js",
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "test": "nodemon",
+    "kill-port": "kill-port $PORT",
+    "start": "node app.js"
+  },
+  "author": "forwork404",
+  "license": "ISC",
+  "dependencies": {
+    "async-redis": "^2.0.0",
+    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.3",
+    "body-parser": "^1.20.2",
+    "cloudinary": "^2.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.1",
+    "express": "^4.19.2",
+    "express-jwt": "^8.4.1",
+    "fs": "^0.0.1-security",
+    "joi": "^17.12.1",
+    "jsonwebtoken": "^9.0.2",
+    "moment": "^2.30.1",
+    "mongoose": "^8.1.1",
+    "morgan": "^1.10.1",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.8",
+    "npm": "^10.5.0",
+    "path": "^0.12.7",
+    "stream-buffers": "^3.0.3",
+    "streamifier": "^0.1.1",
+    "stripe": "^20.3.0",
+    "winston": "^3.19.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "kill-port": "^2.0.1"
+  }
+}
