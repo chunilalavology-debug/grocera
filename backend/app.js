@@ -21,7 +21,20 @@ const Stripe = require("stripe");
 const { default: sendMail } = require("./utils/sendEmail");
 const OrderConform = require("./utils/template/userOrderConform");
 const AdminNotification = require("./utils/template/AdminNotification");
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const createStripeClient = () => {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key || typeof key !== "string" || key.trim().length === 0) {
+    console.error("STRIPE_SECRET_KEY is missing. Stripe features are disabled.");
+    return null;
+  }
+  try {
+    return new Stripe(key);
+  } catch (err) {
+    console.error("Invalid STRIPE_SECRET_KEY configuration:", err.message);
+    return null;
+  }
+};
+const stripe = createStripeClient();
 const {
   PORT,
   API_END_POINT_V1,
@@ -58,6 +71,13 @@ app.post(
   '/api/orders/webhook',
   express.raw({ type: 'application/json' }),
   async (req, res) => {
+    if (!stripe) {
+      return res.status(503).json({
+        success: false,
+        message: "Stripe is not configured on server",
+      });
+    }
+
     let event;
 
     try {
@@ -420,6 +440,12 @@ async function markPaidAndSendMail(orderId, session, webhookReq) {
 
 
 app.get('/verify-session/:id', async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({
+      success: false,
+      message: "Stripe is not configured on server",
+    });
+  }
 
   const session = await stripe.checkout.sessions.retrieve(req.params.id);
 

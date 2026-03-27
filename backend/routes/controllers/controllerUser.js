@@ -12,7 +12,20 @@ const redisClient = require("../services/serviceRedis-cli");
 const { setKeyWithTime, getKey } = require("../services/serviceRedis");
 const { default: mongoose } = require("mongoose");
 const Category = require("../../db/models/categories");
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const createStripeClient = () => {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key || typeof key !== "string" || key.trim().length === 0) {
+    console.error("STRIPE_SECRET_KEY is missing. Stripe checkout endpoints are disabled.");
+    return null;
+  }
+  try {
+    return new Stripe(key);
+  } catch (err) {
+    console.error("Invalid STRIPE_SECRET_KEY configuration:", err.message);
+    return null;
+  }
+};
+const stripe = createStripeClient();
 const EASYSHIP_API_KEY = process.env.EASYSHIP_API_KEY || "";
 
 require("dotenv").config();
@@ -772,6 +785,13 @@ const getReferralDiscount = async (req, res) => {
 };
 
 const orderPayment = async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({
+      success: false,
+      message: "Stripe is not configured on server",
+    });
+  }
+
   const checkoutSchema = Joi.object({
     items: Joi.array()
       .items(
@@ -1842,6 +1862,13 @@ const getShippingQuote = async (req, res) => {
 };
 
 const createShippingCheckout = async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({
+      success: false,
+      message: "Stripe is not configured on server",
+    });
+  }
+
   try {
     const schema = Joi.object({
       length: Joi.number().min(0.1).required(),
