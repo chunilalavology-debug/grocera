@@ -43,6 +43,8 @@ const {
   CLOUDNARY_API_KEY,
   CLOUDNARY_API_SECRET,
 } = process.env;
+const API_BASE = (API_END_POINT_V1 && API_END_POINT_V1.trim()) || "/api";
+const SERVER_PORT = Number(PORT) || 5000;
 
 const corsOrigins = [];
 if (FRONTEND_URL) corsOrigins.push(FRONTEND_URL);
@@ -223,7 +225,7 @@ app.post(
 
 app.use(express.json({ limit: "10mb" }));
 for (const [route, controller] of Object.entries(controllers)) {
-  app.use(`${API_END_POINT_V1}/${route}`, controller);
+  app.use(`${API_BASE}/${route}`, controller);
 }
 
 cloudinary.config({
@@ -465,8 +467,8 @@ app.use(errorHandler);
 
 // Start Server
 if (!process.env.VERCEL) {
-  server.listen(PORT, () => {
-    console.log(`Server is up and running on port ${PORT}! 🚀`);
+  server.listen(SERVER_PORT, () => {
+    console.log(`Server is up and running on port ${SERVER_PORT}! 🚀`);
   });
 }
 
