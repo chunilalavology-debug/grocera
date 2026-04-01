@@ -15,7 +15,7 @@ const fs = require("fs");
 const shippingLabelsDir = path.join(uploadsDir, "labels");
 const { morganMiddleware } = require("./routes/middlewares/morgan");
 const Order = require("./db/models/Order");
-const { connectMongoose } = require("./db");
+const { connectDB, getConnectionState, getDatabaseName } = require("./lib/db");
 const app = express();
 const server = http.createServer(app);
 const Stripe = require("stripe");
@@ -72,7 +72,7 @@ app.use(async (req, res, next) => {
   const pathname = (req.originalUrl || req.url || "").split("?")[0];
   if (!pathname.startsWith("/api")) return next();
   try {
-    await connectMongoose();
+    await connectDB();
   } catch (err) {
     console.error("MongoDB connect:", err.message);
     return res.status(503).json({
@@ -81,6 +81,24 @@ app.use(async (req, res, next) => {
     });
   }
   next();
+});
+
+app.get("/api/test", async (req, res) => {
+  try {
+    await connectDB();
+    return res.status(200).json({
+      success: true,
+      message: "Database connection OK",
+      readyState: getConnectionState(),
+      database: getDatabaseName(),
+    });
+  } catch (err) {
+    console.error("/api/test:", err);
+    return res.status(503).json({
+      success: false,
+      message: err.message || "Database connection failed",
+    });
+  }
 });
 
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
