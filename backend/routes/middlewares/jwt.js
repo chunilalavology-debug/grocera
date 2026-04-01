@@ -16,6 +16,9 @@ const endpoints = [
   'user/contactForm',
   'user/products/getById',
   'user/home-slider-settings',
+  'user/shipping/options',
+  'user/shipping/quote',
+  'user/shipping/business-inquiry',
   'user/categories',
   'user/getCategories',
   'products/list',
@@ -38,18 +41,23 @@ const publicPathSet = new Set(
   })
 );
 
-const isPublicPath = (pathName = "") => publicPathSet.has(normalizePath(pathName));
+const isPublicPath = (pathName = "") => {
+  const normalized = normalizePath(pathName);
+  if (publicPathSet.has(normalized)) return true;
+  // Handle path variants like trailing slash or nested auth callback paths.
+  return Array.from(publicPathSet).some((p) => normalized === `${p}/` || normalized.startsWith(`${p}/`));
+};
 let warnedMissingJwtSecret = false;
 
 module.exports = () => {
   return (req, res, next) => {
+    if (isPublicPath(req.path)) return next();
+
     if (!JWT_SECRET_KEY || typeof JWT_SECRET_KEY !== "string" || JWT_SECRET_KEY.trim().length === 0) {
       if (!warnedMissingJwtSecret) {
         warnedMissingJwtSecret = true;
         console.error("JWT_SECRET_KEY is missing. Protected routes will return 503 until configured.");
       }
-
-      if (isPublicPath(req.path)) return next();
 
       return res.status(503).json({
         success: false,
@@ -63,7 +71,7 @@ module.exports = () => {
       credentialsRequired: true,
       requestProperty: "user",
     }).unless({
-      custom: (req) => isPublicPath(req.path),
+      custom: (request) => isPublicPath(request.path),
     })(req, res, (err) => {
       let obj = {
         path: req.url,
