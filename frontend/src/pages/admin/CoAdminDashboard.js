@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './CoAdminDashboard.css';
+import { getApiBaseUrl, getApiOrigin } from '../../config/apiBase';
 
 export default function CoAdminDashboard() {
   const [activeTab, setActiveTab] = useState('products'); // Changed default to 'products'
@@ -41,8 +42,8 @@ export default function CoAdminDashboard() {
     if (!token) return;
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com';
-      const ws = new WebSocket(`ws://${apiUrl.replace('http://', '').replace('https://', '')}`);
+      const host = getApiOrigin().replace(/^https?:\/\//, "");
+      const ws = new WebSocket(`wss://${host}`);
 
       ws.onopen = () => {
         console.log('✅ WebSocket connected');
@@ -70,7 +71,7 @@ export default function CoAdminDashboard() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/co-admin/orders?status=pending&limit=50`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -112,7 +113,7 @@ export default function CoAdminDashboard() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/co-admin/products`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -159,7 +160,7 @@ export default function CoAdminDashboard() {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+      const apiUrl = getApiBaseUrl();
 
       const url = editingProduct
         ? `${apiUrl}/co-admin/products/${editingProduct._id}`
@@ -199,7 +200,7 @@ export default function CoAdminDashboard() {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+      const apiUrl = getApiBaseUrl();
 
       const response = await fetch(`${apiUrl}/co-admin/products/${productId}`, {
         method: 'DELETE',

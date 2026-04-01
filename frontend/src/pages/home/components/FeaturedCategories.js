@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MAIN_CATEGORIES, SUBCATEGORIES_BY_MAIN } from '../../../config/categories';
 import api from '../../../services/api';
+import { getApiBaseUrl, getApiOrigin } from '../../../config/apiBase';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
-const IMAGE_ORIGIN = API_BASE.replace(/\/api\/?$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
+const API_BASE = getApiBaseUrl();
+const IMAGE_ORIGIN = getApiOrigin() || (typeof window !== 'undefined' ? window.location.origin : '');
 
 /** Stronger pastel backgrounds for card image area */
 const CARD_BG_COLORS = [

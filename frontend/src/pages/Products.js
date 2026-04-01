@@ -176,6 +176,11 @@ function Products() {
 
     } catch (error) {
       console.error("Error fetching products:", error);
+      toast.error(
+        error?.message === "Something went wrong"
+          ? "Cannot reach the product catalog. Check your connection or API URL."
+          : error?.message || "Failed to load products."
+      );
     } finally {
       setLoading(false);
     }

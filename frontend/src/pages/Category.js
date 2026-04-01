@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext';
 import ScrollReveal from '../components/ScrollReveal';
 import '../styles/pages/Products.css';
 import StarRating from '../components/StarRating';
+import { getApiBaseUrl } from '../config/apiBase';
 
 export default function Category() {
   const { isAdmin } = useAuth();
@@ -147,7 +148,7 @@ export default function Category() {
     let mounted = true;
     const loadProductsData = async () => {
       try {
-        const API_URL = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+        const API_URL = getApiBaseUrl();
         // Only fetch in-stock products for customer portal
         const response = await fetch(`${API_URL}/products?inStockOnly=true`);
         if (!mounted) return;

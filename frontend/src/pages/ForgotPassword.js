@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { getApiBaseUrl } from "../config/apiBase";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const backendUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api'
+  const backendUrl = getApiBaseUrl();
 
   const handleSubmit = async (e) => {
     e.preventDefault();

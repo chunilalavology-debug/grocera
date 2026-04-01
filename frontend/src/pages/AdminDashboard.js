@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import '../styles/pages/AdminDashboardOverview.css';
+import { getApiBaseUrl } from '../config/apiBase';
 
 function AdminDashboard() {
   const { user, isAdmin } = useAuth();
@@ -40,7 +41,7 @@ function AdminDashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const API_URL = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+      const API_URL = getApiBaseUrl();
       const token = localStorage.getItem('token');
       if (!token) {
         setLoading(false);

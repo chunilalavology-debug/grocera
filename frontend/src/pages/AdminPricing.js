@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import '../styles/pages/AdminPricing.css';
+import { getApiBaseUrl } from '../config/apiBase';
 
 function AdminPricing() {
   const { isAdmin } = useAuth();
@@ -23,7 +24,7 @@ function AdminPricing() {
 
   const fetchProducts = async () => {
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+      const API_URL = getApiBaseUrl();
       const token = localStorage.getItem('token');
       
       const response = await fetch(`${API_URL}/admin/products`, {
@@ -70,7 +71,7 @@ function AdminPricing() {
 
   const handlePriceUpdate = async (productId, newPrice) => {
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+      const API_URL = getApiBaseUrl();
       const token = localStorage.getItem('token');
       
       // Update on server

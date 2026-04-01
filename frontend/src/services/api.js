@@ -1,30 +1,21 @@
-import axios from 'axios';
+import axios from "axios";
+import { getApiBaseUrl } from "../config/apiBase";
 
-const getDefaultApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+const API_URL = getApiBaseUrl();
 
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
-      return 'http://localhost:5000/api';
-    }
-    // In production, default to same-origin /api when env is not set.
-    return `${window.location.origin}/api`;
-  }
-
-  return 'https://zippyyy.com/api';
-};
-
-const API_URL = getDefaultApiUrl();
+const isLocal =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1");
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 10000,
+  timeout: isLocal ? 20_000 : 55_000,
 });
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -52,3 +43,4 @@ api.interceptors.response.use(
 );
 
 export default api;
+export { getApiBaseUrl };

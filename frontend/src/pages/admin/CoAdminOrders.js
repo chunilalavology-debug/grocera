@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './CoAdminOrders.css';
+import { getApiBaseUrl } from '../../config/apiBase';
 
 export default function CoAdminOrders() {
   const [orders, setOrders] = useState([]);
@@ -30,7 +31,7 @@ export default function CoAdminOrders() {
         return;
       }
 
-      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+      const apiUrl = getApiBaseUrl();
       console.log('📡 Co-admin: Fetching orders from:', `${apiUrl}/co-admin/orders`);
       
       // Co-admin only sees new/pending orders
