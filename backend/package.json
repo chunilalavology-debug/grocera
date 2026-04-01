@@ -4,7 +4,7 @@
   "description": "Great things take Time.",
   "main": "app.js",
   "engines": {
-    "node": "24.x"
+    "node": "20.x"
   },
   "scripts": {
     "test": "nodemon",

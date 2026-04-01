@@ -15,6 +15,7 @@ const fs = require("fs");
 const shippingLabelsDir = path.join(uploadsDir, "labels");
 const { morganMiddleware } = require("./routes/middlewares/morgan");
 const Order = require("./db/models/Order");
+const { connectMongoose } = require("./db");
 const app = express();
 const server = http.createServer(app);
 const Stripe = require("stripe");
@@ -47,7 +48,13 @@ const API_BASE = (API_END_POINT_V1 && API_END_POINT_V1.trim()) || "/api";
 const SERVER_PORT = Number(PORT) || 5000;
 
 const corsOrigins = [];
-if (FRONTEND_URL) corsOrigins.push(FRONTEND_URL);
+if (FRONTEND_URL) {
+  String(FRONTEND_URL)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .forEach((u) => corsOrigins.push(u));
+}
 if (process.env.VERCEL_URL) corsOrigins.push(`https://${process.env.VERCEL_URL}`);
 corsOrigins.push("http://localhost:3000");
 corsOrigins.push("http://127.0.0.1:3000");
@@ -60,6 +67,22 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+app.use(async (req, res, next) => {
+  const pathname = (req.originalUrl || req.url || "").split("?")[0];
+  if (!pathname.startsWith("/api")) return next();
+  try {
+    await connectMongoose();
+  } catch (err) {
+    console.error("MongoDB connect:", err.message);
+    return res.status(503).json({
+      success: false,
+      message: "Database unavailable. Please try again shortly.",
+    });
+  }
+  next();
+});
+
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(express.static("public"));
 // app.use(multer().any());

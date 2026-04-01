@@ -114,13 +114,6 @@ const applyVoucher = async ({
 
 const getProducts = async (req, res) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
-      return res.status(503).json({
-        success: false,
-        message: "Database unavailable. Please try again shortly.",
-      });
-    }
-
     const {
       category = "All",
       search,
