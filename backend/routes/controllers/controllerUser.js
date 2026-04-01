@@ -114,6 +114,13 @@ const applyVoucher = async ({
 
 const getProducts = async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: "Database unavailable. Please try again shortly.",
+      });
+    }
+
     const {
       category = "All",
       search,
@@ -171,7 +178,7 @@ const getProducts = async (req, res) => {
     let total = null;
 
     if (!cursor) {
-      total = await Products.countDocuments(filter);
+      total = await Products.countDocuments(filter).maxTimeMS(7000);
     }
 
 
@@ -179,6 +186,7 @@ const getProducts = async (req, res) => {
       .sort({ _id: -1 })
       .limit(limitNum)
       .select("name price salePrice image category inStock quantity unit")
+      .maxTimeMS(7000)
       .lean();
 
     const normalizedProducts = products.map((p) => {
@@ -1817,6 +1825,74 @@ const parseCityStateFromAddress = (destinationAddress) => {
   return { city: "Destination", state: "Destination" };
 };
 
+const SHIPPING_BOX_PRESETS = [
+  { id: "mailer-small", name: "Small Mailer", length: 10, width: 8, height: 4, weight: 2 },
+  { id: "box-medium", name: "Medium Box", length: 14, width: 12, height: 8, weight: 5 },
+  { id: "box-large", name: "Large Box", length: 18, width: 14, height: 10, weight: 8 },
+  { id: "box-xl", name: "XL Box", length: 22, width: 16, height: 14, weight: 12 },
+];
+
+const getShippingOptions = async (req, res) => {
+  try {
+    const schema = Joi.object({
+      originZip: Joi.string().trim().required(),
+      destinationZip: Joi.string().trim().required(),
+      originAddress: Joi.string().trim().optional().allow(""),
+      destinationAddress: Joi.string().trim().optional().allow(""),
+    });
+
+    const { error, value } = schema.validate(req.body);
+    if (error) return res.status(400).json({ success: false, message: formatJoiErrors(error) });
+
+    const options = await Promise.all(
+      SHIPPING_BOX_PRESETS.map(async (preset) => {
+        const payload = {
+          ...value,
+          length: preset.length,
+          width: preset.width,
+          height: preset.height,
+          weight: preset.weight,
+        };
+
+        let easyshipRate = null;
+        try {
+          easyshipRate = await requestEasyshipRates(payload);
+        } catch (err) {
+          console.error(`Easyship option fallback (${preset.id}):`, err.message);
+        }
+
+        const quoteAmount = easyshipRate?.total || computeShippingQuote(payload);
+        return {
+          id: preset.id,
+          name: preset.name,
+          dimensions: {
+            length: preset.length,
+            width: preset.width,
+            height: preset.height,
+          },
+          weight: preset.weight,
+          quoteAmount,
+          currency: "USD",
+          carrier: easyshipRate?.courierName || "ZippyyyShips",
+          serviceName: easyshipRate?.serviceName || "",
+          easyshipRateId: easyshipRate?.easyshipRateId || "",
+          source: easyshipRate ? "easyship" : "internal",
+        };
+      })
+    );
+
+    return res.json({
+      success: true,
+      data: options.filter((o) => Number.isFinite(Number(o.quoteAmount)) && Number(o.quoteAmount) > 0),
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to fetch shipping options",
+    });
+  }
+};
+
 const getShippingQuote = async (req, res) => {
   try {
     const schema = Joi.object({
@@ -1985,6 +2061,58 @@ const createShippingCheckout = async (req, res) => {
   }
 };
 
+const submitShippingBusinessInquiry = async (req, res) => {
+  try {
+    const schema = Joi.object({
+      name: Joi.string().trim().min(2).required(),
+      businessName: Joi.string().trim().min(2).required(),
+      email: Joi.string().trim().email().required(),
+      phone: Joi.string().trim().min(7).required(),
+      monthlyShipments: Joi.number().integer().min(1).required(),
+      message: Joi.string().trim().allow("").default(""),
+    });
+
+    const { error, value } = schema.validate(req.body);
+    if (error) return res.status(400).json({ success: false, message: formatJoiErrors(error) });
+
+    const to = process.env.EMAIL_USER || process.env.ADMIN_EMAIL;
+    if (!to) {
+      return res.status(500).json({
+        success: false,
+        message: "Business inquiry email is not configured",
+      });
+    }
+
+    const html = `
+      <div style="font-family:Arial,sans-serif;padding:16px;color:#0f172a">
+        <h2 style="margin:0 0 12px 0;color:#3090cf">New Bulk Shipping Inquiry</h2>
+        <p><strong>Name:</strong> ${value.name}</p>
+        <p><strong>Business:</strong> ${value.businessName}</p>
+        <p><strong>Email:</strong> ${value.email}</p>
+        <p><strong>Phone:</strong> ${value.phone}</p>
+        <p><strong>Monthly Shipments:</strong> ${value.monthlyShipments}</p>
+        <p><strong>Message:</strong> ${value.message || "N/A"}</p>
+      </div>
+    `;
+
+    await sendMail({
+      to,
+      subject: `Bulk Shipping Inquiry - ${value.businessName}`,
+      html,
+    });
+
+    return res.json({
+      success: true,
+      message: "Inquiry submitted successfully",
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to submit inquiry",
+    });
+  }
+};
+
 
 router.get('/categories', categories);
 router.get('/products', getProducts);
@@ -2007,7 +2135,9 @@ router.post('/applyCoupon', validateCoupon);
 router.get('/getCategories', getCategories);
 router.get('/referral/discount', getReferralDiscount);
 router.get('/home-slider-settings', getHomeSliderSettings);
+router.post('/shipping/options', getShippingOptions);
 router.post('/shipping/quote', getShippingQuote);
 router.post('/shipping/checkout', createShippingCheckout);
+router.post('/shipping/business-inquiry', submitShippingBusinessInquiry);
 
 module.exports = router;

@@ -12,7 +12,9 @@ const HomeSliderSettings = require('./models/HomeSliderSettings');
 const { DB_STRING } = process.env;
 mongoose
   .connect(DB_STRING, {
-    serverSelectionTimeoutMS: 30000,
+    serverSelectionTimeoutMS: 8000,
+    connectTimeoutMS: 8000,
+    socketTimeoutMS: 12000,
   })
   .then(() => {
     console.log("MongoDB connected successfully");
