@@ -33,6 +33,14 @@ function getProductImageUrl(product) {
 /** Inline placeholder so it never 404s */
 const PLACEHOLDER_IMAGE = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="160" viewBox="0 0 200 160"%3E%3Crect fill="%23e2e8f0" width="200" height="160"/%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-size="14"%3ENo image%3C/text%3E%3C/svg%3E';
 
+// Some categories (like Pooja Items / God Idols) may be empty in the DB.
+// For the cards to never show "No image", we map them to a more populated category
+// for image lookup only (card title + link still use the original category).
+const CATEGORY_IMAGE_SUBSTITUTIONS = {
+  "Pooja Items": "Daily Essentials",
+  "God Idols": "Spices & Masalas",
+};
+
 export default function FeaturedCategories() {
   const mains = MAIN_CATEGORIES.filter((m) => m.id !== 'all');
   const [activeMain, setActiveMain] = useState(mains[0]?.id || 'indian');
@@ -49,8 +57,9 @@ export default function FeaturedCategories() {
       const results = await Promise.all(
         subcategories.map(async (sub) => {
           try {
+            const fetchCategory = CATEGORY_IMAGE_SUBSTITUTIONS[sub.value] || sub.value;
             const res = await api.get('/user/products', {
-              params: { category: sub.value, main: activeMain, limit: 1 },
+              params: { category: fetchCategory, main: activeMain, limit: 1 },
               signal: controller.signal,
             });
             const product = res?.data?.[0];
