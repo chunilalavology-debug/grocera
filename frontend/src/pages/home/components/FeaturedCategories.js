@@ -80,9 +80,9 @@ export default function FeaturedCategories() {
   };
 
   return (
-    <section className="featured-categories pt-10 pb-12 md:pt-14 md:pb-16 bg-slate-50/50">
+    <section className="featured-categories pt-0 pb-8 md:pt-4 md:pb-10 bg-slate-50/50">
       <div className="container">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <h2 className="featured-categories__title text-2xl md:text-3xl font-extrabold text-slate-900">
               Featured Categories
@@ -126,7 +126,7 @@ export default function FeaturedCategories() {
 
         <div
           ref={scrollRef}
-          className="featured-categories__scroll flex gap-4 overflow-x-auto pt-2 pb-4 mt-2 scroll-smooth"
+          className="featured-categories__scroll flex gap-4 overflow-x-auto pt-1 pb-3 mt-1 scroll-smooth"
         >
           {subcategories.map((sub, idx) => (
             <Link

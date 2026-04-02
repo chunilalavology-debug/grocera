@@ -1,20 +1,19 @@
 import axios from "axios";
 import { getApiBaseUrl } from "../config/apiBase";
 
-const API_URL = getApiBaseUrl();
-
 const isLocal =
   typeof window !== "undefined" &&
   (window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1");
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: getApiBaseUrl(),
   timeout: isLocal ? 20_000 : 55_000,
 });
 
 api.interceptors.request.use(
   (config) => {
+    config.baseURL = getApiBaseUrl();
     const token = localStorage.getItem("token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

@@ -153,11 +153,10 @@ function Products() {
         params: {
           category: selectedCategory !== "All" ? selectedCategory : undefined,
           ...(selectedMain && selectedMain !== "all" && { main: selectedMain }),
-          ...(debouncedSearch && {
-            search: debouncedSearch
-          }),
+          ...(debouncedSearch
+            ? { search: debouncedSearch, page }
+            : { cursor: cursorToUse }),
           limit: perPage,
-          cursor: cursorToUse
         }
       });
 
@@ -172,7 +171,10 @@ function Products() {
       if (response.totalCount !== null && response.totalCount !== undefined) {
         setTotalData(response.totalCount);
       }
-      setNextCursorByPage((prev) => ({ ...prev, [page]: response.nextCursor || null }));
+      const hasMore = debouncedSearch
+        ? response.hasNextPage === true
+        : Boolean(response.nextCursor);
+      setNextCursorByPage((prev) => ({ ...prev, [page]: hasMore ? true : null }));
 
     } catch (error) {
       console.error("Error fetching products:", error);

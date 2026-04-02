@@ -5,7 +5,9 @@ import { useCart } from '../context/CartContext';
 import ScrollReveal from '../components/ScrollReveal';
 import '../styles/pages/Products.css';
 import StarRating from '../components/StarRating';
+import api from '../services/api';
 import { getApiBaseUrl } from '../config/apiBase';
+import { filterProductsBySearch } from '../utils/fuzzyProductMatch';
 
 export default function Category() {
   const { isAdmin } = useAuth();
@@ -132,13 +134,9 @@ export default function Category() {
       );
     }
 
-    // Filter by search term
-    if (searchTerm) {
-      const lowercaseSearch = searchTerm.toLowerCase();
-      filtered = filtered.filter(product =>
-        product.name.toLowerCase().includes(lowercaseSearch) ||
-        product.description.toLowerCase().includes(lowercaseSearch)
-      );
+    // Filter by search term (typo-tolerant; never empty if catalog has items)
+    if (searchTerm && searchTerm.trim()) {
+      filtered = filterProductsBySearch(filtered, searchTerm.trim());
     }
 
     return filtered;
@@ -148,32 +146,16 @@ export default function Category() {
     let mounted = true;
     const loadProductsData = async () => {
       try {
-        const API_URL = getApiBaseUrl();
-        // Only fetch in-stock products for customer portal
-        const response = await fetch(`${API_URL}/products?inStockOnly=true`);
+        const res = await api.get('/user/products', { params: { limit: 500 } });
         if (!mounted) return;
-        if (response.ok) {
-          const responseData = await response.json();
-          if (mounted) {
-            // Handle backend response structure: {success: true, data: [...]}
-            const productsArray = Array.isArray(responseData.data) ? responseData.data : 
-                                 responseData.data?.products || 
-                                 responseData.products || 
-                                 responseData;
-            // Double filter to ensure only in-stock products are shown
-            const inStockProducts = Array.isArray(productsArray) 
-              ? productsArray.filter(p => p.inStock === true && (p.quantity > 0 || p.stockQuantity > 0))
-              : [];
-            setProducts(inStockProducts);
-          }
-        } else {
-          // Show empty state if API fails
-          if (mounted) {
-            setProducts([]);
-          }
-        }
+        const raw = res?.data;
+        const productsArray = Array.isArray(raw) ? raw : [];
+        const inStockProducts = productsArray.filter(
+          (p) => p.inStock === true && (p.quantity > 0 || p.stockQuantity > 0)
+        );
+        if (mounted) setProducts(inStockProducts);
       } catch (error) {
-        console.error('Error fetching products:', error);
+        console.error('Error fetching products:', error, 'API:', getApiBaseUrl());
         if (mounted) {
           setProducts([]);
         }

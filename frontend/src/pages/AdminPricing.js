@@ -75,7 +75,7 @@ function AdminPricing() {
       const token = localStorage.getItem('token');
       
       // Update on server
-      const response = await fetch(`${API_URL}/products/${productId}`, {
+      const response = await fetch(`${API_URL}/admin/products/${productId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

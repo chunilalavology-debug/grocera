@@ -18,6 +18,15 @@ function stripTrailingSlashes(s) {
   return s.replace(/\/+$/, "");
 }
 
+function isPrivateLanHost(host) {
+  if (!host) return false;
+  return (
+    /^(192\.168\.\d+\.\d+)$/.test(host) ||
+    /^10\.\d+\.\d+\.\d+$/.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(host)
+  );
+}
+
 /**
  * @returns {string} e.g. https://backend.vercel.app/api
  */
@@ -27,16 +36,35 @@ export function getApiBaseUrl() {
     return stripTrailingSlashes(String(fromEnv).trim());
   }
 
+  const isDev =
+    typeof process.env.NODE_ENV !== "undefined" &&
+    process.env.NODE_ENV === "development";
+
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") {
+
+    if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") {
       return "http://localhost:5000/api";
     }
+
+    if (isDev && isPrivateLanHost(host)) {
+      return `http://${host}:5000/api`;
+    }
+
     const mapped = VERCEL_HOST_API_MAP[host];
     if (mapped) {
       return stripTrailingSlashes(mapped);
     }
+
+    if (isDev) {
+      return "http://localhost:5000/api";
+    }
+
     return `${stripTrailingSlashes(window.location.origin)}/api`;
+  }
+
+  if (isDev) {
+    return "http://localhost:5000/api";
   }
 
   return stripTrailingSlashes(LEGACY_API_FALLBACK);

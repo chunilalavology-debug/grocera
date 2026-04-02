@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ override: true });
 const express = require("express");
 const cors = require("cors");
 const errorHandler = require("./utils/errorHandler");
@@ -59,14 +59,35 @@ if (process.env.VERCEL_URL) corsOrigins.push(`https://${process.env.VERCEL_URL}`
 corsOrigins.push("http://localhost:3000");
 corsOrigins.push("http://127.0.0.1:3000");
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (corsOrigins.includes(origin)) return callback(null, true);
-    return callback(null, false);
-  },
-  credentials: true,
-}));
+const isNonProduction =
+  !process.env.NODE_ENV || process.env.NODE_ENV !== "production";
+
+/** Allow Create React App on any localhost port + LAN dev URLs */
+const devOriginOk = (origin) => {
+  try {
+    const u = new URL(origin);
+    const h = u.hostname;
+    if (h === "localhost" || h === "127.0.0.1" || h === "[::1]") return true;
+    if (/^192\.168\.\d+\.\d+$/.test(h)) return true;
+    if (/^10\.\d+\.\d+\.\d+$/.test(h)) return true;
+    if (/^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(h)) return true;
+  } catch {
+    return false;
+  }
+  return false;
+};
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (corsOrigins.includes(origin)) return callback(null, true);
+      if (isNonProduction && devOriginOk(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+    credentials: true,
+  })
+);
 
 app.use(async (req, res, next) => {
   const pathname = (req.originalUrl || req.url || "").split("?")[0];

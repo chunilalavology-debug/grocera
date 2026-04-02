@@ -24,6 +24,26 @@
 .zippyyy-ships__review { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: .8rem; }
 .zippyyy-ships__review p { margin: .35rem 0; color: #334155; }
 .zippyyy-ships__quote-note { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 10px; padding: .65rem .8rem; font-size: .9rem; }
+.zippyyy-ships__options-list { display: flex; flex-direction: column; gap: .65rem; }
+.zippyyy-ships__option-card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #dbe4ef;
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: .75rem .85rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  cursor: pointer;
+}
+.zippyyy-ships__option-card:hover { border-color: #93c5fd; }
+.zippyyy-ships__option-card.is-selected { border-color: #3090cf; background: #eff6ff; box-shadow: inset 0 0 0 1px #3090cf33; }
+.zippyyy-ships__option-card strong { display: block; color: #0f172a; }
+.zippyyy-ships__option-card p { margin: .2rem 0; color: #334155; font-size: .88rem; }
+.zippyyy-ships__option-card small { color: #64748b; }
+.zippyyy-ships__option-card span { font-weight: 800; color: #0f172a; white-space: nowrap; }
 
 .zippyyy-ships__nav { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: .4rem; }
 .zippyyy-ships__nav-btn { border: 0; border-radius: 999px; min-height: 42px; padding: .58rem 1rem; font-weight: 700; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; }

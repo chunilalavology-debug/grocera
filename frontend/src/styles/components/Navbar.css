@@ -904,11 +904,16 @@ button.header-main__action {
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
   transform: translateX(100%);
   transition: transform 0.3s ease;
-  overflow-y: auto;
+  visibility: hidden;
+  /* Prevent the “second scrollbar” when the menu is closed but still
+     exists in the DOM (transform keeps layout box alive). */
+  overflow-y: hidden;
 }
 
 .header-mobile-menu.open {
   transform: translateX(0);
+  overflow-y: auto;
+  visibility: visible;
 }
 
 .header-mobile-menu__content {
@@ -1196,20 +1201,31 @@ button.header-main__action {
   /* Touch-friendly icon buttons (min 44px) */
   .header-main__icon-action,
   .header-main__account .header-main__account-btn {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0.5rem;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0.4rem;
     justify-content: center;
   }
 
   .header-main__menu-btn {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0.5rem;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0.3rem;
   }
 
   .header-main__cart {
-    min-width: 44px;
+    min-width: 40px;
+  }
+
+  /* Smaller icons inside buttons */
+  .header-main__icon-action svg,
+  .header-main__account .header-main__account-btn svg,
+  .header-main__menu-btn svg,
+  .header-main__cart svg {
+    width: 16px;
+    height: 16px;
   }
 
   .header-search--mobile {
@@ -1291,7 +1307,23 @@ button.header-main__action {
   .header-main__icon-action,
   .header-main__account .header-main__account-btn,
   .header-main__menu-btn {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 38px;
+    min-height: 38px;
+  }
+
+  .header-main__icon-action svg,
+  .header-main__account .header-main__account-btn svg,
+  .header-main__menu-btn svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  /* Override fixed width/height for menu button */
+  .header-main__menu-btn {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0.25rem;
   }
 }

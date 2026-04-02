@@ -12,6 +12,7 @@ const redisClient = require("../services/serviceRedis-cli");
 const { setKeyWithTime, getKey } = require("../services/serviceRedis");
 const { default: mongoose } = require("mongoose");
 const Category = require("../../db/models/categories");
+const { rankProductsBySearch } = require("../../lib/fuzzyProductSearch");
 const createStripeClient = () => {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key || typeof key !== "string" || key.trim().length === 0) {
@@ -112,6 +113,26 @@ const applyVoucher = async ({
   };
 };
 
+const normalizeProductRow = (p) => {
+  const basePrice = Number(p.price || 0);
+  const salePrice = Number(p.salePrice || 0);
+  const hasDiscount = salePrice > 0 && salePrice < basePrice;
+  const finalPrice = hasDiscount ? salePrice : basePrice;
+  const discountPercentage = hasDiscount
+    ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
+    : 0;
+
+  return {
+    ...p,
+    price: finalPrice,
+    salePrice,
+    hasDeal: hasDiscount,
+    originalPrice: hasDiscount ? basePrice : null,
+    finalPrice,
+    discountPercentage,
+  };
+};
+
 const getProducts = async (req, res) => {
   try {
     const {
@@ -120,10 +141,13 @@ const getProducts = async (req, res) => {
       minPrice,
       maxPrice,
       limit = 12,
-      cursor
+      cursor,
+      page,
     } = req.query;
 
     const limitNum = Math.min(parseInt(limit) || 12, 50);
+    const searchTrim =
+      search && String(search).trim() ? String(search).trim() : "";
 
     const filter = {
       inStock: true,
@@ -134,34 +158,53 @@ const getProducts = async (req, res) => {
       filter.category = category;
     }
 
-    // if (search) {
-    //   filter.$text = { $search: search };
-    // }
-
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { category: { $regex: search, $options: 'i' } },
-        { tags: { $elemMatch: { $regex: search, $options: 'i' } } }
-      ];
-    }
-
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
 
+    const MAX_FUZZY_CANDIDATES = 2000;
+
+    if (searchTrim) {
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+
+      const rawCandidates = await Products.find(filter)
+        .sort({ _id: -1 })
+        .limit(MAX_FUZZY_CANDIDATES)
+        .select(
+          "name price salePrice image category inStock quantity unit description tags"
+        )
+        .maxTimeMS(7000)
+        .lean();
+
+      const { items: ranked, total, usedFallback } = rankProductsBySearch(
+        rawCandidates,
+        searchTrim
+      );
+      const skip = (pageNum - 1) * limitNum;
+      const pageSlice = ranked.slice(skip, skip + limitNum);
+      const normalizedProducts = pageSlice.map(normalizeProductRow);
+
+      return res.json({
+        success: true,
+        data: normalizedProducts,
+        totalCount: total,
+        nextCursor: null,
+        hasNextPage: skip + pageSlice.length < total,
+        searchUsedFallback: usedFallback,
+      });
+    }
+
     if (cursor && mongoose.Types.ObjectId.isValid(cursor)) {
       filter._id = { $lt: new mongoose.Types.ObjectId(cursor) };
     }
 
-    const isFirstPage = !cursor && !search && !minPrice && !maxPrice;
+    const isFirstPage = !cursor && !minPrice && !maxPrice;
     const cacheKey = `products:${category}:v1`;
 
     if (isFirstPage) {
-      console.log("chase recived ")
+      console.log("chase recived ");
       const cachedData = await getKey(cacheKey);
       if (cachedData.data) {
         return res.json(JSON.parse(cachedData.data));
@@ -174,7 +217,6 @@ const getProducts = async (req, res) => {
       total = await Products.countDocuments(filter).maxTimeMS(7000);
     }
 
-
     const products = await Products.find(filter)
       .sort({ _id: -1 })
       .limit(limitNum)
@@ -182,33 +224,13 @@ const getProducts = async (req, res) => {
       .maxTimeMS(7000)
       .lean();
 
-    const normalizedProducts = products.map((p) => {
-      const basePrice = Number(p.price || 0);
-      const salePrice = Number(p.salePrice || 0);
-      const hasDiscount = salePrice > 0 && salePrice < basePrice;
-      const finalPrice = hasDiscount ? salePrice : basePrice;
-      const discountPercentage = hasDiscount
-        ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
-        : 0;
-
-      return {
-        ...p,
-        price: finalPrice,
-        salePrice,
-        hasDeal: hasDiscount,
-        originalPrice: hasDiscount ? basePrice : null,
-        finalPrice,
-        discountPercentage,
-      };
-    });
+    const normalizedProducts = products.map(normalizeProductRow);
 
     const response = {
       success: true,
       data: normalizedProducts,
       totalCount: total,
-      nextCursor: products.length
-        ? products[products.length - 1]._id
-        : null,
+      nextCursor: products.length ? products[products.length - 1]._id : null,
       hasNextPage: products.length === limitNum,
     };
 
@@ -217,7 +239,6 @@ const getProducts = async (req, res) => {
     }
 
     return res.json(response);
-
   } catch (error) {
     console.error("Get products error:", error);
     return res.status(500).json({

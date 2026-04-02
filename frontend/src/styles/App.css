@@ -675,12 +675,15 @@
 /* ----- Scroll-up animation (sections + product cards, all screen sizes) ----- */
 .scroll-reveal-mobile {
   opacity: 0;
-  transform: translateY(36px);
+  /* Slide-up reveal without affecting layout (transform only). */
+  transform: translateY(18px);
   transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+  transition-delay: 0s;
   will-change: opacity, transform;
 }
 
 .scroll-reveal-mobile.scroll-reveal-in {
   opacity: 1;
   transform: translateY(0);
+  transition-delay: 0.15s;
 }
