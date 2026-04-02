@@ -61,11 +61,16 @@ export default function FeaturedCategories() {
           }
         })
       );
+
+      // Fallback: if a category has no products (or products have no image),
+      // show any other valid image from the same main category.
+      const fallbackImage = results.find((r) => r.image)?.image || null;
+
       setSubcategoryImages((prev) => {
         const next = { ...prev };
         results.forEach(({ value, image }) => {
           const key = `${activeMain}:${value}`;
-          if (image) next[key] = image;
+          next[key] = image || fallbackImage;
         });
         return next;
       });
