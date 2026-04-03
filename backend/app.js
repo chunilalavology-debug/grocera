@@ -8,11 +8,22 @@ const jwt = require("./routes/middlewares/jwt");
 const http = require("http");
 const cloudinary = require("cloudinary").v2;
 const path = require("path");
-const dir = path.join(__dirname, "/upload");
-const uploadsDir = path.join(__dirname, "/uploads");
+/** Vercel serverless: only /tmp is writable; local uses backend folders */
+const isVercel = Boolean(process.env.VERCEL);
+const dir = isVercel ? path.join("/tmp", "upload") : path.join(__dirname, "upload");
+const uploadsDir = isVercel ? path.join("/tmp", "uploads") : path.join(__dirname, "uploads");
 const streamifier = require("streamifier");
 const fs = require("fs");
 const shippingLabelsDir = path.join(uploadsDir, "labels");
+if (isVercel) {
+  [dir, uploadsDir, shippingLabelsDir].forEach((p) => {
+    try {
+      if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+    } catch (e) {
+      console.error("mkdir upload dirs:", e.message);
+    }
+  });
+}
 const { morganMiddleware } = require("./routes/middlewares/morgan");
 const Order = require("./db/models/Order");
 const app = express();
@@ -32,10 +43,23 @@ const {
 } = process.env;
 
 const corsOrigins = [];
-if (FRONTEND_URL) corsOrigins.push(FRONTEND_URL);
-if (process.env.VERCEL_URL) corsOrigins.push(`https://${process.env.VERCEL_URL}`);
-corsOrigins.push("http://localhost:3000");
-corsOrigins.push("http://127.0.0.1:3000");
+const addCors = (origin) => {
+  const o = origin && String(origin).trim();
+  if (o && !corsOrigins.includes(o)) corsOrigins.push(o);
+};
+if (FRONTEND_URL) {
+  String(FRONTEND_URL)
+    .split(",")
+    .forEach((x) => addCors(x));
+}
+if (process.env.FRONTEND_URLS) {
+  String(process.env.FRONTEND_URLS)
+    .split(",")
+    .forEach((x) => addCors(x));
+}
+if (process.env.VERCEL_URL) addCors(`https://${process.env.VERCEL_URL}`);
+addCors("http://localhost:3000");
+addCors("http://127.0.0.1:3000");
 
 app.use(cors({
   origin: (origin, callback) => {

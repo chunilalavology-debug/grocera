@@ -42,14 +42,18 @@ Deploy **two Vercel projects** from this repo:
 
 ### A) Backend (Server)
 - Project root: `backend/`
-- Use Node runtime (Node 18+)
+- **Node.js:** `backend/package.json` sets `"engines": { "node": "24.x" }`.
 - Deploy settings:
   - Framework: “Other” / “Node.js”
   - Build command: (empty)
   - Install command: `npm install`
-  - Start command: `npm start`
+  - Start command: `npm start` (local); on Vercel the `api/` serverless entry is used automatically.
 - Environment variables:
-  - Add all values required by `backend/.env.production.example` in Vercel project settings.
+  - Add all values from `backend/.env.production.example`.
+  - **`REDIS_URL`:** On Vercel, Redis is **not** on `localhost`. Use [Upstash Redis](https://upstash.com/) (or similar) and set `REDIS_URL` (e.g. `rediss://...`). Without it, auth/session features that rely on Redis may fail.
+  - **`FRONTEND_URL`:** Your live frontend origin (e.g. `https://grocera-xxx.vercel.app`). You can use comma-separated URLs or add **`FRONTEND_URLS`** for preview deployments.
+  - **`DB_STRING`:** MongoDB Atlas connection string.
+- **Serverless note:** File uploads and generated label files use **`/tmp`** on Vercel (writable). Files are not durable across all invocations; production file hosting should use Cloudinary (already used for many uploads) or object storage for long-lived assets.
 
 **Stripe webhook endpoint**
 - The backend webhook route is:

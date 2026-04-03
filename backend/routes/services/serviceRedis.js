@@ -1,14 +1,4 @@
-const asyncRedis = require("async-redis");
-
-const client = asyncRedis.createClient({
-    // host: "139.162.218.18",
-    // port: 6379,
-    // password: "asdfasdf12E4512E4512E4512E4512E4512E45",
-});
-
-client.on("error", (err) => {
-    console.error("Redis Error:", err);
-});
+const client = require("./redisClient");
 
 const { NOT_FOUND, DATA_NULL, SUCCESS, SERVER_ERROR } = require('../../utils/constants');
 

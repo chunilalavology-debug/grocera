@@ -7,6 +7,7 @@ const multer = require("multer");
 const Product = require("../../db/models/Product");
 const XLSX = require("xlsx");
 const path = require("path");
+const fs = require("fs");
 const mongoose = require("mongoose");
 const Deal = require("../../db/models/deals");
 const Contact = require("../../db/models/Contact");
@@ -28,9 +29,21 @@ const formatJoiErrors = (error) => {
   return errors.join(', ')
 };
 
+const adminUploadsDest = () => {
+  const dest = process.env.VERCEL
+    ? "/tmp/uploads"
+    : path.join(__dirname, "../../uploads");
+  try {
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+  } catch (_) {
+    /* ignore */
+  }
+  return dest;
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, adminUploadsDest());
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname));

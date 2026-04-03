@@ -13,6 +13,7 @@ const { DB_STRING } = process.env;
 mongoose
   .connect(DB_STRING, {
     serverSelectionTimeoutMS: 30000,
+    maxPoolSize: 10,
   })
   .then(() => {
     console.log("MongoDB connected successfully");
