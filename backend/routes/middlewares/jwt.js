@@ -15,10 +15,6 @@ const endpoints = [
   'orders/webhook',
   'user/contactForm',
   'user/products/getById',
-  'user/home-slider-settings',
-  'user/shipping/options',
-  'user/shipping/quote',
-  'user/shipping/business-inquiry',
   'user/categories',
   'user/getCategories',
   'products/list',
@@ -27,51 +23,19 @@ const endpoints = [
   'subscription/subscribe',
   'uploadImage'
 ];
-const normalizePath = (p = "") => {
-  const withSlash = p.startsWith("/") ? p : `/${p}`;
-  const trimmed = withSlash.replace(/\/+$/, "");
-  return trimmed || "/";
-};
-
-const apiBase = normalizePath(API_END_POINT_V1 || "/api");
-const publicPathSet = new Set(
-  endpoints.flatMap((endpoint) => {
-    const ep = normalizePath(endpoint);
-    return [normalizePath(`${apiBase}${ep}`), ep];
-  })
+const pathFreeArray = endpoints.map(
+  (endpoint) => `${API_END_POINT_V1}/${endpoint}`
 );
-
-const isPublicPath = (pathName = "") => {
-  const normalized = normalizePath(pathName);
-  if (publicPathSet.has(normalized)) return true;
-  // Handle path variants like trailing slash or nested auth callback paths.
-  return Array.from(publicPathSet).some((p) => normalized === `${p}/` || normalized.startsWith(`${p}/`));
-};
-let warnedMissingJwtSecret = false;
 
 module.exports = () => {
   return (req, res, next) => {
-    if (isPublicPath(req.path)) return next();
-
-    if (!JWT_SECRET_KEY || typeof JWT_SECRET_KEY !== "string" || JWT_SECRET_KEY.trim().length === 0) {
-      if (!warnedMissingJwtSecret) {
-        warnedMissingJwtSecret = true;
-        console.error("JWT_SECRET_KEY is missing. Protected routes will return 503 until configured.");
-      }
-
-      return res.status(503).json({
-        success: false,
-        message: "Server auth configuration missing (JWT_SECRET_KEY)",
-      });
-    }
-
     jwt({
       secret: JWT_SECRET_KEY,
       algorithms: ["HS256"],
       credentialsRequired: true,
       requestProperty: "user",
     }).unless({
-      custom: (request) => isPublicPath(request.path),
+      path: pathFreeArray,
     })(req, res, (err) => {
       let obj = {
         path: req.url,

@@ -1,0 +1,20 @@
+{
+  "name": "zippyyy-ships-server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "stripe": "^18.4.0",
+    "zod": "^3.25.76"
+  }
+}
+

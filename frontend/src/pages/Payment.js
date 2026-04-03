@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import '../styles/pages/Payment.css';
 import api from '../services/api';
-import { getApiBaseUrl } from '../config/apiBase';
 
 function Payment() {
   const { user } = useAuth();
@@ -88,7 +87,7 @@ function Payment() {
       setLoading(true);
 
       // Create Stripe checkout session - no authentication required
-      const response = await fetch(`${getApiBaseUrl()}/payments/create-payment-session`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://zippyyy.com/api'}/payments/create-payment-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

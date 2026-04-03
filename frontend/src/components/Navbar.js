@@ -62,10 +62,6 @@ function Navbar() {
   const dropdownRef = useRef(null);
   const categoryDropdownRef = useRef(null);
   const browseDropdownRef = useRef(null);
-  const navRef = useRef(null);
-  const thresholdRef = useRef(0);
-  const [isNavPinned, setIsNavPinned] = useState(false);
-  const [navPlaceholderHeight, setNavPlaceholderHeight] = useState(0);
   const [fireAnimation, setFireAnimation] = useState(null);
 
   useEffect(() => {
@@ -74,31 +70,6 @@ function Navbar() {
       .then(setFireAnimation)
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    const updateThreshold = () => {
-      if (navRef.current) thresholdRef.current = navRef.current.offsetTop;
-    };
-    updateThreshold();
-    window.addEventListener('resize', updateThreshold);
-    return () => window.removeEventListener('resize', updateThreshold);
-  }, []);
-
-  useEffect(() => {
-    const onScroll = () => {
-      const y = window.scrollY;
-      if (y >= thresholdRef.current - 2) {
-        if (!isNavPinned && navRef.current) {
-          setNavPlaceholderHeight(navRef.current.offsetHeight);
-          setIsNavPinned(true);
-        }
-      } else {
-        if (isNavPinned) setIsNavPinned(false);
-      }
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [isNavPinned]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -325,9 +296,8 @@ function Navbar() {
         </form>
       </div>
 
-      {/* ----- 3. Nav bar: Browse left (with card dropdown), menu center, Support right (pinned on scroll) ----- */}
-      {isNavPinned && <div className="header-nav__placeholder" style={{ height: navPlaceholderHeight }} aria-hidden="true" />}
-      <div ref={navRef} className={`header-nav ${isNavPinned ? 'header-nav--pinned' : ''}`}>
+      {/* ----- 3. Nav bar: Browse left (with card dropdown), menu center, Support right ----- */}
+      <div className="header-nav">
         <div className="header-nav__inner container">
           <div className="header-nav__browse-wrap desktop-only" ref={browseDropdownRef}>
             <button
@@ -384,7 +354,14 @@ function Navbar() {
                   </span>
                   Hot Deals
                 </NavLink>
-                <NavLink to="/zippyyy-ships" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Zippyyy Ships</NavLink>
+                <a
+                  href={`${process.env.PUBLIC_URL || ''}/zippyyy-ships`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="header-nav__link"
+                >
+                  Zippyyy Ships
+                </a>
                 <NavLink to="/" end className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Home</NavLink>
                 <NavLink to="/about" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>About</NavLink>
                 <NavLink to="/products" className={({ isActive }) => `header-nav__link ${isActive ? 'active' : ''}`}>Shop</NavLink>
@@ -424,7 +401,15 @@ function Navbar() {
             </span>
             Hot Deals
           </Link>
-          <NavLink to="/zippyyy-ships" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Zippyyy Ships</NavLink>
+          <a
+            href={`${process.env.PUBLIC_URL || ''}/zippyyy-ships`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="header-mobile-menu__link"
+            onClick={toggleMobileMenu}
+          >
+            Zippyyy Ships
+          </a>
           <NavLink to="/" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Home</NavLink>
           <NavLink to="/products" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Shop</NavLink>
           <NavLink to="/about" className="header-mobile-menu__link" onClick={toggleMobileMenu}>About</NavLink>
@@ -436,11 +421,16 @@ function Navbar() {
               <div className="header-mobile-menu__divider" />
               <Link to="/profile" className="header-mobile-menu__link" onClick={toggleMobileMenu}>My Account</Link>
               <Link to="/orders" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Order Tracking</Link>
+              {isCoAdmin && !isAdmin && (
+                <Link to="/co-admin/dashboard" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Co-Admin Panel</Link>
+              )}
               {isAdmin && (
                 <>
                   <Link to="/admin/dashboard" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Dashboard</Link>
                   <Link to="/admin/products" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Products</Link>
                   <Link to="/admin/orders" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Orders</Link>
+                  <Link to="/admin/users" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Users</Link>
+                  <Link to="/admin/contacts" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Contacts</Link>
                 </>
               )}
               <button type="button" className="header-mobile-menu__link header-mobile-menu__logout" onClick={handleLogout}>Logout</button>

@@ -12,21 +12,7 @@ const redisClient = require("../services/serviceRedis-cli");
 const { setKeyWithTime, getKey } = require("../services/serviceRedis");
 const { default: mongoose } = require("mongoose");
 const Category = require("../../db/models/categories");
-const { rankProductsBySearch } = require("../../lib/fuzzyProductSearch");
-const createStripeClient = () => {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || typeof key !== "string" || key.trim().length === 0) {
-    console.error("STRIPE_SECRET_KEY is missing. Stripe checkout endpoints are disabled.");
-    return null;
-  }
-  try {
-    return new Stripe(key);
-  } catch (err) {
-    console.error("Invalid STRIPE_SECRET_KEY configuration:", err.message);
-    return null;
-  }
-};
-const stripe = createStripeClient();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const EASYSHIP_API_KEY = process.env.EASYSHIP_API_KEY || "";
 
 require("dotenv").config();
@@ -113,26 +99,6 @@ const applyVoucher = async ({
   };
 };
 
-const normalizeProductRow = (p) => {
-  const basePrice = Number(p.price || 0);
-  const salePrice = Number(p.salePrice || 0);
-  const hasDiscount = salePrice > 0 && salePrice < basePrice;
-  const finalPrice = hasDiscount ? salePrice : basePrice;
-  const discountPercentage = hasDiscount
-    ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
-    : 0;
-
-  return {
-    ...p,
-    price: finalPrice,
-    salePrice,
-    hasDeal: hasDiscount,
-    originalPrice: hasDiscount ? basePrice : null,
-    finalPrice,
-    discountPercentage,
-  };
-};
-
 const getProducts = async (req, res) => {
   try {
     const {
@@ -141,13 +107,10 @@ const getProducts = async (req, res) => {
       minPrice,
       maxPrice,
       limit = 12,
-      cursor,
-      page,
+      cursor
     } = req.query;
 
     const limitNum = Math.min(parseInt(limit) || 12, 50);
-    const searchTrim =
-      search && String(search).trim() ? String(search).trim() : "";
 
     const filter = {
       inStock: true,
@@ -158,53 +121,34 @@ const getProducts = async (req, res) => {
       filter.category = category;
     }
 
+    // if (search) {
+    //   filter.$text = { $search: search };
+    // }
+
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } },
+        { tags: { $elemMatch: { $regex: search, $options: 'i' } } }
+      ];
+    }
+
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
 
-    const MAX_FUZZY_CANDIDATES = 2000;
-
-    if (searchTrim) {
-      const pageNum = Math.max(1, parseInt(page, 10) || 1);
-
-      const rawCandidates = await Products.find(filter)
-        .sort({ _id: -1 })
-        .limit(MAX_FUZZY_CANDIDATES)
-        .select(
-          "name price salePrice image category inStock quantity unit description tags"
-        )
-        .maxTimeMS(7000)
-        .lean();
-
-      const { items: ranked, total, usedFallback } = rankProductsBySearch(
-        rawCandidates,
-        searchTrim
-      );
-      const skip = (pageNum - 1) * limitNum;
-      const pageSlice = ranked.slice(skip, skip + limitNum);
-      const normalizedProducts = pageSlice.map(normalizeProductRow);
-
-      return res.json({
-        success: true,
-        data: normalizedProducts,
-        totalCount: total,
-        nextCursor: null,
-        hasNextPage: skip + pageSlice.length < total,
-        searchUsedFallback: usedFallback,
-      });
-    }
-
     if (cursor && mongoose.Types.ObjectId.isValid(cursor)) {
       filter._id = { $lt: new mongoose.Types.ObjectId(cursor) };
     }
 
-    const isFirstPage = !cursor && !minPrice && !maxPrice;
+    const isFirstPage = !cursor && !search && !minPrice && !maxPrice;
     const cacheKey = `products:${category}:v1`;
 
     if (isFirstPage) {
-      console.log("chase recived ");
+      console.log("chase recived ")
       const cachedData = await getKey(cacheKey);
       if (cachedData.data) {
         return res.json(JSON.parse(cachedData.data));
@@ -214,23 +158,43 @@ const getProducts = async (req, res) => {
     let total = null;
 
     if (!cursor) {
-      total = await Products.countDocuments(filter).maxTimeMS(7000);
+      total = await Products.countDocuments(filter);
     }
+
 
     const products = await Products.find(filter)
       .sort({ _id: -1 })
       .limit(limitNum)
       .select("name price salePrice image category inStock quantity unit")
-      .maxTimeMS(7000)
       .lean();
 
-    const normalizedProducts = products.map(normalizeProductRow);
+    const normalizedProducts = products.map((p) => {
+      const basePrice = Number(p.price || 0);
+      const salePrice = Number(p.salePrice || 0);
+      const hasDiscount = salePrice > 0 && salePrice < basePrice;
+      const finalPrice = hasDiscount ? salePrice : basePrice;
+      const discountPercentage = hasDiscount
+        ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
+        : 0;
+
+      return {
+        ...p,
+        price: finalPrice,
+        salePrice,
+        hasDeal: hasDiscount,
+        originalPrice: hasDiscount ? basePrice : null,
+        finalPrice,
+        discountPercentage,
+      };
+    });
 
     const response = {
       success: true,
       data: normalizedProducts,
       totalCount: total,
-      nextCursor: products.length ? products[products.length - 1]._id : null,
+      nextCursor: products.length
+        ? products[products.length - 1]._id
+        : null,
       hasNextPage: products.length === limitNum,
     };
 
@@ -239,6 +203,7 @@ const getProducts = async (req, res) => {
     }
 
     return res.json(response);
+
   } catch (error) {
     console.error("Get products error:", error);
     return res.status(500).json({
@@ -807,13 +772,6 @@ const getReferralDiscount = async (req, res) => {
 };
 
 const orderPayment = async (req, res) => {
-  if (!stripe) {
-    return res.status(503).json({
-      success: false,
-      message: "Stripe is not configured on server",
-    });
-  }
-
   const checkoutSchema = Joi.object({
     items: Joi.array()
       .items(
@@ -1710,33 +1668,128 @@ const getEasyshipBaseUrl = () => {
 
 const lbToKg = (lb) => Number((Number(lb || 0) * 0.45359237).toFixed(3));
 
-const requestEasyshipRates = async ({
-  length,
-  width,
-  height,
-  weight,
-  originAddress,
-  originZip,
-  destinationAddress,
-  destinationZip,
-}) => {
+/** Split a US-style "Street, City, ST" string for Easyship rate requests */
+const parseAddressForEasyship = (fullAddress, postalCode) => {
+  const zip = String(postalCode || "").trim() || "10001";
+  const parts = String(fullAddress || "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  let line1 = parts[0] || "Address";
+  let city = "City";
+  let state = "NY";
+  if (parts.length >= 3) {
+    line1 = parts[0];
+    city = parts[1];
+    const st = parts[2].replace(/\s+/g, " ");
+    const m = st.match(/\b([A-Za-z]{2})\b/);
+    state = m ? m[1].toUpperCase() : st.slice(0, 2).toUpperCase() || "NY";
+  } else if (parts.length === 2) {
+    line1 = parts[0];
+    const m = parts[1].match(/^(.+?)\s+([A-Za-z]{2})$/);
+    if (m) {
+      city = m[1].trim();
+      state = m[2].toUpperCase();
+    } else {
+      city = parts[1];
+    }
+  }
+  return {
+    line_1: line1.slice(0, 200),
+    city: city.slice(0, 100),
+    state: state.slice(0, 2),
+    postal_code: zip.slice(0, 10),
+  };
+};
+
+const mapEasyshipRateRow = (r) => {
+  if (!r) return null;
+  const total = Number(r?.shipment_charge_total ?? r?.total_charge ?? 0);
+  const cs = r?.courier_service || {};
+  const handover = Array.isArray(r?.available_handover_options) ? r.available_handover_options : [];
+  return {
+    total,
+    courierName: cs?.name || r?.courier_name || r?.courier_service_name || "Easyship",
+    serviceName: r?.courier_service_name || cs?.umbrella_name || cs?.name || "",
+    easyshipRateId: r?.easyship_rate_id || "",
+    minDeliveryDays: r?.min_delivery_time != null ? Number(r.min_delivery_time) : null,
+    maxDeliveryDays: r?.max_delivery_time != null ? Number(r.max_delivery_time) : null,
+    description: String(r?.full_description || r?.description || "").trim(),
+    availableHandoverOptions: handover,
+    minimumPickupFee: Number(r?.minimum_pickup_fee || 0),
+    insuranceFee: Number(r?.insurance_fee || 0),
+  };
+};
+
+const handoverSummaryFromRate = (rate) => {
+  const opts = rate?.availableHandoverOptions || [];
+  const labeled = opts
+    .map((o) => {
+      if (o == null) return null;
+      if (typeof o === "string") return o;
+      return o.name || o.type || o.slug || o.handover_option || null;
+    })
+    .filter(Boolean);
+  if (labeled.length) return `Available options: ${labeled.join(", ")}.`;
+  if (Number(rate?.minimumPickupFee) > 0) {
+    return "Pickup may be available (carrier pickup fees can apply). Drop-off at authorized locations is usually available.";
+  }
+  return "Typical service: drop your package at an authorized carrier location, or schedule pickup through the carrier after you receive your label.";
+};
+
+const deliverySummaryFromRate = (rate, internalFallback) => {
+  if (internalFallback) {
+    return "Estimated 3–7 business days domestically (approximate; carrier may vary).";
+  }
+  const minD = rate?.minDeliveryDays;
+  const maxD = rate?.maxDeliveryDays;
+  if (minD != null && maxD != null && Number.isFinite(minD) && Number.isFinite(maxD)) {
+    return `Estimated ${minD}–${maxD} business days (carrier estimate).`;
+  }
+  if (maxD != null && Number.isFinite(maxD)) {
+    return `Estimated up to ${maxD} business days (carrier estimate).`;
+  }
+  return "See carrier service details after payment for tracking and delivery updates.";
+};
+
+const requestEasyshipRates = async (body) => {
+  const {
+    length,
+    width,
+    height,
+    weight,
+    originAddress,
+    originZip,
+    destinationAddress,
+    destinationZip,
+    destinationResidential,
+    addInsurance,
+    insuranceDeclaredValue,
+  } = body;
+
   if (!EASYSHIP_API_KEY) return null;
+
+  const origin = parseAddressForEasyship(originAddress, originZip);
+  const dest = parseAddressForEasyship(destinationAddress, destinationZip);
+
+  const declaredVal = Math.max(1, Number(insuranceDeclaredValue) || 50);
 
   const payload = {
     origin_address: {
-      line_1: String(originAddress || "Origin Address"),
-      city: "Origin",
-      state: "Origin",
-      postal_code: String(originZip || "10001"),
+      line_1: origin.line_1,
+      city: origin.city,
+      state: origin.state,
+      postal_code: origin.postal_code,
       country_alpha2: "US",
     },
     destination_address: {
-      line_1: String(destinationAddress || "Destination Address"),
-      city: "Destination",
-      state: "Destination",
-      postal_code: String(destinationZip || "10001"),
+      line_1: dest.line_1,
+      city: dest.city,
+      state: dest.state,
+      postal_code: dest.postal_code,
       country_alpha2: "US",
     },
+    set_as_residential: Boolean(destinationResidential),
     parcels: [
       {
         total_actual_weight: lbToKg(weight),
@@ -1753,12 +1806,20 @@ const requestEasyshipRates = async ({
             quantity: 1,
             actual_weight: lbToKg(weight),
             declared_currency: "USD",
-            declared_customs_value: 50,
+            declared_customs_value: declaredVal,
           },
         ],
       },
     ],
   };
+
+  if (addInsurance && declaredVal > 0) {
+    payload.insurance = {
+      is_insured: true,
+      insured_amount: declaredVal,
+      insured_currency: "USD",
+    };
+  }
 
   const url = `${getEasyshipBaseUrl()}/${EASYSHIP_API_VERSION}/rates`;
   const response = await fetch(url, {
@@ -1789,23 +1850,16 @@ const requestEasyshipRates = async ({
   const list = Array.isArray(parsed?.rates) ? parsed.rates : [];
   if (!list.length) return null;
 
-  const normalize = list
-    .map((r) => {
-      const total = Number(r?.shipment_charge_total || 0);
-      return {
-        total,
-        courierName: r?.courier_name || "Easyship",
-        serviceName: r?.courier_service_name || "",
-        easyshipRateId: r?.easyship_rate_id || "",
-      };
-    })
-    .filter((r) => Number.isFinite(r.total) && r.total > 0)
+  const mapped = list
+    .map((r) => mapEasyshipRateRow(r))
+    .filter((r) => r && Number.isFinite(r.total) && r.total > 0)
     .sort((a, b) => a.total - b.total);
 
-  return normalize[0] || null;
+  return mapped[0] || null;
 };
 
-const computeShippingQuote = ({ length, width, height, weight }) => {
+const computeShippingQuote = (input) => {
+  const { length, width, height, weight, destinationResidential, addInsurance, insuranceDeclaredValue } = input || {};
   const l = Number(length);
   const w = Number(width);
   const h = Number(height);
@@ -1814,16 +1868,22 @@ const computeShippingQuote = ({ length, width, height, weight }) => {
   if (!Number.isFinite(l) || !Number.isFinite(w) || !Number.isFinite(h) || !Number.isFinite(wt)) return 0;
   if (l <= 0 || w <= 0 || h <= 0 || wt <= 0) return 0;
 
-  // USPS-style dimensional weight approximation (inches -> lb)
-  const volume = l * w * h; // cubic inches
-  const dimWeight = volume / 166; // typical divisor
+  const volume = l * w * h;
+  const dimWeight = volume / 166;
   const billedWeight = Math.max(wt, dimWeight);
 
   const base = 5.0;
   const perLb = 1.35;
-  const quote = base + billedWeight * perLb;
+  let quote = base + billedWeight * perLb;
 
-  // USD with 2 decimals
+  if (destinationResidential) quote += 4;
+
+  if (addInsurance) {
+    const declared = Math.max(0, Number(insuranceDeclaredValue) || 0);
+    const ins = Math.max(2, Math.round(declared * 0.015 * 100) / 100);
+    quote += ins;
+  }
+
   return Math.max(5, Math.round(quote * 100) / 100);
 };
 
@@ -1839,88 +1899,23 @@ const parseCityStateFromAddress = (destinationAddress) => {
   return { city: "Destination", state: "Destination" };
 };
 
-const SHIPPING_BOX_PRESETS = [
-  { id: "mailer-small", name: "Small Mailer", length: 10, width: 8, height: 4, weight: 2 },
-  { id: "box-medium", name: "Medium Box", length: 14, width: 12, height: 8, weight: 5 },
-  { id: "box-large", name: "Large Box", length: 18, width: 14, height: 10, weight: 8 },
-  { id: "box-xl", name: "XL Box", length: 22, width: 16, height: 14, weight: 12 },
-];
-
-const getShippingOptions = async (req, res) => {
-  try {
-    const schema = Joi.object({
-      originZip: Joi.string().trim().required(),
-      destinationZip: Joi.string().trim().required(),
-      originAddress: Joi.string().trim().optional().allow(""),
-      destinationAddress: Joi.string().trim().optional().allow(""),
-    });
-
-    const { error, value } = schema.validate(req.body);
-    if (error) return res.status(400).json({ success: false, message: formatJoiErrors(error) });
-
-    const options = await Promise.all(
-      SHIPPING_BOX_PRESETS.map(async (preset) => {
-        const payload = {
-          ...value,
-          length: preset.length,
-          width: preset.width,
-          height: preset.height,
-          weight: preset.weight,
-        };
-
-        let easyshipRate = null;
-        try {
-          easyshipRate = await requestEasyshipRates(payload);
-        } catch (err) {
-          console.error(`Easyship option fallback (${preset.id}):`, err.message);
-        }
-
-        const quoteAmount = easyshipRate?.total || computeShippingQuote(payload);
-        return {
-          id: preset.id,
-          name: preset.name,
-          dimensions: {
-            length: preset.length,
-            width: preset.width,
-            height: preset.height,
-          },
-          weight: preset.weight,
-          quoteAmount,
-          currency: "USD",
-          carrier: easyshipRate?.courierName || "ZippyyyShips",
-          serviceName: easyshipRate?.serviceName || "",
-          easyshipRateId: easyshipRate?.easyshipRateId || "",
-          source: easyshipRate ? "easyship" : "internal",
-        };
-      })
-    );
-
-    return res.json({
-      success: true,
-      data: options.filter((o) => Number.isFinite(Number(o.quoteAmount)) && Number(o.quoteAmount) > 0),
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: err.message || "Failed to fetch shipping options",
-    });
-  }
-};
+const shippingFormSchema = Joi.object({
+  length: Joi.number().min(0.1).required(),
+  width: Joi.number().min(0.1).required(),
+  height: Joi.number().min(0.1).required(),
+  weight: Joi.number().min(0.1).required(),
+  destinationZip: Joi.string().trim().required(),
+  destinationAddress: Joi.string().trim().required(),
+  originZip: Joi.string().trim().optional().allow(""),
+  originAddress: Joi.string().trim().optional().allow(""),
+  destinationResidential: Joi.boolean().optional(),
+  addInsurance: Joi.boolean().optional(),
+  insuranceDeclaredValue: Joi.number().min(0).optional().allow(0),
+});
 
 const getShippingQuote = async (req, res) => {
   try {
-    const schema = Joi.object({
-      length: Joi.number().min(0.1).required(),
-      width: Joi.number().min(0.1).required(),
-      height: Joi.number().min(0.1).required(),
-      weight: Joi.number().min(0.1).required(),
-      destinationZip: Joi.string().trim().required(),
-      destinationAddress: Joi.string().trim().required(),
-      originZip: Joi.string().trim().optional().allow(""),
-      originAddress: Joi.string().trim().optional().allow(""),
-    });
-
-    const { error, value } = schema.validate(req.body);
+    const { error, value } = shippingFormSchema.validate(req.body);
     if (error) return res.status(400).json({ success: false, message: formatJoiErrors(error) });
 
     let easyshipRate = null;
@@ -1935,15 +1930,22 @@ const getShippingQuote = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid shipping inputs" });
     }
 
+    const internalOnly = !easyshipRate;
     return res.json({
       success: true,
       data: {
         quoteAmount,
         currency: "USD",
         carrier: easyshipRate?.courierName || "ZippyyyShips",
-        serviceName: easyshipRate?.serviceName || "",
+        serviceName: easyshipRate?.serviceName || "Standard (estimate)",
         easyshipRateId: easyshipRate?.easyshipRateId || "",
         source: easyshipRate ? "easyship" : "internal",
+        deliverySummary: deliverySummaryFromRate(easyshipRate, internalOnly),
+        handoverSummary: handoverSummaryFromRate(easyshipRate),
+        minDeliveryDays: easyshipRate?.minDeliveryDays ?? null,
+        maxDeliveryDays: easyshipRate?.maxDeliveryDays ?? null,
+        minimumPickupFee: easyshipRate?.minimumPickupFee ?? 0,
+        insuranceFee: easyshipRate?.insuranceFee ?? 0,
       },
     });
   } catch (err) {
@@ -1952,26 +1954,8 @@ const getShippingQuote = async (req, res) => {
 };
 
 const createShippingCheckout = async (req, res) => {
-  if (!stripe) {
-    return res.status(503).json({
-      success: false,
-      message: "Stripe is not configured on server",
-    });
-  }
-
   try {
-    const schema = Joi.object({
-      length: Joi.number().min(0.1).required(),
-      width: Joi.number().min(0.1).required(),
-      height: Joi.number().min(0.1).required(),
-      weight: Joi.number().min(0.1).required(),
-      destinationZip: Joi.string().trim().required(),
-      destinationAddress: Joi.string().trim().required(),
-      originZip: Joi.string().trim().optional().allow(""),
-      originAddress: Joi.string().trim().optional().allow(""),
-    });
-
-    const { error, value } = schema.validate(req.body);
+    const { error, value } = shippingFormSchema.validate(req.body);
     if (error) return res.status(400).json({ success: false, message: formatJoiErrors(error) });
 
     let easyshipRate = null;
@@ -2001,11 +1985,19 @@ const createShippingCheckout = async (req, res) => {
       city,
       state,
       pincode,
-      addressType: "Home",
+      addressType: value.destinationResidential ? "Home" : "Work",
       isDefault: false,
     });
 
     const trackingNumber = `TRK-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+
+    const shipMeta = {
+      res: Boolean(value.destinationResidential),
+      ins: Boolean(value.addInsurance),
+      insVal: Number(value.insuranceDeclaredValue) || 0,
+      src: easyshipRate ? "easyship" : "internal",
+    };
+    const notesStr = `ZippyyyShips | ${JSON.stringify(shipMeta)}`.slice(0, 1000);
 
     const order = await Orders.create({
       userId,
@@ -2018,7 +2010,7 @@ const createShippingCheckout = async (req, res) => {
       tipAmount: 0,
       serviceFee: 0,
       totalAmount: quoteAmount,
-      notes: "ZippyyyShips shipping order",
+      notes: notesStr,
       paymentStatus: "pending",
       paymentMethod: "stripe",
       status: "session",
@@ -2075,58 +2067,6 @@ const createShippingCheckout = async (req, res) => {
   }
 };
 
-const submitShippingBusinessInquiry = async (req, res) => {
-  try {
-    const schema = Joi.object({
-      name: Joi.string().trim().min(2).required(),
-      businessName: Joi.string().trim().min(2).required(),
-      email: Joi.string().trim().email().required(),
-      phone: Joi.string().trim().min(7).required(),
-      monthlyShipments: Joi.number().integer().min(1).required(),
-      message: Joi.string().trim().allow("").default(""),
-    });
-
-    const { error, value } = schema.validate(req.body);
-    if (error) return res.status(400).json({ success: false, message: formatJoiErrors(error) });
-
-    const to = process.env.EMAIL_USER || process.env.ADMIN_EMAIL;
-    if (!to) {
-      return res.status(500).json({
-        success: false,
-        message: "Business inquiry email is not configured",
-      });
-    }
-
-    const html = `
-      <div style="font-family:Arial,sans-serif;padding:16px;color:#0f172a">
-        <h2 style="margin:0 0 12px 0;color:#3090cf">New Bulk Shipping Inquiry</h2>
-        <p><strong>Name:</strong> ${value.name}</p>
-        <p><strong>Business:</strong> ${value.businessName}</p>
-        <p><strong>Email:</strong> ${value.email}</p>
-        <p><strong>Phone:</strong> ${value.phone}</p>
-        <p><strong>Monthly Shipments:</strong> ${value.monthlyShipments}</p>
-        <p><strong>Message:</strong> ${value.message || "N/A"}</p>
-      </div>
-    `;
-
-    await sendMail({
-      to,
-      subject: `Bulk Shipping Inquiry - ${value.businessName}`,
-      html,
-    });
-
-    return res.json({
-      success: true,
-      message: "Inquiry submitted successfully",
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: err.message || "Failed to submit inquiry",
-    });
-  }
-};
-
 
 router.get('/categories', categories);
 router.get('/products', getProducts);
@@ -2149,9 +2089,7 @@ router.post('/applyCoupon', validateCoupon);
 router.get('/getCategories', getCategories);
 router.get('/referral/discount', getReferralDiscount);
 router.get('/home-slider-settings', getHomeSliderSettings);
-router.post('/shipping/options', getShippingOptions);
 router.post('/shipping/quote', getShippingQuote);
 router.post('/shipping/checkout', createShippingCheckout);
-router.post('/shipping/business-inquiry', submitShippingBusinessInquiry);
 
 module.exports = router;

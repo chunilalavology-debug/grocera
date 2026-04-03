@@ -20,13 +20,15 @@ img {
 .home-hero__image-wrap {
     position: relative;
     width: 100%;
-    /* Keep hero inside viewport so it doesn't force an initial vertical scroll */
-    height: clamp(220px, calc(100vh - 140px), 520px);
+    max-height: 85vh;
+    min-height: 280px;
 }
 
 .home-hero__image {
     width: 100%;
     height: 100%;
+    min-height: 280px;
+    max-height: 85vh;
     object-fit: cover;
     object-position: center;
 }
@@ -117,30 +119,29 @@ img {
         width: 100%;
     }
     .home-hero__image-wrap {
+        min-height: 200px;
+        max-height: 50vh;
         width: 100%;
-        /* Let image define the hero height (no extra empty space) */
-        height: auto;
-        min-height: 0;
-        margin-bottom: 10px;
     }
     .home-hero__image {
+        min-height: 200px;
+        max-height: 50vh;
         width: 100%;
-        height: auto;
-        /* Show full banner image on mobile (no cropping) */
-        object-fit: contain;
-        object-position: center;
+        object-fit: cover;
+        /* Show left side of banner where text sits (avoids truncation on mobile) */
+        object-position: 28% center;
     }
 }
 
 @media (max-width: 480px) {
     .home-hero__image-wrap {
-        height: auto;
-        margin-bottom: 8px;
+        min-height: 180px;
+        max-height: 45vh;
     }
     .home-hero__image {
-        height: auto;
-        object-fit: contain;
-        object-position: center;
+        min-height: 180px;
+        max-height: 45vh;
+        object-position: 24% center;
     }
 }
 
@@ -519,12 +520,8 @@ img {
 /* ----- Home: prevent horizontal overflow on mobile ----- */
 .home-page-wrapper {
   overflow-x: hidden;
-  /* Important: prevent wrapper from becoming its own scroll container
-     (which causes the "double scrollbar" / scrollbar glitch). */
-  overflow-y: visible;
   width: 100%;
   min-width: 0;
-  max-height: none;
 }
 
 /* ----- Featured Categories (below hero) ----- */
@@ -560,18 +557,6 @@ img {
     -webkit-overflow-scrolling: touch;
     padding-left: 0;
     padding-right: 0;
-  }
-
-  /* Make left/right arrows smaller on mobile */
-  .featured-categories__nav {
-    width: 36px !important;
-    height: 36px !important;
-    min-width: 36px !important;
-    min-height: 36px !important;
-  }
-  .featured-categories__nav svg {
-    width: 16px !important;
-    height: 16px !important;
   }
 }
 

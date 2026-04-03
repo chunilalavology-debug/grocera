@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import api from "../../../services/api";
+import ScrollReveal from "../../../components/ScrollReveal";
 
 import slide1 from "../../../assets-copy/home/slide1.png";
 import slide3 from "../../../assets-copy/home/slide3.png";
@@ -109,10 +110,11 @@ const SliderRenderer = ({ config }) => {
       >
         {sliderSlides.map((item, i) => (
           <div key={i} className="px-3 sm:px-4 flex-shrink-0" style={{ width: `${100 / visibleSlides}%` }}>
-            <div
-              className="overflow-hidden rounded-3xl shadow-lg ring-1 ring-slate-100 flex flex-col md:flex-row min-h-[180px] md:h-[220px] lg:h-[260px]"
-              style={{ backgroundColor: item.cardBgColor || "#ffffff" }}
-            >
+            <ScrollReveal>
+              <div
+                className="overflow-hidden rounded-3xl shadow-lg ring-1 ring-slate-100 flex flex-col md:flex-row min-h-[180px] md:h-[220px] lg:h-[260px]"
+                style={{ backgroundColor: item.cardBgColor || "#ffffff" }}
+              >
               <div className="flex flex-1 flex-col justify-center p-5 md:p-6 lg:p-8 order-2 md:order-1">
                 <h3 className="font-bold text-base sm:text-lg lg:text-xl leading-tight mb-3 md:mb-4" style={{ color: item.textColor || "#1e293b" }}>
                   {item.title}
@@ -142,7 +144,8 @@ const SliderRenderer = ({ config }) => {
               <div className="flex-shrink-0 w-full md:w-2/5 lg:w-[45%] order-1 md:order-2 flex items-center justify-center overflow-hidden">
                 <img src={item.imageUrl || item.img} alt="" className="h-32 md:h-full w-full object-cover object-center md:max-h-[220px] lg:max-h-[260px]" />
               </div>
-            </div>
+              </div>
+            </ScrollReveal>
           </div>
         ))}
       </div>

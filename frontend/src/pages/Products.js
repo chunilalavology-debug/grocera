@@ -153,10 +153,11 @@ function Products() {
         params: {
           category: selectedCategory !== "All" ? selectedCategory : undefined,
           ...(selectedMain && selectedMain !== "all" && { main: selectedMain }),
-          ...(debouncedSearch
-            ? { search: debouncedSearch, page }
-            : { cursor: cursorToUse }),
+          ...(debouncedSearch && {
+            search: debouncedSearch
+          }),
           limit: perPage,
+          cursor: cursorToUse
         }
       });
 
@@ -171,18 +172,10 @@ function Products() {
       if (response.totalCount !== null && response.totalCount !== undefined) {
         setTotalData(response.totalCount);
       }
-      const hasMore = debouncedSearch
-        ? response.hasNextPage === true
-        : Boolean(response.nextCursor);
-      setNextCursorByPage((prev) => ({ ...prev, [page]: hasMore ? true : null }));
+      setNextCursorByPage((prev) => ({ ...prev, [page]: response.nextCursor || null }));
 
     } catch (error) {
       console.error("Error fetching products:", error);
-      toast.error(
-        error?.message === "Something went wrong"
-          ? "Cannot reach the product catalog. Check your connection or API URL."
-          : error?.message || "Failed to load products."
-      );
     } finally {
       setLoading(false);
     }

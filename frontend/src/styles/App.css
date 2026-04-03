@@ -29,6 +29,31 @@
   min-height: 0;
 }
 
+/* Full-viewport embed for packaged Zippyyy Ships (Vite) app */
+.main-content--ships {
+  min-height: 100vh;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.zippyyy-ships-embed {
+  flex: 1;
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background: #0f172a;
+}
+
+.zippyyy-ships-embed__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 100vh;
+  border: 0;
+  display: block;
+}
+
 .not-found {
   text-align: center;
   padding: 4rem 0;
@@ -675,15 +700,12 @@
 /* ----- Scroll-up animation (sections + product cards, all screen sizes) ----- */
 .scroll-reveal-mobile {
   opacity: 0;
-  /* Slide-up reveal without affecting layout (transform only). */
-  transform: translateY(18px);
+  transform: translateY(36px);
   transition: opacity 0.5s ease-out, transform 0.5s ease-out;
-  transition-delay: 0s;
   will-change: opacity, transform;
 }
 
 .scroll-reveal-mobile.scroll-reveal-in {
   opacity: 1;
   transform: translateY(0);
-  transition-delay: 0.15s;
 }

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { getApiBaseUrl } from "../config/apiBase";
 
 export default function ResetPassword() {
   const [params] = useSearchParams();
@@ -13,7 +12,7 @@ export default function ResetPassword() {
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const backendUrl = getApiBaseUrl();
+  const backendUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api'
 
   const handleSubmit = async (e) => {
     e.preventDefault();

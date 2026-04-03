@@ -1,6 +1,4 @@
 const winston = require("winston");
-const fs = require("fs");
-const path = require("path");
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
@@ -9,26 +7,6 @@ const logFormat = printf(({ level, message, timestamp, stack }) => {
     return `${timestamp} [${level}]: ${stack || message}`;
 });
 
-const isVercel = Boolean(process.env.VERCEL);
-const transports = [];
-
-if (!isVercel) {
-    const logsDir = path.join(process.cwd(), "logs");
-    if (!fs.existsSync(logsDir)) {
-        fs.mkdirSync(logsDir, { recursive: true });
-    }
-
-    transports.push(
-        new winston.transports.File({
-            filename: path.join(logsDir, "error.log"),
-            level: "error",
-        }),
-        new winston.transports.File({
-            filename: path.join(logsDir, "combined.log"),
-        })
-    );
-}
-
 const logger = winston.createLogger({
     level: "info",
     format: combine(
@@ -36,11 +14,22 @@ const logger = winston.createLogger({
         errors({ stack: true }),
         logFormat
     ),
-    transports,
+    transports: [
+        // 🔴 Error log file
+        new winston.transports.File({
+            filename: "logs/error.log",
+            level: "error",
+        }),
+
+        // 🧾 All logs
+        new winston.transports.File({
+            filename: "logs/combined.log",
+        }),
+    ],
 });
 
-// Keep console logs on Vercel and non-production environments.
-if (isVercel || process.env.NODE_ENV !== "production") {
+// 🌈 Console logs only in dev
+if (process.env.NODE_ENV !== "production") {
     logger.add(
         new winston.transports.Console({
             format: combine(colorize(), logFormat),

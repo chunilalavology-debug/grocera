@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Wraps content and adds a "scroll-in" class when the element enters the viewport.
- * Used for mobile-only vertical-up scroll animations (WordPress-style).
+ * Wraps a card/item and adds a scroll-in animation when it enters the viewport.
+ * Use on individual cards or slides — not full page sections — so transforms do not
+ * affect the hero or create extra scrollbars.
  */
 export default function ScrollReveal({ children, className = "", as: Tag = "div" }) {
   const ref = useRef(null);

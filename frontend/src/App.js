@@ -71,11 +71,21 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 function App() {
     const location = useLocation();
     const isAdminArea = location.pathname.startsWith('/admin') || location.pathname.startsWith('/co-admin');
+    const isShipsEmbed = location.pathname === '/zippyyy-ships';
+    const showSiteChrome = !isAdminArea && !isShipsEmbed;
 
     return (
         <div className="App">
-            {!isAdminArea && <Navbar />}
-            <main className={isAdminArea ? 'main-content main-content--admin' : 'main-content'}>
+            {showSiteChrome && <Navbar />}
+            <main
+                className={
+                    isAdminArea
+                        ? 'main-content main-content--admin'
+                        : isShipsEmbed
+                          ? 'main-content main-content--ships'
+                          : 'main-content'
+                }
+            >
                 <Suspense fallback={<Loader />}>
                     <Routes>
                         {/* Public Routes */}
@@ -148,11 +158,11 @@ function App() {
                     </Routes>
                 </Suspense>
             </main>
-            {!isAdminArea && <Footer />}
-            {!isAdminArea && <WishlistDrawer />}
-            {/* Frontend-only: do not show on admin / co-admin */}
-            {!isAdminArea && <ChatWidget />}
-            {!isAdminArea && <ProductSalePopup />}
+            {showSiteChrome && <Footer />}
+            {showSiteChrome && <WishlistDrawer />}
+            {/* Frontend-only: do not show on admin / co-admin / ships embed */}
+            {showSiteChrome && <ChatWidget />}
+            {showSiteChrome && <ProductSalePopup />}
             <Toaster
               position="top-right"
               reverseOrder={false}

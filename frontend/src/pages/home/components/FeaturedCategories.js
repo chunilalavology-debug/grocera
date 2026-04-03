@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MAIN_CATEGORIES, SUBCATEGORIES_BY_MAIN } from '../../../config/categories';
 import api from '../../../services/api';
-import { getApiBaseUrl, getApiOrigin } from '../../../config/apiBase';
+import ScrollReveal from '../../../components/ScrollReveal';
 
-const API_BASE = getApiBaseUrl();
-const IMAGE_ORIGIN = getApiOrigin() || (typeof window !== 'undefined' ? window.location.origin : '');
+const API_BASE = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+const IMAGE_ORIGIN = API_BASE.replace(/\/api\/?$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
 
 /** Stronger pastel backgrounds for card image area */
 const CARD_BG_COLORS = [
@@ -33,14 +33,6 @@ function getProductImageUrl(product) {
 /** Inline placeholder so it never 404s */
 const PLACEHOLDER_IMAGE = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="160" viewBox="0 0 200 160"%3E%3Crect fill="%23e2e8f0" width="200" height="160"/%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-size="14"%3ENo image%3C/text%3E%3C/svg%3E';
 
-// Some categories (like Pooja Items / God Idols) may be empty in the DB.
-// For the cards to never show "No image", we map them to a more populated category
-// for image lookup only (card title + link still use the original category).
-const CATEGORY_IMAGE_SUBSTITUTIONS = {
-  "Pooja Items": "Daily Essentials",
-  "God Idols": "Spices & Masalas",
-};
-
 export default function FeaturedCategories() {
   const mains = MAIN_CATEGORIES.filter((m) => m.id !== 'all');
   const [activeMain, setActiveMain] = useState(mains[0]?.id || 'indian');
@@ -57,9 +49,8 @@ export default function FeaturedCategories() {
       const results = await Promise.all(
         subcategories.map(async (sub) => {
           try {
-            const fetchCategory = CATEGORY_IMAGE_SUBSTITUTIONS[sub.value] || sub.value;
             const res = await api.get('/user/products', {
-              params: { category: fetchCategory, main: activeMain, limit: 1 },
+              params: { category: sub.value, main: activeMain, limit: 1 },
               signal: controller.signal,
             });
             const product = res?.data?.[0];
@@ -70,16 +61,11 @@ export default function FeaturedCategories() {
           }
         })
       );
-
-      // Fallback: if a category has no products (or products have no image),
-      // show any other valid image from the same main category.
-      const fallbackImage = results.find((r) => r.image)?.image || null;
-
       setSubcategoryImages((prev) => {
         const next = { ...prev };
         results.forEach(({ value, image }) => {
           const key = `${activeMain}:${value}`;
-          next[key] = image || fallbackImage;
+          if (image) next[key] = image;
         });
         return next;
       });
@@ -94,9 +80,9 @@ export default function FeaturedCategories() {
   };
 
   return (
-    <section className="featured-categories pt-0 pb-8 md:pt-4 md:pb-10 bg-slate-50/50">
+    <section className="featured-categories pt-10 pb-12 md:pt-14 md:pb-16 bg-slate-50/50">
       <div className="container">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <h2 className="featured-categories__title text-2xl md:text-3xl font-extrabold text-slate-900">
               Featured Categories
@@ -140,36 +126,37 @@ export default function FeaturedCategories() {
 
         <div
           ref={scrollRef}
-          className="featured-categories__scroll flex gap-4 overflow-x-auto pt-1 pb-3 mt-1 scroll-smooth"
+          className="featured-categories__scroll flex gap-4 overflow-x-auto pt-2 pb-4 mt-2 scroll-smooth"
         >
           {subcategories.map((sub, idx) => (
-            <Link
-              key={sub.value}
-              to={`/products?category=${encodeURIComponent(sub.value)}&main=${activeMain}`}
-              className="featured-categories__card flex-shrink-0 w-[180px] sm:w-[200px] bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-lg hover:border-[#3090cf]/30 transition-all duration-300 group"
-            >
-              <div
-                className={`h-32 sm:h-36 flex items-center justify-center overflow-hidden ${CARD_BG_COLORS[idx % CARD_BG_COLORS.length]}`}
+            <ScrollReveal key={`${activeMain}-${sub.value}`} className="flex-shrink-0">
+              <Link
+                to={`/products?category=${encodeURIComponent(sub.value)}&main=${activeMain}`}
+                className="featured-categories__card flex-shrink-0 block w-[180px] sm:w-[200px] bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-lg hover:border-[#3090cf]/30 transition-all duration-300 group"
               >
-                <img
-                  src={subcategoryImages[`${activeMain}:${sub.value}`] || PLACEHOLDER_IMAGE}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = PLACEHOLDER_IMAGE;
-                  }}
-                />
-              </div>
-              <div className="p-4 text-center">
-                <h3 className="featured-categories__card-title font-extrabold text-slate-900 text-base sm:text-[1.0625rem] leading-tight line-clamp-2 group-hover:text-[#3090cf] transition-colors">
-                  {sub.name}
-                </h3>
-                <span className="inline-block mt-2 text-sm font-bold text-slate-600">
-                  {typeof sub.count === 'number' ? `${sub.count} Items` : 'Browse'}
-                </span>
-              </div>
-            </Link>
+                <div
+                  className={`h-32 sm:h-36 flex items-center justify-center overflow-hidden ${CARD_BG_COLORS[idx % CARD_BG_COLORS.length]}`}
+                >
+                  <img
+                    src={subcategoryImages[`${activeMain}:${sub.value}`] || PLACEHOLDER_IMAGE}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = PLACEHOLDER_IMAGE;
+                    }}
+                  />
+                </div>
+                <div className="p-4 text-center">
+                  <h3 className="featured-categories__card-title font-extrabold text-slate-900 text-base sm:text-[1.0625rem] leading-tight line-clamp-2 group-hover:text-[#3090cf] transition-colors">
+                    {sub.name}
+                  </h3>
+                  <span className="inline-block mt-2 text-sm font-bold text-slate-600">
+                    {typeof sub.count === 'number' ? `${sub.count} Items` : 'Browse'}
+                  </span>
+                </div>
+              </Link>
+            </ScrollReveal>
           ))}
         </div>
       </div>

@@ -1,4 +1,4 @@
-require("dotenv").config({ override: true });
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const errorHandler = require("./utils/errorHandler");
@@ -15,27 +15,13 @@ const fs = require("fs");
 const shippingLabelsDir = path.join(uploadsDir, "labels");
 const { morganMiddleware } = require("./routes/middlewares/morgan");
 const Order = require("./db/models/Order");
-const { connectDB, getConnectionState, getDatabaseName } = require("./lib/db");
 const app = express();
 const server = http.createServer(app);
 const Stripe = require("stripe");
 const { default: sendMail } = require("./utils/sendEmail");
 const OrderConform = require("./utils/template/userOrderConform");
 const AdminNotification = require("./utils/template/AdminNotification");
-const createStripeClient = () => {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || typeof key !== "string" || key.trim().length === 0) {
-    console.error("STRIPE_SECRET_KEY is missing. Stripe features are disabled.");
-    return null;
-  }
-  try {
-    return new Stripe(key);
-  } catch (err) {
-    console.error("Invalid STRIPE_SECRET_KEY configuration:", err.message);
-    return null;
-  }
-};
-const stripe = createStripeClient();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const {
   PORT,
   API_END_POINT_V1,
@@ -44,84 +30,21 @@ const {
   CLOUDNARY_API_KEY,
   CLOUDNARY_API_SECRET,
 } = process.env;
-const API_BASE = (API_END_POINT_V1 && API_END_POINT_V1.trim()) || "/api";
-const SERVER_PORT = Number(PORT) || 5000;
 
 const corsOrigins = [];
-if (FRONTEND_URL) {
-  String(FRONTEND_URL)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .forEach((u) => corsOrigins.push(u));
-}
+if (FRONTEND_URL) corsOrigins.push(FRONTEND_URL);
 if (process.env.VERCEL_URL) corsOrigins.push(`https://${process.env.VERCEL_URL}`);
 corsOrigins.push("http://localhost:3000");
 corsOrigins.push("http://127.0.0.1:3000");
 
-const isNonProduction =
-  !process.env.NODE_ENV || process.env.NODE_ENV !== "production";
-
-/** Allow Create React App on any localhost port + LAN dev URLs */
-const devOriginOk = (origin) => {
-  try {
-    const u = new URL(origin);
-    const h = u.hostname;
-    if (h === "localhost" || h === "127.0.0.1" || h === "[::1]") return true;
-    if (/^192\.168\.\d+\.\d+$/.test(h)) return true;
-    if (/^10\.\d+\.\d+\.\d+$/.test(h)) return true;
-    if (/^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(h)) return true;
-  } catch {
-    return false;
-  }
-  return false;
-};
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (corsOrigins.includes(origin)) return callback(null, true);
-      if (isNonProduction && devOriginOk(origin)) return callback(null, true);
-      return callback(null, false);
-    },
-    credentials: true,
-  })
-);
-
-app.use(async (req, res, next) => {
-  const pathname = (req.originalUrl || req.url || "").split("?")[0];
-  if (!pathname.startsWith("/api")) return next();
-  try {
-    await connectDB();
-  } catch (err) {
-    console.error("MongoDB connect:", err.message);
-    return res.status(503).json({
-      success: false,
-      message: "Database unavailable. Please try again shortly.",
-    });
-  }
-  next();
-});
-
-app.get("/api/test", async (req, res) => {
-  try {
-    await connectDB();
-    return res.status(200).json({
-      success: true,
-      message: "Database connection OK",
-      readyState: getConnectionState(),
-      database: getDatabaseName(),
-    });
-  } catch (err) {
-    console.error("/api/test:", err);
-    return res.status(503).json({
-      success: false,
-      message: err.message || "Database connection failed",
-    });
-  }
-});
-
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (corsOrigins.includes(origin)) return callback(null, true);
+    return callback(null, false);
+  },
+  credentials: true,
+}));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(express.static("public"));
 // app.use(multer().any());
@@ -135,13 +58,6 @@ app.post(
   '/api/orders/webhook',
   express.raw({ type: 'application/json' }),
   async (req, res) => {
-    if (!stripe) {
-      return res.status(503).json({
-        success: false,
-        message: "Stripe is not configured on server",
-      });
-    }
-
     let event;
 
     try {
@@ -287,7 +203,7 @@ app.post(
 
 app.use(express.json({ limit: "10mb" }));
 for (const [route, controller] of Object.entries(controllers)) {
-  app.use(`${API_BASE}/${route}`, controller);
+  app.use(`${API_END_POINT_V1}/${route}`, controller);
 }
 
 cloudinary.config({
@@ -504,12 +420,6 @@ async function markPaidAndSendMail(orderId, session, webhookReq) {
 
 
 app.get('/verify-session/:id', async (req, res) => {
-  if (!stripe) {
-    return res.status(503).json({
-      success: false,
-      message: "Stripe is not configured on server",
-    });
-  }
 
   const session = await stripe.checkout.sessions.retrieve(req.params.id);
 
@@ -529,8 +439,8 @@ app.use(errorHandler);
 
 // Start Server
 if (!process.env.VERCEL) {
-  server.listen(SERVER_PORT, () => {
-    console.log(`Server is up and running on port ${SERVER_PORT}! 🚀`);
+  server.listen(PORT, () => {
+    console.log(`Server is up and running on port ${PORT}! 🚀`);
   });
 }
 

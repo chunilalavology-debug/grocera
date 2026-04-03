@@ -1,0 +1,4 @@
+name,category,description,image,unit,tags,quantity,cost,price,salePrice,inStock
+Test Product Discount 10%,Daily Essentials,10% discount test,,piece,"test,discount",10,60,100,90,yes
+Test Product No Discount,Fruits,No discount test,,piece,"test,discount",10,150,200,200,yes
+Test Product Discount 20%,Vegetables,20% discount test,,piece,"test,discount",10,90,150,120,yes

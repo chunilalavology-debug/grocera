@@ -8,4 +8,14 @@ node_modules/
 .env.local
 .env.*.local
 backend/.env
+frontend/.env.production
+
+# Firebase / GCP keys (never commit)
+backend/utils/serviceAccount.json
+**/serviceAccount.json
+
+# Local SQLite (runtime / dev)
+zippyyy-ships/**/server/data/*.sqlite
+zippyyy-ships/**/server/data/*.sqlite-shm
+zippyyy-ships/**/server/data/*.sqlite-wal
 

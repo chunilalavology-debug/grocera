@@ -3,7 +3,6 @@ import { useAuth } from '../../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import '../../styles/pages/admin/AdminUsers.css';
 import axios from 'axios';
-import { getApiBaseUrl } from '../../config/apiBase';
 
 export default function AdminUsers() {
     const { isAdmin, user: currentUser } = useAuth();
@@ -17,7 +16,7 @@ export default function AdminUsers() {
     const [openAction, setOpenAction] = useState(null);
 
 
-    const serverUrl = getApiBaseUrl();
+    const serverUrl = 'https://zippyyy.com/api'
 
     const handleEdit = (id) => {
         console.log("Edit user:", id);
@@ -43,7 +42,7 @@ export default function AdminUsers() {
                 role: filterRole
             });
 
-            const response = await fetch(`${serverUrl}/admin/users?${queryParams}`, {
+            const response = await fetch(`https://zippyyy.com/api/admin/users?${queryParams}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -84,7 +83,7 @@ export default function AdminUsers() {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`${getApiBaseUrl()}/admin/users/${userId}/role`, {
+            const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://zippyyy.com/api'}/admin/users/${userId}/role`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${token}`,
