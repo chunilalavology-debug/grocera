@@ -489,11 +489,29 @@ async function markPaidAndSendMail(orderId, session, webhookReq) {
 
 app.use(errorHandler);
 
-// Start Server
-if (!process.env.VERCEL) {
-  server.listen(PORT, () => {
-    console.log(`Server is up and running on port ${PORT}! 🚀`);
-  });
+/**
+ * Only bind HTTP when this file is the entrypoint (`node app.js`).
+ * Vercel loads `app` via `api/index.js` — there `require.main` is not this module, so we must not listen.
+ * Do not gate on `process.env.VERCEL` alone: some dev shells set VERCEL=1 and would skip listen incorrectly.
+ */
+if (require.main === module) {
+  server
+    .listen(PORT, () => {
+      console.log(`Server is up and running on port ${PORT}! 🚀`);
+      console.log(`Health check: http://localhost:${PORT}${API_END_POINT_V1}/health`);
+    })
+    .on("error", (err) => {
+      console.error("Could not start the HTTP server:", err.message);
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `Port ${PORT} is already in use. On Windows, 5000 is often taken by "Air Play Receiver" or another app.`
+        );
+        console.error(
+          `Fix: set PORT=5001 in backend/.env, then set REACT_APP_API_URL=http://localhost:5001/api in frontend/.env.development (or .env.local), restart both.`
+        );
+      }
+      process.exit(1);
+    });
 }
 
 module.exports = app;
