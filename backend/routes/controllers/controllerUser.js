@@ -160,7 +160,12 @@ const getProducts = async (req, res) => {
     const cacheKey = `products:${category}:v1`;
 
     if (isFirstPage) {
-      const cachedData = await getKey(cacheKey);
+      const cachedData = await Promise.race([
+        getKey(cacheKey),
+        new Promise((resolve) =>
+          setTimeout(() => resolve({ data: null }), 500)
+        ),
+      ]);
       if (cachedData.data) {
         try {
           const parsed = JSON.parse(cachedData.data);
