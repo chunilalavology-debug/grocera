@@ -16,12 +16,25 @@ if (!JWT_SECRET_KEY) {
   process.exit(1);
 }
 
+function pathnameForJwt(req) {
+  let pathname = String(req.originalUrl || req.url || "").split("?")[0];
+  const base = A.endsWith("/") ? A.slice(0, -1) : A;
+  if (
+    pathname &&
+    !pathname.startsWith("/api") &&
+    /^\/(user|auth)\b/.test(pathname)
+  ) {
+    pathname = `${base}${pathname}`;
+  }
+  return pathname;
+}
+
 /**
  * Paths that never require a Bearer token.
  * Use exact pathname (no query string). Keep in sync with storefront + auth flows.
  */
 function isPublicJwtPath(req) {
-  const pathname = String(req.originalUrl || req.url || "").split("?")[0];
+  const pathname = pathnameForJwt(req);
   const m = req.method.toUpperCase();
 
   if (pathname === `${A}/health`) return true;

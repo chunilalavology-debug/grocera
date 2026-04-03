@@ -6,8 +6,8 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/upload/(.*)", "destination": "/api/index" },
-    { "source": "/uploads/(.*)", "destination": "/api/index" }
+    { "source": "/api/(.*)", "destination": "/api/index?__vercel_path=$1" },
+    { "source": "/upload/(.*)", "destination": "/api/index?__vercel_path=upload/$1" },
+    { "source": "/uploads/(.*)", "destination": "/api/index?__vercel_path=uploads/$1" }
   ]
 }
