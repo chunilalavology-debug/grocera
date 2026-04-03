@@ -1,5 +1,8 @@
-﻿# Dependencies
+# Dependencies
 node_modules
 node_modules/
 */node_modules/
+
+# Create React App production output (also ignored at repo root)
+build/
 

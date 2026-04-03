@@ -60,8 +60,10 @@ Deploy **two Vercel projects** from this repo:
 ### B) Frontend (Web)
 - **Critical — Root Directory:** In the Vercel project, open **Settings → General → Root Directory** and set it to **`frontend`**. If this is empty or `.`, Vercel builds the repo root (where there is no CRA `package.json`), so builds fail or deployments look “stuck” on an old version.
 - Framework: Create React App (or “Other” with build output `build`).
-- **Build command:** `npm run build` (default when root is `frontend`).
+- **Build command:** `npm run build` (uses `cross-env CI=false` so ESLint warnings do not fail the build on Vercel).
 - **Output directory:** `build`.
+- **Node.js:** `package.json` has `"engines": { "node": "24.x" }` — matches Vercel’s current default.
+- Do **not** commit `frontend/build/`; it is gitignored. Vercel always builds from source on deploy.
 - Environment variables:
   - Set `REACT_APP_API_URL` to:
     - `https://{BACKEND_VERCEL_DOMAIN}/api`
