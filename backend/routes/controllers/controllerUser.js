@@ -158,8 +158,12 @@ const getProducts = async (req, res) => {
 
     const isFirstPage = !cursor && !search && !minPrice && !maxPrice;
     const cacheKey = `products:${category}:v1`;
+    /** Without REDIS_URL, node-redis targets localhost:6379; getKey() can block for a long time if Redis is not running. */
+    const useRedisCatalogCache = Boolean(
+      process.env.REDIS_URL && String(process.env.REDIS_URL).trim()
+    );
 
-    if (isFirstPage) {
+    if (isFirstPage && useRedisCatalogCache) {
       const cachedData = await Promise.race([
         getKey(cacheKey),
         new Promise((resolve) =>
@@ -224,7 +228,11 @@ const getProducts = async (req, res) => {
       hasNextPage: products.length === limitNum,
     };
 
-    if (isFirstPage && normalizedProducts.length > 0) {
+    if (
+      isFirstPage &&
+      useRedisCatalogCache &&
+      normalizedProducts.length > 0
+    ) {
       await setKeyWithTime(cacheKey, JSON.stringify(response), 1);
     }
 
