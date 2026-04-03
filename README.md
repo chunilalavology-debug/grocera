@@ -58,10 +58,22 @@ Deploy **two Vercel projects** from this repo:
   - `STRIPE_WEBHOOK_SECRET`
 
 ### B) Frontend (Web)
-- Project root: `frontend/`
+- **Critical — Root Directory:** In the Vercel project, open **Settings → General → Root Directory** and set it to **`frontend`**. If this is empty or `.`, Vercel builds the repo root (where there is no CRA `package.json`), so builds fail or deployments look “stuck” on an old version.
+- Framework: Create React App (or “Other” with build output `build`).
+- **Build command:** `npm run build` (default when root is `frontend`).
+- **Output directory:** `build`.
 - Environment variables:
   - Set `REACT_APP_API_URL` to:
     - `https://{BACKEND_VERCEL_DOMAIN}/api`
+
+### Vercel troubleshooting (changes on GitHub but site not updating)
+
+1. **Wrong root directory** — Most common. Frontend project must use Root Directory = `frontend`. Backend project must use `backend`. Redeploy after saving.
+2. **Wrong Git repo or branch** — **Settings → Git** → confirm the connected repository is `chunilalavology-debug/grocera` (or your fork) and **Production Branch** is `main` (if you deploy from `main`).
+3. **Failed deployment** — **Deployments** tab → open the latest deploy → read **Build Logs**. Fix any red errors (missing env, install failure, etc.).
+4. **PR / preview deploys** — Pushing a **branch** or opening a **PR** creates a **Preview** URL, not production. Check the preview link on the deployment, or merge to `main` to update production.
+5. **Ignored Build Step** — **Settings → Git → Ignored Build Step**. If a custom script always skips the build, new commits will not deploy. Disable or fix the script.
+6. **Browser cache** — Hard refresh (Ctrl+Shift+R) or try an incognito window after a successful deploy.
 
 ---
 
