@@ -161,7 +161,10 @@ function Products() {
         }
       });
 
-      if (!response?.success) return;
+      if (!response?.success) {
+        toast.error(response?.message || "Could not load products");
+        return;
+      }
 
       const productsArrayRaw = response.data || [];
       const productsArray = Array.isArray(productsArrayRaw) ? productsArrayRaw.slice(0, perPage) : [];
@@ -176,6 +179,10 @@ function Products() {
 
     } catch (error) {
       console.error("Error fetching products:", error);
+      toast.error(
+        error?.message ||
+          "Cannot reach the API. Is the backend running on port 5000?"
+      );
     } finally {
       setLoading(false);
     }

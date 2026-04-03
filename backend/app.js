@@ -33,9 +33,10 @@ const { default: sendMail } = require("./utils/sendEmail");
 const OrderConform = require("./utils/template/userOrderConform");
 const AdminNotification = require("./utils/template/AdminNotification");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const PORT = process.env.PORT || 5000;
+const API_END_POINT_V1 =
+  String(process.env.API_END_POINT_V1 || "/api").replace(/\/+$/, "") || "/api";
 const {
-  PORT,
-  API_END_POINT_V1,
   FRONTEND_URL,
   CLOUDNARY_CLOUD_NAME,
   CLOUDNARY_API_KEY,
@@ -61,10 +62,27 @@ if (process.env.VERCEL_URL) addCors(`https://${process.env.VERCEL_URL}`);
 addCors("http://localhost:3000");
 addCors("http://127.0.0.1:3000");
 
+function isPrivateLanOrigin(origin) {
+  try {
+    const { hostname, protocol } = new URL(origin);
+    if (protocol !== "http:" && protocol !== "https:") return false;
+    if (hostname === "localhost" || hostname === "127.0.0.1") return true;
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+    if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  } catch (_) {
+    return false;
+  }
+  return false;
+}
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     if (corsOrigins.includes(origin)) return callback(null, true);
+    if (process.env.NODE_ENV !== "production" && isPrivateLanOrigin(origin)) {
+      return callback(null, true);
+    }
     return callback(null, false);
   },
   credentials: true,
@@ -72,6 +90,21 @@ app.use(cors({
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(express.static("public"));
 // app.use(multer().any());
+
+const mongoose = require("mongoose");
+app.get(`${API_END_POINT_V1}/health`, (_req, res) => {
+  const rs = mongoose.connection.readyState;
+  const labels = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
+  const mongoOk = rs === 1;
+  res.status(mongoOk ? 200 : 503).json({
+    ok: mongoOk,
+    mongo: labels[rs] ?? rs,
+    apiBase: API_END_POINT_V1,
+    hint: mongoOk
+      ? undefined
+      : "Set DB_STRING in backend/.env and ensure MongoDB is reachable (local service or Atlas).",
+  });
+});
 
 app.use(jwt());
 app.use("/upload", express.static(dir));

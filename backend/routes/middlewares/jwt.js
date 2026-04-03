@@ -1,7 +1,11 @@
 const { expressjwt: jwt } = require("express-jwt");
 const { apiErrorRes } = require("../../utils/globalFunction");
 const { INVALID_TOKEN, DATA_NULL } = require("../../utils/constants");
-const { JWT_SECRET_KEY, API_END_POINT_V1 } = process.env;
+const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY;
+const API_END_POINT_V1 = String(process.env.API_END_POINT_V1 || "/api").replace(
+  /\/+$/,
+  ""
+) || "/api";
 
 const endpoints = [
   'auth/login',

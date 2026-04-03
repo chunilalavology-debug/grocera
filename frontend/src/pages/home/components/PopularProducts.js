@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../../../context/CartContext';
 import { useWishlist } from '../../../context/WishlistContext';
-import api from '../../../services/api';
+import api, { getApiBaseUrl } from '../../../services/api';
 import toast from 'react-hot-toast';
 import { Heart, ShoppingCart } from 'lucide-react';
 import ScrollReveal from '../../../components/ScrollReveal';
@@ -26,6 +26,11 @@ function PopularProducts() {
         const list = res?.data || res?.products || [];
         setProducts(Array.isArray(list) ? list.slice(0, 10) : []);
       } catch (err) {
+        console.error('PopularProducts API error:', err, 'base:', getApiBaseUrl());
+        toast.error(
+          err?.message ||
+            'Cannot load products. Check backend is running and MongoDB is connected.'
+        );
         setProducts([]);
       } finally {
         setLoading(false);

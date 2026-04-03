@@ -101,6 +101,18 @@ const applyVoucher = async ({
 
 const getProducts = async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message:
+          "Database not connected. Start MongoDB or fix DB_STRING in backend/.env, then restart the API.",
+        data: [],
+        totalCount: 0,
+        nextCursor: null,
+        hasNextPage: false,
+      });
+    }
+
     const {
       category = "All",
       search,
@@ -148,10 +160,19 @@ const getProducts = async (req, res) => {
     const cacheKey = `products:${category}:v1`;
 
     if (isFirstPage) {
-      console.log("chase recived ")
       const cachedData = await getKey(cacheKey);
       if (cachedData.data) {
-        return res.json(JSON.parse(cachedData.data));
+        try {
+          const parsed = JSON.parse(cachedData.data);
+          const list = parsed?.data;
+          if (Array.isArray(list) && list.length === 0) {
+            /* skip stale empty cache (e.g. DB was seeded after cache) */
+          } else {
+            return res.json(parsed);
+          }
+        } catch (_) {
+          /* ignore bad cache */
+        }
       }
     }
 
@@ -198,7 +219,7 @@ const getProducts = async (req, res) => {
       hasNextPage: products.length === limitNum,
     };
 
-    if (isFirstPage) {
+    if (isFirstPage && normalizedProducts.length > 0) {
       await setKeyWithTime(cacheKey, JSON.stringify(response), 1);
     }
 
