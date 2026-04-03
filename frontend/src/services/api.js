@@ -24,7 +24,19 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    const data = response.data;
+    const code = data && (data.code ?? data.Code);
+    if (data && data.error === true && Number(code) === 3) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("demoUser");
+      return Promise.reject({
+        status: 401,
+        message: data.message || "Authentication required",
+      });
+    }
+    return data;
+  },
   (error) => {
     const status = error?.response?.status;
 

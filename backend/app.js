@@ -106,6 +106,18 @@ app.get(`${API_END_POINT_V1}/health`, (_req, res) => {
   });
 });
 
+/** Stripe / checkout: must stay before JWT (path is not under /api). */
+app.get("/verify-session/:id", async (req, res) => {
+  const session = await stripe.checkout.sessions.retrieve(req.params.id);
+  const order = await Order.findOne({
+    stripeSessionId: session.id,
+  });
+  res.json({
+    paid: session.payment_status === "paid",
+    orderNumber: order?.orderNumber,
+  });
+});
+
 app.use(jwt());
 app.use("/upload", express.static(dir));
 app.use("/uploads", express.static(uploadsDir));
@@ -474,23 +486,6 @@ async function markPaidAndSendMail(orderId, session, webhookReq) {
     await Order.findByIdAndUpdate(order._id, { emailSent: true });
   }
 }
-
-
-app.get('/verify-session/:id', async (req, res) => {
-
-  const session = await stripe.checkout.sessions.retrieve(req.params.id);
-
-  const order = await Order.findOne({
-    stripeSessionId: session.id
-  });
-
-  res.json({
-    paid: session.payment_status === 'paid',
-    orderNumber: order?.orderNumber
-  });
-
-});
-
 
 app.use(errorHandler);
 
