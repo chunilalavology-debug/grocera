@@ -8,6 +8,8 @@ const API_END_POINT_V1 = String(process.env.API_END_POINT_V1 || "/api").replace(
 ) || "/api";
 
 const endpoints = [
+  'health',
+
   'auth/login',
   'auth/register',
   'auth/forgetPasswordSendMail',
@@ -31,6 +33,13 @@ const pathFreeArray = endpoints.map(
   (endpoint) => `${API_END_POINT_V1}/${endpoint}`
 );
 
+function isPublicJwtPath(req) {
+  const pathname = String(req.originalUrl || req.url || "").split("?")[0];
+  return pathFreeArray.some(
+    (free) => pathname === free || pathname.startsWith(`${free}/`)
+  );
+}
+
 module.exports = () => {
   return (req, res, next) => {
     jwt({
@@ -39,7 +48,7 @@ module.exports = () => {
       credentialsRequired: true,
       requestProperty: "user",
     }).unless({
-      path: pathFreeArray,
+      custom: isPublicJwtPath,
     })(req, res, (err) => {
       let obj = {
         path: req.url,
