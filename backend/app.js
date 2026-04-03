@@ -497,7 +497,7 @@ app.use(errorHandler);
 if (require.main === module) {
   server
     .listen(PORT, () => {
-      console.log(`Server is up and running on port ${PORT}! 🚀`);
+      console.log(`Server is up and running on port ${PORT}.`);
       console.log(`Health check: http://localhost:${PORT}${API_END_POINT_V1}/health`);
     })
     .on("error", (err) => {
