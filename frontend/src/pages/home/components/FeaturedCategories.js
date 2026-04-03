@@ -2,11 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MAIN_CATEGORIES, SUBCATEGORIES_BY_MAIN } from '../../../config/categories';
+import { getApiBaseUrl } from '../../../config/apiBase';
 import api from '../../../services/api';
 import ScrollReveal from '../../../components/ScrollReveal';
-
-const API_BASE = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
-const IMAGE_ORIGIN = API_BASE.replace(/\/api\/?$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
 
 /** Stronger pastel backgrounds for card image area */
 const CARD_BG_COLORS = [
@@ -23,10 +21,13 @@ const CARD_BG_COLORS = [
 /** Resolve product image: support image, images[0], and relative paths */
 function getProductImageUrl(product) {
   if (!product) return null;
+  const imageOrigin =
+    getApiBaseUrl().replace(/\/api\/?$/, '') ||
+    (typeof window !== 'undefined' ? window.location.origin : '');
   const raw = product.image || (Array.isArray(product.images) && product.images[0]) || product.imageUrl || null;
   if (!raw || typeof raw !== 'string') return null;
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-  if (raw.startsWith('/')) return IMAGE_ORIGIN + raw;
+  if (raw.startsWith('/')) return imageOrigin + raw;
   return raw;
 }
 

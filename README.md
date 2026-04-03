@@ -68,9 +68,10 @@ Deploy **two Vercel projects** from this repo:
 - **Output directory:** `build`.
 - **Node.js:** `package.json` has `"engines": { "node": "24.x" }` — matches Vercel’s current default.
 - Do **not** commit `frontend/build/`; it is gitignored. Vercel always builds from source on deploy.
-- Environment variables:
-  - Set `REACT_APP_API_URL` to:
-    - `https://{BACKEND_VERCEL_DOMAIN}/api`
+- Environment variables (**required for products / API**):
+  - **`REACT_APP_API_URL`** = `https://{YOUR_BACKEND}.vercel.app/api` (no trailing slash after `api`). This is baked in at **build** time — redeploy the frontend after changing it.
+  - Optional: **`REACT_APP_API_FALLBACK_URL`** — same value if you rely on the split-deploy default in `src/config/apiBase.js` when the main env was not set at build.
+  - Without a correct API URL, the app used to call `https://<frontend>/api`, which does not exist on a static Vercel deploy — products will not load.
 
 ### Vercel troubleshooting (changes on GitHub but site not updating)
 

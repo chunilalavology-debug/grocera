@@ -9,6 +9,12 @@
 
 const LEGACY_API_FALLBACK = "https://zippyyy.com/api";
 
+/**
+ * Default backend when frontend is on *.vercel.app but API is a separate Vercel project
+ * (same-origin /api would hit the static app — no API). Override via REACT_APP_API_URL or REACT_APP_API_FALLBACK_URL.
+ */
+const DEFAULT_SPLIT_BACKEND_API = "https://grocera-k45u.vercel.app/api";
+
 /** Frontend hostname → full API base URL including /api */
 const VERCEL_HOST_API_MAP = {
   "grocera-osi8.vercel.app": "https://grocera-k45u.vercel.app/api",
@@ -25,6 +31,19 @@ function isPrivateLanHost(host) {
     /^10\.\d+\.\d+\.\d+$/.test(host) ||
     /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(host)
   );
+}
+
+function isVercelFrontendHost(host) {
+  if (!host) return false;
+  return host.endsWith(".vercel.app") || host.endsWith(".vercel.dev");
+}
+
+function getSplitDeployFallbackApi() {
+  const fromEnv = process.env.REACT_APP_API_FALLBACK_URL;
+  if (fromEnv && String(fromEnv).trim()) {
+    return stripTrailingSlashes(String(fromEnv).trim());
+  }
+  return stripTrailingSlashes(DEFAULT_SPLIT_BACKEND_API);
 }
 
 /**
@@ -58,6 +77,14 @@ export function getApiBaseUrl() {
 
     if (isDev) {
       return "http://localhost:5000/api";
+    }
+
+    /**
+     * Production: CRA on Vercel does not serve /api — calling same-origin breaks products.
+     * Use mapped backend, env fallback, or default split-deploy URL.
+     */
+    if (isVercelFrontendHost(host)) {
+      return getSplitDeployFallbackApi();
     }
 
     return `${stripTrailingSlashes(window.location.origin)}/api`;
