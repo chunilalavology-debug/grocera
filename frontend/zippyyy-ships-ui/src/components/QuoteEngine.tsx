@@ -88,6 +88,9 @@ function formatQuotesFetchError(err: unknown): string {
   if (code === "EASYSHIP_NOT_CONFIGURED") {
     return "Easyship is not enabled on the shipping API server. Add EASYSHIP_API_KEY to the Node project that serves /api/quotes (not only the storefront Vercel app), save for Production, redeploy, then try again.";
   }
+  if (code === "EASYSHIP_SUBSCRIPTION_INACTIVE" || raw.includes("subscription_inactive")) {
+    return "Easyship account billing/subscription is not active, so live rates are blocked. Log in to Easyship → Billing and activate your plan; prices will load once Easyship returns 200 from the Rates API.";
+  }
   if (code === "SHIPS_API_NOT_CONFIGURED") {
     return "Storefront is not pointed at the shipping API. On the site Vercel project, set SHIPS_API_BASE to your ships server URL (same place you set EASYSHIP_API_KEY), then redeploy.";
   }

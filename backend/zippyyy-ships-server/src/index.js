@@ -169,12 +169,24 @@ app.post("/api/quotes", async (req, res) => {
       quoteInflight.delete(cacheKey);
     }
   } catch (e) {
-    res.status(502).json({
-      error: "EASYSHIP_RATES_FAILED",
-      message: e.message,
-      upstreamStatus: e.status ?? null,
+    const status = e.status ?? null;
+    const details = e.details;
+    const subscriptionInactive =
+      status === 403 &&
+      details &&
+      (details.code === "subscription_inactive" ||
+        String(details.type || "").includes("subscription"));
+    const message = subscriptionInactive
+      ? "Easyship subscription is not active. Update billing in the Easyship dashboard so the Rates API is enabled; then redeploy is not required."
+      : e.message || "Rates request failed";
+    res.status(subscriptionInactive ? 403 : 502).json({
+      error: subscriptionInactive
+        ? "EASYSHIP_SUBSCRIPTION_INACTIVE"
+        : "EASYSHIP_RATES_FAILED",
+      message,
+      upstreamStatus: status,
       upstreamUrl: e.url ?? null,
-      details: e.details ?? null,
+      details: details ?? null,
     });
   }
 });
