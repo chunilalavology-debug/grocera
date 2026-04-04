@@ -9,6 +9,14 @@ import crypto from "crypto";
 
 const app = express();
 
+function shipsCheckoutUrl(pathAndQuery) {
+  const origin = env.APP_URL.replace(/\/$/, "");
+  const seg = env.ZIPPYYY_UI_BASE_PATH.trim();
+  const prefix = seg ? `/${seg}` : "";
+  const rest = pathAndQuery.startsWith("/") ? pathAndQuery : `/${pathAndQuery}`;
+  return `${origin}${prefix}${rest}`;
+}
+
 const easyship = env.EASYSHIP_API_KEY ? createEasyshipClient({ apiKey: env.EASYSHIP_API_KEY }) : null;
 const stripe = env.STRIPE_SECRET_KEY ? createStripe({ secretKey: env.STRIPE_SECRET_KEY }) : null;
 
@@ -229,8 +237,8 @@ app.post("/api/checkout/session", async (req, res) => {
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    success_url: `${env.APP_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${env.APP_URL}/checkout/cancel`,
+    success_url: shipsCheckoutUrl("/checkout/success?session_id={CHECKOUT_SESSION_ID}"),
+    cancel_url: shipsCheckoutUrl("/checkout/cancel"),
     line_items: [
       {
         quantity: 1,

@@ -29,6 +29,15 @@ const EnvSchema = z.object({
   ZIPPYYY_FEE_CENTS: z.coerce.number().int().min(0).default(0),
   /** Multiplier on Easyship total for “list price” line / Save % (must be > markup for a positive savings label). */
   ZIPPYYY_LIST_PRICE_MULTIPLIER: z.coerce.number().min(1.01).default(2),
+  /**
+   * Where the Vite ships UI is mounted under APP_URL (no slashes), e.g. zippyyy-ships-app.
+   * Set empty to use /checkout/success at site root (standalone ships UI).
+   */
+  ZIPPYYY_UI_BASE_PATH: z.preprocess((v) => {
+    if (v === undefined || v === null) return "zippyyy-ships-app";
+    const s = String(v).trim().replace(/^\/+|\/+$/g, "");
+    return s;
+  }, z.string()),
 });
 
 export const env = EnvSchema.parse(process.env);

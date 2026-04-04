@@ -34,6 +34,8 @@ export default function Checkout() {
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [showNewAddressForm, setShowNewAddressForm] = useState(false);
   const [addressError, setAddressError] = useState("");
+  /** Per-field messages for the add-address modal */
+  const [addressFieldErrors, setAddressFieldErrors] = useState({});
 
   // Checkout function ke andar top par:
   const [coupon, setCoupon] = useState('');
@@ -45,6 +47,12 @@ export default function Checkout() {
   const [isLoadingVouchers, setIsLoadingVouchers] = useState(false);
 
   const GUEST_ADDRESS_ID = "guest";
+  /** Labels shown in UI; values must match backend / Address model: Home | Work | Other */
+  const ADDRESS_TYPE_OPTIONS = [
+    { label: "Home", value: "Home" },
+    { label: "Office", value: "Work" },
+    { label: "Other", value: "Other" },
+  ];
   const [newAddress, setNewAddress] = useState({
     name: "",
     phone: "",
@@ -54,6 +62,20 @@ export default function Checkout() {
     pincode: "",
     addressType: "Home",
   });
+
+  const updateNewAddress = (patch) => {
+    setNewAddress((prev) => ({ ...prev, ...patch }));
+    const keys = Object.keys(patch);
+    if (keys.length) {
+      setAddressFieldErrors((fe) => {
+        const next = { ...fe };
+        keys.forEach((k) => {
+          delete next[k];
+        });
+        return next;
+      });
+    }
+  };
 
   const [cardDetails, setCardDetails] = useState({
     number: '',
@@ -247,22 +269,50 @@ export default function Checkout() {
       }
     } catch (err) {
       console.error(err);
-      toast.error(err.message || "Something went wrong");
+      const msg =
+        (typeof err?.message === "string" && err.message.trim() ? err.message : null) ||
+        err?.response?.data?.message ||
+        (typeof err?.response?.data?.error === "string" ? err.response.data.error : null) ||
+        "Something went wrong";
+      toast.error(msg);
     } finally {
       setIsInitializing(false);
     }
   };
 
+  const validateNewAddressFields = () => {
+    const errors = {};
+    const name = String(newAddress.name ?? "").trim();
+    const phone = String(newAddress.phone ?? "").trim();
+    const fullAddress = String(newAddress.fullAddress ?? "").trim();
+    const city = String(newAddress.city ?? "").trim();
+    const pincode = String(newAddress.pincode ?? "").trim();
+    const digitsInPhone = phone.replace(/\D/g, "");
+
+    if (!name) errors.name = "Receiver's name is required.";
+    if (!phone) errors.phone = "Phone number is required.";
+    else if (digitsInPhone.length < 10)
+      errors.phone = "Enter a valid phone number (at least 10 digits).";
+    if (!fullAddress) errors.fullAddress = "Street address is required.";
+    if (!city) errors.city = "City is required.";
+    if (!pincode) errors.pincode = "ZIP / postal code is required.";
+    else if (!/^[A-Za-z0-9][A-Za-z0-9\s\-]{2,}$/.test(pincode))
+      errors.pincode = "ZIP / postal code looks invalid.";
+
+    const allowedTypes = ADDRESS_TYPE_OPTIONS.map((o) => o.value);
+    if (!allowedTypes.includes(newAddress.addressType)) {
+      errors.addressType = "Pick a valid address type (Home, Office, or Other).";
+    }
+
+    return errors;
+  };
+
   const handleAddAddress = async () => {
     setAddressError("");
-    if (
-      !newAddress.name ||
-      !newAddress.phone ||
-      !newAddress.fullAddress ||
-      !newAddress.city ||
-      !newAddress.pincode
-    ) {
-      setAddressError("All fields are required.");
+    const fieldErrs = validateNewAddressFields();
+    setAddressFieldErrors(fieldErrs);
+    if (Object.keys(fieldErrs).length > 0) {
+      setAddressError("Please fix the fields highlighted below.");
       return;
     }
 
@@ -291,6 +341,7 @@ export default function Checkout() {
         pincode: "",
         addressType: "Home",
       });
+      setAddressFieldErrors({});
       setShowNewAddressForm(false);
       toast.success("Address added. You can place your order.");
       return;
@@ -328,13 +379,18 @@ export default function Checkout() {
           pincode: "",
           addressType: "Home",
         });
+        setAddressFieldErrors({});
         setShowNewAddressForm(false);
       } else {
         setAddressError(res.message || "Failed to save address");
       }
     } catch (err) {
       toast.dismiss(loadingToast);
-      setAddressError(err?.response?.data?.message || err?.message || "Something went wrong while saving");
+      const msg = err?.response?.data?.message || err?.message || "Something went wrong while saving";
+      setAddressError(msg);
+      if (typeof msg === "string" && /addressType|address type|Work|Home|Other/i.test(msg)) {
+        setAddressFieldErrors((fe) => ({ ...fe, addressType: msg }));
+      }
     }
   };
 
@@ -555,7 +611,7 @@ export default function Checkout() {
                         }`}
                     >
                       <p className="font-bold text-gray-800">
-                        {addr.name} ({addr.addressType})
+                        {addr.name} ({addr.addressType === "Work" ? "Office" : addr.addressType || "Home"})
                       </p>
                       <p className="text-sm text-gray-600">
                         {addr.fullAddress}, {addr.city} - {addr.pincode}
@@ -566,7 +622,11 @@ export default function Checkout() {
 
                   <button
                     type="button"
-                    onClick={() => setShowNewAddressForm(true)}
+                    onClick={() => {
+                      setAddressFieldErrors({});
+                      setAddressError("");
+                      setShowNewAddressForm(true);
+                    }}
                     className="w-full py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm font-semibold text-slate-600 hover:border-[#3090cf] hover:text-[#3090cf] transition-colors"
                   >
                     + Add new address
@@ -983,14 +1043,18 @@ export default function Checkout() {
                     label="Receiver's Name"
                     placeholder="Full name"
                     value={newAddress.name}
-                    onChange={e => setNewAddress({ ...newAddress, name: e.target.value })}
+                    error={addressFieldErrors.name}
+                    onChange={(e) => updateNewAddress({ name: e.target.value })}
                   />
                   <PremiumInput
                     label="Phone Number"
-                    type="number"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
                     placeholder="Mobile number"
                     value={newAddress.phone}
-                    onChange={e => setNewAddress({ ...newAddress, phone: e.target.value })}
+                    error={addressFieldErrors.phone}
+                    onChange={(e) => updateNewAddress({ phone: e.target.value })}
                   />
                 </div>
 
@@ -999,7 +1063,8 @@ export default function Checkout() {
                   label="Full Address"
                   placeholder="House no, Building, Street, Area..."
                   value={newAddress.fullAddress}
-                  onChange={e => setNewAddress({ ...newAddress, fullAddress: e.target.value })}
+                  error={addressFieldErrors.fullAddress}
+                  onChange={(e) => updateNewAddress({ fullAddress: e.target.value })}
                 />
 
                 {/* Row 3: City, State, Pincode */}
@@ -1008,20 +1073,25 @@ export default function Checkout() {
                     label="City"
                     placeholder="City"
                     value={newAddress.city}
-                    onChange={e => setNewAddress({ ...newAddress, city: e.target.value })}
+                    error={addressFieldErrors.city}
+                    onChange={(e) => updateNewAddress({ city: e.target.value })}
                   />
                   <PremiumInput
                     label="State"
-                    placeholder="State"
+                    placeholder="e.g. IL"
                     value={newAddress.state}
-                    onChange={e => setNewAddress({ ...newAddress, state: e.target.value })}
+                    error={addressFieldErrors.state}
+                    onChange={(e) => updateNewAddress({ state: e.target.value })}
                   />
                   <PremiumInput
                     label="Zip"
-                    type='number'
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="postal-code"
                     placeholder="Zipcode"
                     value={newAddress.pincode}
-                    onChange={e => setNewAddress({ ...newAddress, pincode: e.target.value })}
+                    error={addressFieldErrors.pincode}
+                    onChange={(e) => updateNewAddress({ pincode: e.target.value })}
                   />
                 </div>
 
@@ -1031,20 +1101,23 @@ export default function Checkout() {
                     Address Type
                   </label>
                   <div className="flex gap-3">
-                    {['Home', 'Office', 'Other'].map((type) => (
+                    {ADDRESS_TYPE_OPTIONS.map(({ label, value }) => (
                       <button
-                        key={type}
+                        key={value}
                         type="button"
-                        onClick={() => setNewAddress({ ...newAddress, addressType: type })}
-                        className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all border ${newAddress.addressType === type
+                        onClick={() => updateNewAddress({ addressType: value })}
+                        className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all border ${newAddress.addressType === value
                           ? 'bg-blue-600 border-blue-600 text-white shadow-md'
                           : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400'
                           }`}
                       >
-                        {type}
+                        {label}
                       </button>
                     ))}
                   </div>
+                  {addressFieldErrors.addressType ? (
+                    <p className="text-xs text-red-600 mt-2 font-semibold">{addressFieldErrors.addressType}</p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1215,7 +1288,8 @@ export default function Checkout() {
   );
 }
 
-function PremiumInput({ label, ...props }) {
+function PremiumInput({ label, error, className, ...props }) {
+  const err = typeof error === "string" && error.trim() ? error.trim() : "";
   return (
     <div className="flex flex-col group">
       <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2 ml-1 group-focus-within:text-blue-600 transition-colors">
@@ -1223,8 +1297,12 @@ function PremiumInput({ label, ...props }) {
       </label>
       <input
         {...props}
-        className="p-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:bg-white focus:border-blue-600/20 focus:ring-4 focus:ring-blue-600/5 outline-none transition-all font-bold text-gray-800 placeholder:text-gray-300 text-sm"
+        aria-invalid={err ? "true" : undefined}
+        className={`p-4 bg-gray-50 border-2 rounded-2xl focus:bg-white focus:ring-4 focus:ring-blue-600/5 outline-none transition-all font-bold text-gray-800 placeholder:text-gray-300 text-sm ${
+          err ? "border-red-300 focus:border-red-400" : "border-transparent focus:border-blue-600/20"
+        } ${className || ""}`}
       />
+      {err ? <p className="text-xs text-red-600 mt-1.5 font-semibold leading-snug">{err}</p> : null}
     </div>
   );
 }

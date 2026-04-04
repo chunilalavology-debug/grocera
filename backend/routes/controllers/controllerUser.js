@@ -903,7 +903,7 @@ const orderPayment = async (req, res) => {
     city: Joi.string().trim().required(),
     state: Joi.string().trim().allow("", null).optional(),
     pincode: Joi.string().trim().required(),
-    addressType: Joi.string().trim().optional(),
+    addressType: Joi.string().valid("Home", "Work", "Other").optional(),
   });
 
   const checkoutSchema = Joi.object({
@@ -947,8 +947,17 @@ const orderPayment = async (req, res) => {
       is: "otc",
       then: Joi.string().min(3).required(),
       otherwise: Joi.optional()
-    })
-  });
+    }),
+
+    /** Sent by storefront for display / future use; pricing is recalculated server-side. */
+    deliveryType: Joi.string().valid("standard", "express").optional(),
+    subtotal: Joi.number().optional(),
+    deliveryFee: Joi.number().optional(),
+    taxAndConvenienceFee: Joi.number().optional(),
+    packagingFee: Joi.number().optional(),
+    discountAmount: Joi.number().optional(),
+    finalTotal: Joi.number().optional(),
+  }).unknown(true);
   try {
     const { error, value } = checkoutSchema.validate(req.body);
     if (error) {

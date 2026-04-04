@@ -4,7 +4,10 @@
     "api/quotes.js": { "maxDuration": 60 },
     "api/health.js": { "maxDuration": 30 },
     "api/checkout/session.js": { "maxDuration": 60 },
-    "api/checkout/promotion-code.js": { "maxDuration": 30 }
+    "api/checkout/promotion-code.js": { "maxDuration": 30 },
+    "api/shipments/[checkoutSessionId].js": { "maxDuration": 30 },
+    "api/shipments/[checkoutSessionId]/label.js": { "maxDuration": 30 },
+    "api/easyship/item-categories.js": { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
