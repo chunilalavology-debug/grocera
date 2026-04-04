@@ -61,6 +61,7 @@ function isPublicJwtPath(req) {
     `${A}/user/products/getById`,
     `${A}/user/categories`,
     `${A}/user/getCategories`,
+    `${A}/user/featured-categories`,
     `${A}/user/home-slider-settings`,
     `${A}/user/referral/discount`,
   ]);

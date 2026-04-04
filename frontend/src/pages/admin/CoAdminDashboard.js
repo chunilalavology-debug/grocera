@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './CoAdminDashboard.css';
 
 export default function CoAdminDashboard() {
@@ -7,7 +7,7 @@ export default function CoAdminDashboard() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newOrdersCount, setNewOrdersCount] = useState(0);
-  const [lastOrderId, setLastOrderId] = useState(null);
+  const lastOrderIdRef = useRef(null);
   const [error, setError] = useState('');
   const [notifications, setNotifications] = useState([]);
   const [showProductModal, setShowProductModal] = useState(false);
@@ -23,49 +23,27 @@ export default function CoAdminDashboard() {
     inStock: true
   });
 
-  // Load data based on active tab
-  useEffect(() => {
-    setLoading(true);
-    if (activeTab === 'orders') {
-      loadOrders();
-      const interval = setInterval(loadOrders, 3000);
-      return () => clearInterval(interval);
-    } else if (activeTab === 'products') {
-      loadProducts();
+  const addNotification = useCallback((order) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('🛒 New Order!', {
+        body: `Order #${order.orderNumber || order._id} - $${order.totalAmount || 0}`,
+        icon: '/logo.png'
+      });
     }
-  }, [activeTab]);
 
-  // WebSocket connection (unchanged)
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    const notification = {
+      id: Date.now(),
+      message: `New order: #${order.orderNumber || order._id.slice(-6)}`,
+      order
+    };
+    setNotifications(prev => [notification, ...prev.slice(0, 4)]);
 
-    try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com';
-      const ws = new WebSocket(`ws://${apiUrl.replace('http://', '').replace('https://', '')}`);
-
-      ws.onopen = () => {
-        console.log('✅ WebSocket connected');
-        ws.send(JSON.stringify({ type: 'auth', token }));
-      };
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'new-order') {
-          addNotification(data);
-          setNewOrdersCount(prev => prev + 1);
-          loadOrders();
-        }
-      };
-
-      ws.onerror = () => console.log('WebSocket not available, using polling');
-      return () => ws.close();
-    } catch (error) {
-      console.log('WebSocket not supported, using polling');
-    }
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== notification.id));
+    }, 5000);
   }, []);
 
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return;
@@ -84,14 +62,14 @@ export default function CoAdminDashboard() {
 
         if (ordersData.length > 0) {
           const latestOrderId = ordersData[0]._id;
-          if (lastOrderId && latestOrderId !== lastOrderId) {
+          if (lastOrderIdRef.current && latestOrderId !== lastOrderIdRef.current) {
             const newOrder = ordersData.find(o => o._id === latestOrderId);
             if (newOrder) {
               addNotification(newOrder);
               setNewOrdersCount(prev => prev + 1);
             }
           }
-          setLastOrderId(latestOrderId);
+          lastOrderIdRef.current = latestOrderId;
         }
 
         setOrders(ordersData);
@@ -99,15 +77,14 @@ export default function CoAdminDashboard() {
       } else {
         setError('Failed to load orders');
       }
-    } catch (error) {
-      console.error('Error loading orders:', error);
+    } catch {
       setError('Error loading orders');
     } finally {
       setLoading(false);
     }
-  };
+  }, [addNotification]);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return;
@@ -127,33 +104,63 @@ export default function CoAdminDashboard() {
       } else {
         setError('Failed to load products');
       }
-    } catch (error) {
-      console.error('Error loading products:', error);
+    } catch {
       setError('Error loading products');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const addNotification = (order) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('🛒 New Order!', {
-        body: `Order #${order.orderNumber || order._id} - $${order.totalAmount || 0}`,
-        icon: '/logo.png'
-      });
+  useEffect(() => {
+    setLoading(true);
+    if (activeTab === 'orders') {
+      loadOrders();
+      const interval = setInterval(loadOrders, 3000);
+      return () => clearInterval(interval);
     }
+    if (activeTab === 'products') {
+      loadProducts();
+    }
+    return undefined;
+  }, [activeTab, loadOrders, loadProducts]);
 
-    const notification = {
-      id: Date.now(),
-      message: `New order: #${order.orderNumber || order._id.slice(-6)}`,
-      order
-    };
-    setNotifications(prev => [notification, ...prev.slice(0, 4)]);
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return undefined;
 
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== notification.id));
-    }, 5000);
-  };
+    try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com';
+      const ws = new WebSocket(`ws://${apiUrl.replace('http://', '').replace('https://', '')}`);
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'auth', token }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'new-order') {
+            addNotification(data);
+            setNewOrdersCount((prev) => prev + 1);
+            loadOrders();
+          }
+        } catch {
+          /* ignore malformed messages */
+        }
+      };
+
+      ws.onerror = () => {};
+      return () => {
+        try {
+          ws.close();
+        } catch {
+          /* noop */
+        }
+      };
+    } catch {
+      return undefined;
+    }
+  }, [addNotification, loadOrders]);
 
   const handleProductSubmit = async (e) => {
     e.preventDefault();

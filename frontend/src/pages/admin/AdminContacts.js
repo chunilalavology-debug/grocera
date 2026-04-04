@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
 
@@ -13,7 +13,7 @@ export default function AdminContacts() {
   const [selected, setSelected] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
-  const loadContacts = async (pageNo = 1, status = statusFilter) => {
+  const loadContacts = useCallback(async (pageNo = 1, status = statusFilter) => {
     try {
       setLoading(true);
       const res = await api.get(`/admin/contacts?page=${pageNo}&limit=20&status=${status}`);
@@ -28,12 +28,12 @@ export default function AdminContacts() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter]);
 
   useEffect(() => {
     loadContacts(1, statusFilter);
     setPage(1);
-  }, [statusFilter]);
+  }, [statusFilter, loadContacts]);
 
   const statusPillClass = useMemo(
     () => ({

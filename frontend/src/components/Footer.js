@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import '../styles/components/Footer.css';
 import logoRemo from "../assets-copy/navbar/logoRemo.svg";
-import phoneVector from "../assets-copy/footer/phoneVector.svg";
 import { SUBCATEGORIES_BY_MAIN } from '../config/categories';
 
 /* Footer category links from config: one per main (first sub) + a few extras for variety */
@@ -48,10 +47,6 @@ function Footer() {
           <section className="footer__block">
             <h4 className="footer__heading">Need Help</h4>
             <div className="footer__contact">
-              <a href="tel:9342604322" className="footer__contact-row">
-                <img src={phoneVector} alt="" aria-hidden />
-                <span>(934) 260-4322</span>
-              </a>
               <a href="mailto:contact@zippyyy.com" className="footer__contact-row">
                 <Mail className="footer__contact-icon" size={18} strokeWidth={2} aria-hidden />
                 <span>contact@zippyyy.com</span>

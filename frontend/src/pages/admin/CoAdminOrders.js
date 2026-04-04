@@ -1,95 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './CoAdminOrders.css';
 
 export default function CoAdminOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newOrdersCount, setNewOrdersCount] = useState(0);
-  const [lastOrderId, setLastOrderId] = useState(null);
+  const lastOrderIdRef = useRef(null);
   const [notifications, setNotifications] = useState([]);
   const [error, setError] = useState('');
 
-  // Load orders from backend - only new/pending orders
-  useEffect(() => {
-    loadOrders();
-    // Real-time polling every 3 seconds for new orders
-    const interval = setInterval(() => {
-      loadOrders();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadOrders = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        console.error('❌ Co-admin: No token found');
-        setError('Not authenticated. Please login again.');
-        setLoading(false);
-        return;
-      }
-
-      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
-      console.log('📡 Co-admin: Fetching orders from:', `${apiUrl}/co-admin/orders`);
-      
-      // Co-admin only sees new/pending orders
-      const response = await fetch(`${apiUrl}/co-admin/orders?status=pending&limit=50`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('📡 Co-admin: Response status:', response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        const ordersData = data.orders || data.data || [];
-        
-        console.log('✅ Co-admin orders loaded:', ordersData.length);
-        
-        // Check for new orders
-        if (ordersData.length > 0) {
-          const latestOrderId = ordersData[0]._id;
-          if (lastOrderId && latestOrderId !== lastOrderId) {
-            // New order detected
-            const newOrder = ordersData.find(o => o._id === latestOrderId);
-            if (newOrder) {
-              addNotification(newOrder);
-              setNewOrdersCount(prev => prev + 1);
-            }
-          }
-          setLastOrderId(latestOrderId);
-        }
-        
-        setOrders(ordersData);
-        setError('');
-      } else {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        console.error('❌ Co-admin orders error:', response.status, errorData);
-        
-        let errorMessage = `Failed to load orders: ${errorData.message || errorData.error || 'Server error'}. Status: ${response.status}`;
-        
-        if (response.status === 401) {
-          errorMessage = 'Authentication failed. Please logout and login again.';
-        } else if (response.status === 403) {
-          errorMessage = 'Access denied. You need co-admin role to view this page.';
-        }
-        
-        setError(errorMessage);
-        setOrders([]);
-      }
-    } catch (error) {
-      console.error('Error loading orders:', error);
-      setError(`Network error: ${error.message}`);
-      setOrders([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const addNotification = (order) => {
+  const addNotification = useCallback((order) => {
     const notification = {
       id: Date.now(),
       orderNumber: order.orderNumber,
@@ -107,7 +27,75 @@ export default function CoAdminOrders() {
         badge: '/logo.png'
       });
     }
-  };
+  }, []);
+
+  const loadOrders = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        setError('Not authenticated. Please login again.');
+        setLoading(false);
+        return;
+      }
+
+      const apiUrl = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
+
+      const response = await fetch(`${apiUrl}/co-admin/orders?status=pending&limit=50`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const ordersData = data.orders || data.data || [];
+
+        if (ordersData.length > 0) {
+          const latestOrderId = ordersData[0]._id;
+          if (lastOrderIdRef.current && latestOrderId !== lastOrderIdRef.current) {
+            const newOrder = ordersData.find(o => o._id === latestOrderId);
+            if (newOrder) {
+              addNotification(newOrder);
+              setNewOrdersCount(prev => prev + 1);
+            }
+          }
+          lastOrderIdRef.current = latestOrderId;
+        }
+
+        setOrders(ordersData);
+        setError('');
+      } else {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+
+        let errorMessage = `Failed to load orders: ${errorData.message || errorData.error || 'Server error'}. Status: ${response.status}`;
+
+        if (response.status === 401) {
+          errorMessage = 'Authentication failed. Please logout and login again.';
+        } else if (response.status === 403) {
+          errorMessage = 'Access denied. You need co-admin role to view this page.';
+        }
+
+        setError(errorMessage);
+        setOrders([]);
+      }
+    } catch (err) {
+      setError(`Network error: ${err?.message || 'unknown'}`);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [addNotification]);
+
+  // Load orders from backend - only new/pending orders
+  useEffect(() => {
+    loadOrders();
+    const interval = setInterval(() => {
+      loadOrders();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [loadOrders]);
 
   // Request notification permission
   useEffect(() => {

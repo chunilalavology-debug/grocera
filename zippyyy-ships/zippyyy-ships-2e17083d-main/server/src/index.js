@@ -12,6 +12,16 @@ const app = express();
 const easyship = env.EASYSHIP_API_KEY ? createEasyshipClient({ apiKey: env.EASYSHIP_API_KEY }) : null;
 const stripe = env.STRIPE_SECRET_KEY ? createStripe({ secretKey: env.STRIPE_SECRET_KEY }) : null;
 
+const corsAllowedOrigins = new Set(
+  [
+    env.APP_URL,
+    ...(env.CORS_ORIGINS || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ].filter(Boolean),
+);
+
 let cachedItemCategories = null;
 let cachedItemCategoriesAt = 0;
 
@@ -20,7 +30,11 @@ const quoteInflight = new Map();
 
 app.use(
   cors({
-    origin: env.APP_URL,
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (corsAllowedOrigins.has(origin)) return callback(null, true);
+      callback(null, false);
+    },
     credentials: false,
   }),
 );
@@ -44,15 +58,20 @@ app.post("/api/quotes", async (req, res) => {
 
   try {
     const cacheKey = stableHash(parsed.data);
+    const pricingMeta = {
+      markupMultiplier: env.ZIPPYYY_MARKUP_MULTIPLIER,
+      listPriceMultiplier: env.ZIPPYYY_LIST_PRICE_MULTIPLIER,
+    };
+
     const cached = quoteCache.get(cacheKey);
     if (cached && Date.now() - cached.at < 30_000) {
-      return res.json({ rates: cached.rates, cached: true });
+      return res.json({ rates: cached.rates, pricing: pricingMeta, cached: true });
     }
 
     const inflight = quoteInflight.get(cacheKey);
     if (inflight) {
       const rates = await inflight;
-      return res.json({ rates, deduped: true });
+      return res.json({ rates, pricing: pricingMeta, deduped: true });
     }
 
     const p = (async () => {
@@ -124,7 +143,7 @@ app.post("/api/quotes", async (req, res) => {
     quoteInflight.set(cacheKey, p);
     try {
       const rates = await p;
-      res.json({ rates });
+      res.json({ rates, pricing: pricingMeta });
     } finally {
       quoteInflight.delete(cacheKey);
     }
@@ -149,12 +168,30 @@ app.get("/api/easyship/item-categories", async (_req, res) => {
   }
 });
 
+app.post("/api/checkout/promotion-code", async (req, res) => {
+  if (!stripe) return res.status(501).json({ error: "STRIPE_NOT_CONFIGURED" });
+  const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+  if (!code) return res.status(400).json({ error: "EMPTY_CODE" });
+  try {
+    const pc = await findActivePromotionCodeByCode(stripe, code);
+    if (!pc) {
+      return res.status(404).json({
+        error: "NOT_FOUND",
+        message: "That promotion code is not valid or is no longer active.",
+      });
+    }
+    return res.json({ ok: true, code: pc.code });
+  } catch (e) {
+    return res.status(502).json({ error: "STRIPE_ERROR", message: e.message });
+  }
+});
+
 app.post("/api/checkout/session", async (req, res) => {
   if (!stripe) return res.status(501).json({ error: "STRIPE_NOT_CONFIGURED" });
   const parsed = CheckoutSessionRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { draft, selectedRate } = parsed.data;
+  const { draft, selectedRate, promotionCode } = parsed.data;
 
   // Server-side price confirmation (trust but verify)
   const markedUpTotal = selectedRate.shipment_charge_total * env.ZIPPYYY_MARKUP_MULTIPLIER;
@@ -164,6 +201,18 @@ app.post("/api/checkout/session", async (req, res) => {
   }
 
   const currency = selectedRate.shipment_charge_total_currency.toLowerCase();
+
+  let discounts;
+  if (promotionCode?.trim()) {
+    const pc = await findActivePromotionCodeByCode(stripe, promotionCode.trim());
+    if (!pc) {
+      return res.status(400).json({
+        error: "INVALID_PROMOTION_CODE",
+        message: "Promotion code is invalid or no longer active.",
+      });
+    }
+    discounts = [{ promotion_code: pc.id }];
+  }
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -182,6 +231,7 @@ app.post("/api/checkout/session", async (req, res) => {
         },
       },
     ],
+    ...(discounts ? { discounts } : {}),
     metadata: {
       easyship_rate_id: selectedRate.easyship_rate_id ?? "",
     },
@@ -307,6 +357,26 @@ async function fulfillPaidSession({ sessionId }) {
   });
 }
 
+async function findActivePromotionCodeByCode(stripe, customerCode) {
+  const target = customerCode.trim().toLowerCase();
+  if (!target) return null;
+  let startingAfter;
+  for (let page = 0; page < 15; page++) {
+    const list = await stripe.promotionCodes.list({
+      active: true,
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    const found = list.data.find(
+      (pc) => pc.active && typeof pc.code === "string" && pc.code.toLowerCase() === target,
+    );
+    if (found) return found;
+    if (!list.has_more || list.data.length === 0) break;
+    startingAfter = list.data[list.data.length - 1].id;
+  }
+  return null;
+}
+
 function normalizeEasyshipRates(result) {
   const rates = result?.rates ?? result?.data?.rates ?? [];
   if (!Array.isArray(rates)) return [];
@@ -415,5 +485,9 @@ function extractLabelInfo(labelResult) {
 app.listen(env.PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`API listening on http://localhost:${env.PORT}`);
+  // eslint-disable-next-line no-console
+  console.log(
+    `[Easyship] ${env.EASYSHIP_API_KEY ? "API key loaded" : "EASYSHIP_API_KEY missing — /api/quotes returns 501"}`,
+  );
 });
 

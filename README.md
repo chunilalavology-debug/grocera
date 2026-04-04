@@ -34,6 +34,13 @@ Backend runs on `PORT` (default `5000`).
 
 Frontend runs on `http://localhost:3000` (default CRA).
 
+**Local checklist if the shop shows no products**
+
+1. Backend terminal shows `MongoDB connected successfully` and `Server is up and running on port 5000`.
+2. Open `http://localhost:5000/api/health` — `ok` should be `true` and `mongo` should be `connected`.
+3. Frontend points at the same port: `REACT_APP_API_URL=http://localhost:5000/api` in `frontend/.env.local` or `.env.development` (restart `npm start` after changes).
+4. Database has in-stock products: from `backend/`, run `npm run check-products` (expect `storefrontVisible` greater than zero).
+
 ---
 
 ## Vercel Deployment (Recommended)
@@ -54,6 +61,12 @@ Deploy **two Vercel projects** from this repo:
   - **`FRONTEND_URL`:** Your live frontend origin (e.g. `https://grocera-xxx.vercel.app`). You can use comma-separated URLs or add **`FRONTEND_URLS`** for preview deployments.
   - **`DB_STRING`:** MongoDB Atlas connection string.
 - **Serverless note:** File uploads and generated label files use **`/tmp`** on Vercel (writable). Files are not durable across all invocations; production file hosting should use Cloudinary (already used for many uploads) or object storage for long-lived assets.
+
+**Split frontend + backend (no products on live site)**
+
+- On the **frontend** Vercel project, set **`REACT_APP_API_URL`** to your **backend** deployment base including `/api`, e.g. `https://your-backend.vercel.app/api`. Without this, the built app may call the wrong host.
+- On the **backend** Vercel project, set **`FRONTEND_URL`** to your **exact** storefront origin (e.g. `https://grocera-osi8.vercel.app`, no trailing slash). Mismatches cause the browser to block API calls (CORS).
+- Keep **`DB_STRING`**, **`JWT_SECRET_KEY`**, **`STRIPE_*`**, email, and Cloudinary on the **backend** project only. The React app never needs your Mongo or Stripe **secret** keys.
 
 **Stripe webhook endpoint**
 - The backend webhook route is:

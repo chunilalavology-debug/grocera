@@ -9,7 +9,8 @@
   "scripts": {
     "test": "nodemon",
     "kill-port": "kill-port $PORT",
-    "start": "node app.js"
+    "start": "node app.js",
+    "check-products": "node script/checkDbProducts.js"
   },
   "author": "forwork404",
   "license": "ISC",
@@ -34,6 +35,7 @@
     "nodemailer": "^6.9.8",
     "npm": "^10.5.0",
     "path": "^0.12.7",
+    "sharp": "^0.33.5",
     "stream-buffers": "^3.0.3",
     "streamifier": "^0.1.1",
     "stripe": "^20.3.0",

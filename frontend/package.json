@@ -23,7 +23,9 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "cross-env CI=false react-scripts build",
+    "cache:clear": "node -e \"const fs=require('fs');const p=require('path').join('node_modules','.cache');try{fs.rmSync(p,{recursive:true,force:true});console.log('Cleared webpack cache:',p);}catch(e){console.log('No .cache to clear');}\"",
+    "start:fresh": "npm run cache:clear && react-scripts start",
+    "build": "cross-env CI=true react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -45,7 +47,6 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "https://zippyyy.com",
   "devDependencies": {
     "autoprefixer": "^10.4.24",
     "cross-env": "^7.0.3",

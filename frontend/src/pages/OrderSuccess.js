@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { Check, Package, MapPin, ChevronRight, ShoppingBag, Phone, CreditCard } from 'lucide-react';
-import toast from 'react-hot-toast';
 import api from '../services/api';
 
 function OrderSuccess() {
@@ -27,9 +26,8 @@ function OrderSuccess() {
           setOrderDetails(response.data);
           clearCart();
         }
-      } catch (error) {
-        console.error('Order Fetch Error:', error);
-        toast.error(error.message || 'Failed to load order details.');
+      } catch {
+        /* Silent: network/API unavailable */
       } finally {
         setLoading(false);
       }
@@ -37,6 +35,8 @@ function OrderSuccess() {
 
     if (orderId) fetchOrderDetails();
     else setLoading(false);
+    // Intentionally run once on mount for this order id (avoid re-clearing cart on token/context churn).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial fetch only
   }, []);
 
   // Poll until payment becomes "paid" for shipping orders (webhook delay)
@@ -78,7 +78,7 @@ function OrderSuccess() {
     } catch (e) {
       // If auto download fails, user can still manually download via Orders modal (future enhancement).
     }
-  }, [orderDetails?.paymentStatus, orderDetails?.shippingLabelUrl]);
+  }, [orderDetails]);
 
   // useEffect(() => {
   //   if (!orderDetails) return;

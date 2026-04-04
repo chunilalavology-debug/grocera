@@ -3,7 +3,7 @@ import { useSearch } from '../../hooks/usePerformance';
 import toast, { Toaster } from 'react-hot-toast';
 import api from '../../services/api';
 import {
-  Edit2, Trash2, Plus, Upload, Search,
+  Edit2, Trash2, Plus, Search,
   Package, CheckCircle, XCircle, DollarSign,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
@@ -146,7 +146,7 @@ function AdminProducts() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const selectedCategory = 'All';
   const { searchTerm, debouncedSearchTerm, handleSearchChange } = useSearch('', 300);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -190,7 +190,7 @@ function AdminProducts() {
 
 
   // Data Loading
-  const loadProductsData = async () => {
+  const loadProductsData = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get("/admin/products", {
@@ -209,9 +209,9 @@ function AdminProducts() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, debouncedSearchTerm, selectedCategory]);
 
-  useEffect(() => { loadProductsData(); }, [page, debouncedSearchTerm, selectedCategory]);
+  useEffect(() => { loadProductsData(); }, [loadProductsData]);
 
   const calculateProfit = useCallback((price, cost) => {
     const p = parseFloat(price) || 0;
@@ -220,11 +220,6 @@ function AdminProducts() {
     if (c === 0) return 'N/A';
     return (((p - c) / c) * 100).toFixed(1);
   }, []);
-
-  const openQuickModal = () => {
-    setShowQuickModal(true);
-  };
-
 
   const handleExcelUpload = async () => {
     if (!excelFile) {
@@ -446,7 +441,6 @@ function AdminProducts() {
       closeModal();
 
     } catch (error) {
-      console.error(error);
       toast.error(error.response?.data?.message || "Something went wrong");
     }
 
@@ -464,7 +458,6 @@ function AdminProducts() {
       loadProductsData();
 
     } catch (error) {
-      console.error("Delete error:", error);
       toast.error(error.response?.data?.message || "Failed to delete product");
     }
   }, [loadProductsData]);

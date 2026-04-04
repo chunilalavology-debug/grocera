@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Box,
   Weight,
@@ -15,12 +15,16 @@ import {
   Home,
   Clock,
   MapPinned,
+  Check,
+  Percent,
+  Tag,
 } from "lucide-react";
 import shippingBox from "@/assets/shipping-box.png";
 import Box3DPreview from "@/components/Box3DPreview";
 import { AddressAutocomplete, type TaggedAddress } from "@/components/AddressAutocomplete";
 import { apiPost } from "@/lib/api";
 import { PACKAGING_PRESETS, type PackagingCarrier, type PackagingPreset } from "@/lib/packagingPresets";
+import { usStateFromZip } from "@/lib/usStateFromZip";
 
 const CARRIERS: PackagingCarrier[] = ["UPS", "FedEx", "USPS"];
 
@@ -45,6 +49,54 @@ type ApiRate = {
 
 const SAVED_ADDR_KEY = "zippyyy-ships-saved-addresses-v1";
 
+type PricingMeta = { markupMultiplier: number; listPriceMultiplier: number };
+const DEFAULT_PRICING: PricingMeta = { markupMultiplier: 1.25, listPriceMultiplier: 2 };
+
+function computeSavingsLabel(base: number, markupMult: number, listMult: number) {
+  if (base <= 0 || listMult <= markupMult) return null;
+  const listRef = Math.ceil(base * listMult);
+  const yourPrice = Math.ceil(base * markupMult);
+  if (listRef <= yourPrice) return null;
+  const savePct = Math.round((1 - yourPrice / listRef) * 100);
+  if (savePct < 1) return null;
+  return { listRef, yourPrice, savePct };
+}
+
+function parseApiErrorMessage(err: unknown): string {
+  if (!(err instanceof Error) || !err.message) return "Something went wrong.";
+  try {
+    const j = JSON.parse(err.message) as { message?: string; error?: string };
+    if (typeof j.message === "string" && j.message.trim()) return j.message;
+    if (typeof j.error === "string") return j.error;
+  } catch {
+    /* ignore */
+  }
+  return err.message;
+}
+
+/** User-facing copy when quotes fail (includes deployment hints). */
+function formatQuotesFetchError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  let code: string | undefined;
+  try {
+    code = (JSON.parse(raw) as { error?: string }).error;
+  } catch {
+    if (raw.includes("EASYSHIP_NOT_CONFIGURED")) code = "EASYSHIP_NOT_CONFIGURED";
+    else if (raw.includes("SHIPS_API_NOT_CONFIGURED")) code = "SHIPS_API_NOT_CONFIGURED";
+    else if (raw.includes("SHIPS_UPSTREAM_UNREACHABLE")) code = "SHIPS_UPSTREAM_UNREACHABLE";
+  }
+  if (code === "EASYSHIP_NOT_CONFIGURED") {
+    return "Easyship is not enabled on the shipping API server. Add EASYSHIP_API_KEY to the Node project that serves /api/quotes (not only the storefront Vercel app), save for Production, redeploy, then try again.";
+  }
+  if (code === "SHIPS_API_NOT_CONFIGURED") {
+    return "Storefront is not pointed at the shipping API. On the site Vercel project, set SHIPS_API_BASE to your ships server URL (same place you set EASYSHIP_API_KEY), then redeploy.";
+  }
+  if (code === "SHIPS_UPSTREAM_UNREACHABLE") {
+    return "Could not reach the shipping API. Check SHIPS_API_BASE and that the ships server is running.";
+  }
+  return parseApiErrorMessage(err);
+}
+
 type SavedAddressBook = {
   id: string;
   label: string;
@@ -57,17 +109,10 @@ const STEPS: Step[] = ["zips", "dimensions", "weight", "quotes", "details", "che
 const STEP_LABELS = ["ZIP", "Box", "Weight", "Quote", "Details", "Pay"];
 
 const QuoteEngine = () => {
-  const sectionRef = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ["start end", "end start"] });
-  const sidebarY = useTransform(scrollYProgress, [0, 1], [40, -40]);
-
   const [step, setStep] = useState<Step>("zips");
   const [fromZip, setFromZip] = useState("");
   const [toZip, setToZip] = useState("");
   const [shipCountryAlpha2, setShipCountryAlpha2] = useState("US");
-  const [fromState, setFromState] = useState("");
-  const [toState, setToState] = useState("");
-
   const [fromAddress, setFromAddress] = useState<TaggedAddress | null>(null);
   const [toAddress, setToAddress] = useState<TaggedAddress | null>(null);
   const [carrier, setCarrier] = useState<PackagingCarrier>("UPS");
@@ -90,6 +135,12 @@ const QuoteEngine = () => {
   const [insuredAmount, setInsuredAmount] = useState("100");
   const [declaredCustomsValue, setDeclaredCustomsValue] = useState("50");
   const [savedAddresses, setSavedAddresses] = useState<SavedAddressBook[]>([]);
+  const [pricing, setPricing] = useState<PricingMeta>(DEFAULT_PRICING);
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoApplying, setPromoApplying] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -134,18 +185,41 @@ const QuoteEngine = () => {
     [carrier],
   );
 
+  const derivedFromState = useMemo(
+    () => (shipCountryAlpha2.trim().toUpperCase() === "US" ? usStateFromZip(fromZip) ?? "" : ""),
+    [shipCountryAlpha2, fromZip],
+  );
+  const derivedToState = useMemo(
+    () => (shipCountryAlpha2.trim().toUpperCase() === "US" ? usStateFromZip(toZip) ?? "" : ""),
+    [shipCountryAlpha2, toZip],
+  );
+
   const dims = isCustom
     ? { length: Number(customDims.length) || 0, width: Number(customDims.width) || 0, height: Number(customDims.height) || 0 }
     : selectedBox !== null
     ? filteredPresets[selectedBox]
     : null;
 
-  const calculatePrice = (base: number) => Math.ceil(base * 1.25);
+  const calculatePrice = (base: number) => Math.ceil(base * pricing.markupMultiplier);
+
+  const uniqueCarrierCount = useMemo(
+    () => new Set(rates.map((r) => r.courier_name)).size,
+    [rates],
+  );
 
   const selectedRateObj = useMemo(() => {
     if (selectedRate === null) return null;
     return rates[selectedRate] ?? null;
   }, [rates, selectedRate]);
+
+  const selectedSavings = useMemo(() => {
+    if (!selectedRateObj) return null;
+    return computeSavingsLabel(
+      selectedRateObj.shipment_charge_total,
+      pricing.markupMultiplier,
+      pricing.listPriceMultiplier,
+    );
+  }, [selectedRateObj, pricing.markupMultiplier, pricing.listPriceMultiplier]);
 
   const getTotal = () => {
     if (!selectedRateObj) return 0;
@@ -161,7 +235,8 @@ const QuoteEngine = () => {
           fromZip.trim().length >= 4 &&
           toZip.trim().length >= 4 &&
           shipCountryAlpha2.trim().length === 2 &&
-          (shipCountryAlpha2.trim().toUpperCase() !== "US" || (fromState.trim().length >= 2 && toState.trim().length >= 2))
+          (shipCountryAlpha2.trim().toUpperCase() !== "US" ||
+            (derivedFromState.length === 2 && derivedToState.length === 2))
         );
       case "dimensions": return dims !== null && dims.length > 0 && dims.width > 0 && dims.height > 0;
       case "weight":
@@ -204,8 +279,8 @@ const QuoteEngine = () => {
       fromZip: fromZip.trim(),
       toZip: toZip.trim(),
       country: shipCountryAlpha2.trim().toUpperCase(),
-      fromState: fromState.trim().toUpperCase(),
-      toState: toState.trim().toUpperCase(),
+      fromState: derivedFromState,
+      toState: derivedToState,
       dims,
       weight: Number(weight),
       setAsResidential,
@@ -223,8 +298,8 @@ const QuoteEngine = () => {
     try {
       const declared = Number(declaredCustomsValue) || 50;
       const body: Record<string, unknown> = {
-        from: zipOnlyAddress(fromZip, shipCountryAlpha2, fromState),
-        to: zipOnlyAddress(toZip, shipCountryAlpha2, toState),
+        from: zipOnlyAddress(fromZip, shipCountryAlpha2, derivedFromState || undefined),
+        to: zipOnlyAddress(toZip, shipCountryAlpha2, derivedToState || undefined),
         parcel: {
           length: dims.length,
           width: dims.width,
@@ -242,10 +317,23 @@ const QuoteEngine = () => {
           insured_currency: "USD",
         };
       }
-      const resp = await apiPost<{ rates: ApiRate[] }>("/api/quotes", body);
+      const resp = await apiPost<{
+        rates: ApiRate[];
+        pricing?: Partial<PricingMeta>;
+      }>("/api/quotes", body);
       setRates(resp.rates ?? []);
+      if (
+        resp.pricing &&
+        typeof resp.pricing.markupMultiplier === "number" &&
+        typeof resp.pricing.listPriceMultiplier === "number"
+      ) {
+        setPricing({
+          markupMultiplier: resp.pricing.markupMultiplier,
+          listPriceMultiplier: resp.pricing.listPriceMultiplier,
+        });
+      }
     } catch (e) {
-      setRatesError(e instanceof Error ? e.message : "Failed to load rates");
+      setRatesError(formatQuotesFetchError(e));
       setRates([]);
     } finally {
       setIsLoadingRates(false);
@@ -254,6 +342,7 @@ const QuoteEngine = () => {
 
   const startCheckout = async () => {
     if (!selectedRateObj || !fromAddress || !toAddress || !dims || !Number(weight)) return;
+    setCheckoutError(null);
     const declared = Number(declaredCustomsValue) || 50;
     const draft: Record<string, unknown> = {
       from: toEasyshipAddress(fromAddress, fromContact),
@@ -276,16 +365,39 @@ const QuoteEngine = () => {
       };
     }
 
-    const resp = await apiPost<{ url: string }>("/api/checkout/session", {
-      draft,
-      selectedRate: selectedRateObj,
-    });
+    try {
+      const resp = await apiPost<{ url: string }>("/api/checkout/session", {
+        draft,
+        selectedRate: selectedRateObj,
+        ...(appliedPromoCode ? { promotionCode: appliedPromoCode } : {}),
+      });
+      window.location.href = resp.url;
+    } catch (e) {
+      setCheckoutError(parseApiErrorMessage(e));
+    }
+  };
 
-    window.location.href = resp.url;
+  const applyPromoCode = async () => {
+    const c = promoInput.trim();
+    if (!c) {
+      setPromoError("Enter a promotion code.");
+      return;
+    }
+    setPromoApplying(true);
+    setPromoError(null);
+    try {
+      const res = await apiPost<{ ok: boolean; code: string }>("/api/checkout/promotion-code", { code: c });
+      if (res.ok && res.code) setAppliedPromoCode(res.code);
+    } catch (e) {
+      setPromoError(parseApiErrorMessage(e));
+      setAppliedPromoCode(null);
+    } finally {
+      setPromoApplying(false);
+    }
   };
 
   return (
-    <section ref={sectionRef} id="quote" className="py-8 sm:py-14 md:py-24 relative overflow-hidden">
+    <section id="quote" className="py-8 sm:py-14 md:py-24 relative overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-primary/3 rounded-full blur-[120px]" />
@@ -304,22 +416,54 @@ const QuoteEngine = () => {
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tighter text-foreground mt-2 sm:mt-3">
             Get your shipping quote
           </h2>
+          <div className="mt-8 grid gap-4 sm:grid-cols-3 text-left max-w-4xl mx-auto">
+            {[
+              {
+                icon: Truck,
+                title: "Multiple carriers",
+                body: "Compare live UPS, FedEx, USPS and more in one place — pick the service that fits speed and budget.",
+              },
+              {
+                icon: Percent,
+                title: "Savings shown on every rate",
+                body: "Each quote includes an estimated Save % vs. typical carrier list pricing so your price is easy to explain.",
+              },
+              {
+                icon: Tag,
+                title: "Promo codes before checkout",
+                body: "Apply a Stripe promotion code on the Pay step before you continue to secure card payment.",
+              },
+            ].map(({ icon: Icon, title, body }) => (
+              <div
+                key={title}
+                className="flex gap-3 rounded-2xl border border-border/40 bg-card/60 p-4 text-sm shadow-sm"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Icon size={20} />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground flex items-center gap-1.5">
+                    <Check size={14} className="text-primary shrink-0" />
+                    {title}
+                  </p>
+                  <p className="mt-1 text-muted-foreground leading-snug">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </motion.div>
 
         <div className="grid lg:grid-cols-3 gap-5 sm:gap-6 lg:gap-8 max-w-6xl mx-auto">
           {/* Main Form */}
-          <motion.div
-            layout
-            className="lg:col-span-2 bg-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 shadow-float-lg border border-border/30"
-          >
+          <div className="lg:col-span-2 bg-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 shadow-float-lg border border-border/30 flex flex-col">
             {/* Progress bar */}
             <div className="flex items-center gap-1 mb-5 sm:mb-8 overflow-x-auto pb-1 -mx-1 px-1 sm:overflow-visible sm:pb-0 sm:mx-0 sm:px-0">
               {STEPS.map((s, i) => (
                 <div key={s} className="flex items-center gap-1 flex-1">
                   <motion.div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 shrink-0 ${
                       step === s
-                        ? "bg-primary text-primary-foreground shadow-glow scale-110"
+                        ? "bg-primary text-primary-foreground shadow-glow ring-2 ring-primary/35"
                         : currentStepIdx > i
                         ? "bg-primary/20 text-primary"
                         : "bg-secondary text-muted-foreground"
@@ -348,11 +492,19 @@ const QuoteEngine = () => {
               ))}
             </div>
 
+            {/* Short steps stay compact; longer steps (quote/details/pay) get a modest min-h for stability */}
+            <div
+              className={
+                step === "quotes" || step === "details" || step === "checkout"
+                  ? "flex flex-col min-h-[min(220px,42vh)] sm:min-h-[260px]"
+                  : "flex flex-col min-h-0"
+              }
+            >
             <AnimatePresence mode="wait">
               {step === "zips" && (
                 <motion.div key="zips" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}>
                   <h3 className="text-xl font-bold text-foreground mb-2">Enter ZIP codes</h3>
-                  <p className="text-sm text-muted-foreground mb-6">Start with ZIP/postal codes to fetch live rates fast.</p>
+                  <p className="text-sm text-muted-foreground mb-4">Start with ZIP/postal codes to fetch live rates fast.</p>
 
                   <div className="grid sm:grid-cols-3 gap-3">
                     <div className="sm:col-span-1">
@@ -384,31 +536,6 @@ const QuoteEngine = () => {
                       />
                     </div>
                   </div>
-
-                  {shipCountryAlpha2.trim().toUpperCase() === "US" && (
-                    <div className="grid sm:grid-cols-2 gap-3 mt-4">
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-2 block">From State</label>
-                        <input
-                          value={fromState}
-                          onChange={(e) => setFromState(e.target.value.toUpperCase())}
-                          placeholder="NY"
-                          className="w-full bg-secondary border-none focus:ring-2 focus:ring-primary/50 transition-all p-4 rounded-2xl text-foreground placeholder:text-muted-foreground outline-none font-mono uppercase"
-                          maxLength={2}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-2 block">To State</label>
-                        <input
-                          value={toState}
-                          onChange={(e) => setToState(e.target.value.toUpperCase())}
-                          placeholder="CA"
-                          className="w-full bg-secondary border-none focus:ring-2 focus:ring-primary/50 transition-all p-4 rounded-2xl text-foreground placeholder:text-muted-foreground outline-none font-mono uppercase"
-                          maxLength={2}
-                        />
-                      </div>
-                    </div>
-                  )}
                 </motion.div>
               )}
 
@@ -417,29 +544,31 @@ const QuoteEngine = () => {
                   <h3 className="text-xl font-bold text-foreground mb-2">Select packaging</h3>
                   <p className="text-sm text-muted-foreground mb-6">Choose a carrier box preset or enter custom dimensions</p>
 
-                  {/* 3D Box Preview */}
-                  {dims && dims.length > 0 && dims.width > 0 && dims.height > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="relative bg-secondary/50 rounded-2xl p-4 mb-3 h-48 flex items-center justify-center overflow-hidden"
-                    >
+                  {/* Fixed-height preview so layout doesn’t jump when dimensions become valid */}
+                  <div className="relative mb-3 h-48 shrink-0 rounded-2xl bg-secondary/50 p-4 flex items-center justify-center overflow-hidden">
+                    {dims && dims.length > 0 && dims.width > 0 && dims.height > 0 ? (
                       <Box3DPreview length={dims.length} width={dims.width} height={dims.height} />
-                    </motion.div>
-                  )}
-                  {dims && dims.length > 0 && dims.width > 0 && dims.height > 0 && (
-                    <div className="mb-6 rounded-2xl border border-border/40 bg-muted/30 px-4 py-3 text-center">
-                      <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1">
-                        All dimensions (inches)
+                    ) : (
+                      <p className="text-center text-sm text-muted-foreground px-4">
+                        Select a box preset or enter custom length, width, and height.
                       </p>
+                    )}
+                  </div>
+                  <div className="mb-6 min-h-[4.5rem] rounded-2xl border border-border/40 bg-muted/30 px-4 py-3 text-center flex flex-col justify-center">
+                    <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1">
+                      All dimensions (inches)
+                    </p>
+                    {dims && dims.length > 0 && dims.width > 0 && dims.height > 0 ? (
                       <p className="font-mono text-sm sm:text-base text-foreground tabular-nums">
                         <span className="text-primary font-semibold">L</span> {dims.length.toFixed(2)} ×{" "}
                         <span className="text-primary font-semibold">W</span> {dims.width.toFixed(2)} ×{" "}
                         <span className="text-primary font-semibold">H</span> {dims.height.toFixed(2)}{" "}
                         <span className="text-muted-foreground">in</span>
                       </p>
-                    </div>
-                  )}
+                    ) : (
+                      <p className="font-mono text-sm text-muted-foreground">—</p>
+                    )}
+                  </div>
 
                   <div className="flex flex-wrap gap-2 mb-4">
                     {CARRIERS.map((c) => (
@@ -540,26 +669,19 @@ const QuoteEngine = () => {
                     </div>
                   </div>
 
-                  {/* Visual weight indicator */}
-                  {Number(weight) > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="mt-6 bg-secondary rounded-2xl p-4"
-                    >
-                      <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                        <span>Light</span><span>Heavy</span>
-                      </div>
-                      <div className="h-2 bg-border rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full bg-gradient-to-r from-accent to-primary rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${Math.min(Number(weight) / 100 * 100, 100)}%` }}
-                          transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
-                        />
-                      </div>
-                    </motion.div>
-                  )}
+                  {/* Fixed block height so the form doesn’t shift when weight goes from 0 to &gt; 0 */}
+                  <div className="mt-6 min-h-[4.25rem] bg-secondary rounded-2xl p-4 flex flex-col justify-center">
+                    <div className="flex justify-between text-xs text-muted-foreground mb-2">
+                      <span>Light</span>
+                      <span>Heavy</span>
+                    </div>
+                    <div className="h-2 bg-border rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-accent to-primary transition-[width] duration-300 ease-out"
+                        style={{ width: `${Number(weight) > 0 ? Math.min(Number(weight) / 100 * 100, 100) : 0}%` }}
+                      />
+                    </div>
+                  </div>
 
                   <div className="mt-8 space-y-5 rounded-2xl border border-border/40 bg-card/50 p-5">
                     <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
@@ -639,15 +761,24 @@ const QuoteEngine = () => {
               {step === "quotes" && (
                 <motion.div key="quotes" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}>
                   <h3 className="text-xl font-bold text-foreground mb-2">Available rates</h3>
-                  <p className="text-sm text-muted-foreground mb-6">All-inclusive professional rates</p>
+                  <p className="text-sm text-muted-foreground mb-1">
+                    {rates.length > 0
+                      ? `Showing options from ${uniqueCarrierCount} carrier${uniqueCarrierCount === 1 ? "" : "s"} — choose any service below.`
+                      : "All-inclusive professional rates from major carriers."}
+                  </p>
+                  <p className="text-xs text-muted-foreground/90 mb-6">
+                    Save % compares your price to an estimated typical carrier list price; published counter rates vary by location.
+                  </p>
+                  <div className="min-h-[200px]">
                   {isLoadingRates ? (
                     <div className="bg-secondary rounded-2xl p-6 text-sm text-muted-foreground">
                       Fetching live Easyship rates…
                     </div>
                   ) : ratesError ? (
-                    <div className="bg-secondary rounded-2xl p-6 text-sm text-destructive">
+                    <div className="bg-secondary rounded-2xl p-6 text-sm text-destructive break-words">
                       {ratesError}
                       <button
+                        type="button"
                         className="ml-3 underline text-foreground"
                         onClick={() => void fetchRates({ force: true })}
                       >
@@ -658,6 +789,11 @@ const QuoteEngine = () => {
                     <div className="space-y-3">
                       {rates.map((rate, i) => {
                         const displayPrice = calculatePrice(rate.shipment_charge_total);
+                        const savings = computeSavingsLabel(
+                          rate.shipment_charge_total,
+                          pricing.markupMultiplier,
+                          pricing.listPriceMultiplier,
+                        );
                         const Icon = pickIcon(rate.courier_name);
                         return (
                           <motion.button
@@ -707,7 +843,17 @@ const QuoteEngine = () => {
                                 </div>
                               )}
                             </div>
-                            <div className="text-right">
+                            <div className="text-right shrink-0">
+                              {savings && (
+                                <div className="mb-1 flex flex-col items-end gap-0.5">
+                                  <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                                    Save {savings.savePct}%
+                                  </span>
+                                  <span className="font-mono text-xs text-muted-foreground line-through">
+                                    ${savings.listRef}
+                                  </span>
+                                </div>
+                              )}
                               <motion.div
                                 className="font-bold text-foreground font-mono text-lg"
                                 key={displayPrice}
@@ -727,6 +873,7 @@ const QuoteEngine = () => {
                       )}
                     </div>
                   )}
+                  </div>
                 </motion.div>
               )}
 
@@ -917,6 +1064,45 @@ const QuoteEngine = () => {
                 <motion.div key="checkout" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}>
                   <h3 className="text-xl font-bold text-foreground mb-6">Confirm & Pay</h3>
 
+                  <div className="mb-6 rounded-2xl border border-border/50 bg-card/50 p-5">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Tag className="text-primary" size={16} />
+                      <span className="text-sm font-semibold text-foreground">Promotion code</span>
+                    </div>
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      Have a code? Apply it here before continuing — discounts are applied in secure Stripe Checkout.
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                      <input
+                        value={promoInput}
+                        onChange={(e) => {
+                          setPromoInput(e.target.value);
+                          setPromoError(null);
+                          setAppliedPromoCode(null);
+                        }}
+                        placeholder="Enter code"
+                        className="min-h-[48px] flex-1 rounded-2xl bg-secondary px-4 font-mono text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+                        disabled={promoApplying}
+                      />
+                      <motion.button
+                        type="button"
+                        onClick={() => void applyPromoCode()}
+                        disabled={promoApplying || !promoInput.trim()}
+                        whileHover={{ scale: promoApplying ? 1 : 1.02 }}
+                        whileTap={{ scale: promoApplying ? 1 : 0.98 }}
+                        className="rounded-2xl bg-secondary px-5 py-3 text-sm font-semibold text-foreground ring-1 ring-border hover:bg-primary/10 disabled:opacity-40"
+                      >
+                        {promoApplying ? "Checking…" : "Apply"}
+                      </motion.button>
+                    </div>
+                    {promoError && <p className="mt-2 text-xs text-destructive">{promoError}</p>}
+                    {appliedPromoCode && !promoError && (
+                      <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        “{appliedPromoCode}” applied — your discount will show on the next screen.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="bg-secondary/70 rounded-2xl p-5 mb-6">
                     <div className="flex items-center gap-2 mb-3">
                       <Heart className="text-primary" size={16} />
@@ -942,11 +1128,23 @@ const QuoteEngine = () => {
                   </div>
 
                   <div className="border-t border-border pt-4 space-y-3">
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between gap-3 text-sm">
                       <span className="text-muted-foreground">Shipping</span>
-                      <span className="font-mono font-medium text-foreground">
-                        ${selectedRateObj ? calculatePrice(selectedRateObj.shipment_charge_total) : 0}
-                      </span>
+                      <div className="text-right">
+                        {selectedSavings && (
+                          <div className="mb-0.5 flex flex-wrap items-center justify-end gap-2">
+                            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
+                              Save {selectedSavings.savePct}%
+                            </span>
+                            <span className="font-mono text-xs text-muted-foreground line-through">
+                              ${selectedSavings.listRef}
+                            </span>
+                          </div>
+                        )}
+                        <span className="font-mono font-medium text-foreground">
+                          ${selectedRateObj ? calculatePrice(selectedRateObj.shipment_charge_total) : 0}
+                        </span>
+                      </div>
                     </div>
                     {tip !== null && selectedRateObj && (
                       <motion.div
@@ -971,14 +1169,25 @@ const QuoteEngine = () => {
                         ${getTotal()}
                       </motion.span>
                     </div>
+                    {appliedPromoCode && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Promo discounts apply to the Stripe payment step; total above is before your code.
+                      </p>
+                    )}
                   </div>
+
+                  {checkoutError && (
+                    <p className="mb-4 text-sm text-destructive" role="alert">
+                      {checkoutError}
+                    </p>
+                  )}
 
                   <motion.button
                     className="w-full mt-6 px-8 py-4 bg-primary text-primary-foreground font-bold rounded-full shadow-glow relative overflow-hidden"
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => void startCheckout()}
-                    disabled={!selectedRateObj}
+                    disabled={!selectedRateObj || promoApplying}
                   >
                     <motion.div
                       className="absolute inset-0 bg-gradient-to-r from-transparent via-primary-foreground/20 to-transparent"
@@ -990,6 +1199,7 @@ const QuoteEngine = () => {
                 </motion.div>
               )}
             </AnimatePresence>
+            </div>
 
             {/* Navigation */}
             <div className="flex justify-between mt-5 sm:mt-8 gap-3">
@@ -1015,15 +1225,14 @@ const QuoteEngine = () => {
                 </motion.button>
               )}
             </div>
-          </motion.div>
+          </div>
 
           {/* Live Manifest Sidebar */}
           <motion.div
             initial={{ opacity: 0, x: 30 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
-            style={{ y: sidebarY }}
-            className="bg-foreground text-primary-foreground rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 h-fit relative lg:sticky lg:top-24 border border-primary-foreground/5"
+            className="bg-foreground text-primary-foreground rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 h-fit relative lg:sticky lg:top-24 border border-primary-foreground/5 self-start"
           >
             <div className="flex items-center gap-3 mb-6">
               <motion.img
@@ -1041,30 +1250,21 @@ const QuoteEngine = () => {
             <div className="space-y-4 font-mono text-sm">
               <div>
                 <span className="text-[10px] uppercase tracking-widest opacity-40">Origin</span>
-                <motion.div key={fromZip || "none"} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-1 font-medium">
-                  {fromZip || "—"}
-                </motion.div>
+                <div className="mt-1 font-medium">{fromZip || "—"}</div>
               </div>
               <div>
                 <span className="text-[10px] uppercase tracking-widest opacity-40">Destination</span>
-                <motion.div key={toZip || "none"} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-1 font-medium">
-                  {toZip || "—"}
-                </motion.div>
+                <div className="mt-1 font-medium">{toZip || "—"}</div>
               </div>
               <div className="border-t border-primary-foreground/10 pt-4">
                 <span className="text-[10px] uppercase tracking-widest opacity-40">Dimensions</span>
-                <motion.div
-                  key={dims ? `${dims.length}x${dims.width}x${dims.height}` : "none"}
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-1 font-medium"
-                >
+                <div className="mt-1 font-medium">
                   {dims && dims.length > 0 ? `${dims.length}×${dims.width}×${dims.height} in` : "—"}
-                </motion.div>
+                </div>
               </div>
               <div>
                 <span className="text-[10px] uppercase tracking-widest opacity-40">Weight</span>
-                <motion.div key={weight} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-1 font-medium">{weight ? `${weight} lb` : "—"}</motion.div>
+                <div className="mt-1 font-medium">{weight ? `${weight} lb` : "—"}</div>
               </div>
               {selectedRateObj !== null && (
                 <motion.div
@@ -1074,6 +1274,14 @@ const QuoteEngine = () => {
                 >
                   <span className="text-[10px] uppercase tracking-widest opacity-40">Carrier</span>
                   <div className="mt-1 font-medium">{selectedRateObj?.courier_name}</div>
+                  {selectedSavings && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-bold uppercase text-primary-foreground/90">
+                        Save {selectedSavings.savePct}%
+                      </span>
+                      <span className="font-mono text-xs opacity-60 line-through">${selectedSavings.listRef}</span>
+                    </div>
+                  )}
                   <motion.div
                     className="text-3xl font-bold mt-2 text-primary"
                     key={getTotal()}

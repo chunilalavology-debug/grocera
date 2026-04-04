@@ -27,7 +27,6 @@ function ProductDetail() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
-  const [relatedWeights, setRelatedWeights] = useState({});
   const [selectedVariants, setSelectedVariants] = useState({}); // { [variantName]: optionValue }
   const [productTab, setProductTab] = useState('description'); // description | additional | reviews
   const [localReviews, setLocalReviews] = useState([]);
@@ -96,8 +95,7 @@ function ProductDetail() {
       setTimeout(() => navigate('/login'), 500);
       return;
     }
-    const pid = p._id || p.id;
-    const weight = relatedWeights[pid] || 1;
+    const weight = 1;
     const itemToAdd = isVegetableProduct(p) ? { ...p, selectedWeight: weight, displayName: `${p.name} (${weight} lb)` } : p;
     try {
       const result = addToCart(itemToAdd, 1);
@@ -184,8 +182,9 @@ function ProductDetail() {
         const response = await api.get(`/user/products/getById?id=${id}`);
         const data = response.data || response.product || response;
         setProduct(data);
-      } catch (err) {
-        setError(err.message);
+      } catch {
+        setProduct(null);
+        setError(null);
       } finally {
         setLoading(false);
       }
@@ -219,7 +218,7 @@ function ProductDetail() {
     } else {
       setSelectedVariants({});
     }
-  }, [product?._id]);
+  }, [product]);
 
   useEffect(() => {
     if (!product?.category || !product?._id) return;
@@ -239,12 +238,12 @@ function ProductDetail() {
       }
     };
     fetchRelated();
-  }, [product?._id, product?.category]);
+  }, [product]);
 
   // Save to recently viewed when product is loaded
   useEffect(() => {
     if (product?._id || product?.id) saveRecentlyViewedProduct(product);
-  }, [product?._id]);
+  }, [product]);
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-screen space-y-4 bg-[#f8fafc]">
@@ -742,7 +741,6 @@ function ProductDetail() {
                   const originalPrice = p.originalPrice ?? p.compareAtPrice;
                   const computedPct = (originalPrice != null && originalPrice > 0 && price < originalPrice) ? Math.round((1 - price / originalPrice) * 100) : 0;
                   const discountPct = p.discountPercentage != null ? Number(p.discountPercentage) : (dealDiscountPct || computedPct);
-                  const hasDiscount = discountPct > 0;
                   const displayDiscountPct = Math.max(0, Number(discountPct) || 0);
                   const inStock = p.inStock !== false;
                   const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;

@@ -6,7 +6,6 @@ import ScrollReveal from '../components/ScrollReveal';
 import '../styles/pages/Products.css';
 import StarRating from '../components/StarRating';
 import api from '../services/api';
-import { getApiBaseUrl } from '../config/apiBase';
 import { filterProductsBySearch } from '../utils/fuzzyProductMatch';
 
 export default function Category() {
@@ -154,8 +153,7 @@ export default function Category() {
           (p) => p.inStock === true && (p.quantity > 0 || p.stockQuantity > 0)
         );
         if (mounted) setProducts(inStockProducts);
-      } catch (error) {
-        console.error('Error fetching products:', error, 'API:', getApiBaseUrl());
+      } catch {
         if (mounted) {
           setProducts([]);
         }

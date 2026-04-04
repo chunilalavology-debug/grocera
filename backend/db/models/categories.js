@@ -17,6 +17,18 @@ const categorySchema = new mongoose.Schema({
         default: true
     },
 
+    /** Featured strip tab: indian | american | chinese | turkish (omit/null = not on home strip) */
+    main: {
+        type: String,
+        default: null,
+        trim: true,
+    },
+
+    sortOrder: {
+        type: Number,
+        default: 0,
+    },
+
     ...addTimeStamp()
 });
 

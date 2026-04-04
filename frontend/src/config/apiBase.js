@@ -1,10 +1,10 @@
 /**
  * Single source of truth for the backend API base URL (must end with /api).
  *
- * 1) REACT_APP_API_URL at build time (set in Vercel for the frontend project)
- * 2) Known split Vercel deploys: frontend host → backend /api base (no rebuild)
- * 3) Same-origin /api (only when API is deployed with the static app)
- * 4) Legacy fallback host
+ * 1) Local dev (npm start on localhost / LAN): same-origin /api → setupProxy.js → backend :5000
+ * 2) REACT_APP_API_URL when set (production / REACT_APP_FORCE_REMOTE_API for local)
+ * 3) Known split Vercel deploys + fallbacks for static hosting
+ * 4) REACT_APP_SAME_ORIGIN_API=1 when API is reverse-proxied on the same host as the SPA
  */
 
 const LEGACY_API_FALLBACK = "https://zippyyy.com/api";
@@ -51,32 +51,41 @@ function getSplitDeployFallbackApi() {
  */
 export function getApiBaseUrl() {
   const fromEnv = process.env.REACT_APP_API_URL;
-  if (fromEnv && String(fromEnv).trim()) {
-    return stripTrailingSlashes(String(fromEnv).trim());
-  }
-
   const isDev =
     typeof process.env.NODE_ENV !== "undefined" &&
     process.env.NODE_ENV === "development";
 
+  /**
+   * Local `npm start`: use same-origin `/api` so webpack proxies to :5000 (avoids CORS + broken uploads).
+   * Set REACT_APP_FORCE_REMOTE_API=1 to keep using REACT_APP_API_URL from .env while UI is on localhost.
+   */
+  const forceRemoteApi =
+    process.env.REACT_APP_FORCE_REMOTE_API === "1" &&
+    fromEnv &&
+    String(fromEnv).trim();
+
+  if (!forceRemoteApi && typeof window !== "undefined" && isDev) {
+    const host = window.location.hostname;
+    const localDevUi =
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "[::1]" ||
+      isPrivateLanHost(host);
+    if (localDevUi) {
+      return `${stripTrailingSlashes(window.location.origin)}/api`;
+    }
+  }
+
+  if (fromEnv && String(fromEnv).trim()) {
+    return stripTrailingSlashes(String(fromEnv).trim());
+  }
+
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-
-    if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") {
-      return "http://localhost:5000/api";
-    }
-
-    if (isDev && isPrivateLanHost(host)) {
-      return `http://${host}:5000/api`;
-    }
 
     const mapped = VERCEL_HOST_API_MAP[host];
     if (mapped) {
       return stripTrailingSlashes(mapped);
-    }
-
-    if (isDev) {
-      return "http://localhost:5000/api";
     }
 
     /**
@@ -87,7 +96,18 @@ export function getApiBaseUrl() {
       return getSplitDeployFallbackApi();
     }
 
-    return `${stripTrailingSlashes(window.location.origin)}/api`;
+    /**
+     * Custom domain on static hosting: same-origin `/api` often returns `index.html` (uploads see "unexpected HTML").
+     * Prefer split backend unless you explicitly serve the API on this host (proxy /api → Node).
+     */
+    const sameOriginApi =
+      typeof process.env.REACT_APP_SAME_ORIGIN_API !== "undefined" &&
+      String(process.env.REACT_APP_SAME_ORIGIN_API).trim() === "1";
+    if (sameOriginApi) {
+      return `${stripTrailingSlashes(window.location.origin)}/api`;
+    }
+
+    return getSplitDeployFallbackApi();
   }
 
   if (isDev) {

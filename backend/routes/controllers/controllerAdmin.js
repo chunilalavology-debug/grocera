@@ -19,6 +19,27 @@ const OrderDelivered = require("../../utils/template/userOrderDeliverd");
 const OrderCancelled = require("../../utils/template/userOrderCancelled");
 const userOrderStatusUpdate = require("../../utils/template/userOrderStatusUpdate");
 const Category = require("../../db/models/categories");
+const {
+  coerceCategoryIsActiveFromRequest,
+} = require("../../utils/categoryActivity");
+const { finalizeCategoryImageUpload } = require("../../utils/categoryImageUpload");
+const {
+  escapeRegex,
+  buildProductCategoryMaps,
+  productCountForCategoryName,
+  categoryStringFromDoc,
+  firstProductImageByCategoryKey,
+  firstProductImageByExactCategoryNames,
+  normCategoryKey,
+  pickProductImage,
+  PRODUCT_NOT_DELETED,
+} = require("../../utils/categoryCounts");
+const {
+  getValuesForMain,
+  inferMainForCategoryName,
+} = require("../../utils/storefrontCategoryMeta");
+const { safeApiMessage } = require("../../utils/safeApiMessage");
+const { invalidateProductCatalogCache } = require("../../utils/invalidateProductCatalogCache");
 const adminAuth = [authorize(['admin'])];
 
 const formatJoiErrors = (error) => {
@@ -56,9 +77,12 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const fileExt = path.extname(file.originalname).toLowerCase();
 
-    const isImage =
-      /jpeg|jpg|png|webp/.test(file.mimetype) &&
-      /jpeg|jpg|png|webp/.test(fileExt);
+    const imageExtOk = /jpeg|jpg|png|webp/.test(fileExt.replace(/^\./, ""));
+    const imageMimeOk =
+      !file.mimetype ||
+      /^image\//i.test(file.mimetype) ||
+      /jpe?g|png|webp/i.test(file.mimetype);
+    const isImage = imageExtOk && imageMimeOk;
 
     const isExcel =
       file.mimetype ===
@@ -78,6 +102,23 @@ const upload = multer({
     }
   }
 });
+
+/** Multer errors (type, size) must return JSON or the admin UI shows a generic network message. */
+const uploadCategoryImageMulter = (req, res, next) => {
+  upload.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "Image too large (max 5MB). Try a smaller JPG, PNG, or WebP.",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Invalid upload",
+    });
+  });
+};
 
 const formatDateTime = (value) => {
   if (!value) return "";
@@ -1186,10 +1227,13 @@ const getProductAnalytics = async (req, res) => {
 
 const getAllMessages = async (req, res) => {
   try {
-    const { page = 1, limit = 20, status, priority } = req.query;
+    const { page = 1, limit = 20, status: statusRaw, priority } = req.query;
     const query = {};
 
+    let status = statusRaw;
     if (status && status !== 'all') {
+      if (status === 'replied') status = 'responded';
+      if (status === 'resolved') status = 'closed';
       query.status = status;
     }
 
@@ -1317,8 +1361,10 @@ const replyToMessage = async (req, res) => {
 
 const getMessageStats = async (req, res) => {
   try {
-    const stats = await Message.getMessageStats();
-    const totalMessages = await Message.countDocuments();
+    const totalMessages = await ContactUs.countDocuments();
+    const byStatus = await ContactUs.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
 
     const statusCounts = {
       unread: 0,
@@ -1327,8 +1373,11 @@ const getMessageStats = async (req, res) => {
       resolved: 0
     };
 
-    stats.forEach(stat => {
-      statusCounts[stat._id] = stat.count;
+    byStatus.forEach((stat) => {
+      if (stat._id === 'new') statusCounts.unread = stat.count;
+      else if (stat._id === 'read') statusCounts.read = stat.count;
+      else if (stat._id === 'responded') statusCounts.replied = stat.count;
+      else if (stat._id === 'closed') statusCounts.resolved = stat.count;
     });
 
     res.json({
@@ -1552,9 +1601,9 @@ const deleteProduct = async (req, res) => {
 const getAdminProducts = async (req, res) => {
   const validation = Joi.object({
     page: Joi.number().integer().min(1).optional(),
-    limit: Joi.number().integer().min(1).max(100).optional(),
+    limit: Joi.number().integer().min(1).max(500).optional(),
     search: Joi.string().max(100).allow(null, ""),
-    category: Joi.string().max(50).allow(null, "")
+    category: Joi.string().max(160).allow(null, "")
   })
   try {
     await validation.validateAsync(req.query, { abortEarly: true });
@@ -1578,8 +1627,11 @@ const getAdminProducts = async (req, res) => {
       ];
     }
 
-    if (category) {
-      query.category = category;
+    if (category && String(category).trim()) {
+      const c = String(category).trim();
+      query.category = {
+        $regex: new RegExp(`^${escapeRegex(c)}$`, "i"),
+      };
     }
 
     const [products, total, inStockCount, outOfStockCount] = await Promise.all([
@@ -2184,10 +2236,23 @@ const getContactById = async (req, res) => {
   }
 };
 
+const categoryMainValues = ["indian", "american", "chinese", "turkish"];
+
+const normalizeCategoryMain = (main) => {
+  if (main == null || main === "") return null;
+  const m = String(main).toLowerCase().trim();
+  return categoryMainValues.includes(m) ? m : null;
+};
+
 const createCategory = async (req, res) => {
   const categorySchema = Joi.object({
     name: Joi.string().trim().min(2).required(),
-    image: Joi.string().allow("", null)
+    image: Joi.string().allow("", null),
+    main: Joi.string().valid(...categoryMainValues).required(),
+    sortOrder: Joi.number().integer().min(0).max(99999).optional(),
+    isActive: Joi.alternatives()
+      .try(Joi.boolean(), Joi.string().trim().lowercase().valid("true", "false", "1", "0"))
+      .optional(),
   });
   try {
     const { error, value } = categorySchema.validate(req.body);
@@ -2199,7 +2264,10 @@ const createCategory = async (req, res) => {
       });
     }
 
-    const existing = await Category.findOne({ name: value.name });
+    value.main = normalizeCategoryMain(value.main);
+    if (value.sortOrder == null) value.sortOrder = 0;
+
+    const existing = await Category.findOne({ name: value.name, isDeleted: false });
 
     if (existing) {
       return res.status(400).json({
@@ -2208,7 +2276,21 @@ const createCategory = async (req, res) => {
       });
     }
 
-    const category = await Category.create(value);
+    const nextActive =
+      value.isActive !== undefined
+        ? coerceCategoryIsActiveFromRequest(value.isActive, true)
+        : true;
+
+    const category = await Category.create({
+      name: value.name,
+      image: value.image ?? "",
+      main: value.main,
+      sortOrder: value.sortOrder ?? 0,
+      isActive: nextActive,
+      updatedAt: Date.now(),
+    });
+
+    await invalidateProductCatalogCache();
 
     res.status(201).json({
       success: true,
@@ -2218,7 +2300,7 @@ const createCategory = async (req, res) => {
   } catch (err) {
     res.status(500).json({
       success: false,
-      message: err.message
+      message: safeApiMessage(err, "Could not create category"),
     });
   }
 };
@@ -2228,36 +2310,148 @@ const getCategories = async (req, res) => {
     const {
       search = "",
       page = 1,
-      limit = 10
+      limit = 100
     } = req.query;
 
-    const pageNumber = parseInt(page);
-    const limitNumber = parseInt(limit);
+    const pageNumber = parseInt(page, 10) || 1;
+    const limitNumber = Math.min(parseInt(limit, 10) || 100, 200);
     const skip = (pageNumber - 1) * limitNumber;
 
+    const searchTrim = String(search || "").trim();
     const filter = {
-      isActive: true,
       isDeleted: false,
-      ...(search && {
-        name: { $regex: search, $options: "i" }
-      })
+      ...(searchTrim && {
+        name: { $regex: escapeRegex(searchTrim), $options: "i" },
+      }),
     };
+
+    const activeFilter = String(req.query.active || "").toLowerCase();
+    if (activeFilter === "active") filter.isActive = true;
+    if (activeFilter === "inactive") filter.isActive = false;
+
+    const mainParam = String(req.query.main || "").toLowerCase().trim();
+    const allowedMain = ["indian", "american", "chinese", "turkish"];
+    if (mainParam && allowedMain.includes(mainParam)) {
+      const storefrontNames = getValuesForMain(mainParam);
+      filter.$or = [
+        { main: mainParam },
+        ...(storefrontNames.length ? [{ name: { $in: storefrontNames } }] : []),
+      ];
+    }
 
     const total = await Category.countDocuments(filter);
 
     const categories = await Category.find(filter)
-      .sort({ createdAt: -1 })
+      .sort({ sortOrder: 1, name: 1 })
       .skip(skip)
-      .limit(limitNumber);
+      .limit(limitNumber)
+      .lean();
+
+    let mapAll = {};
+    let mapInStock = {};
+    let firstImgByKey = {};
+    try {
+      const maps = await buildProductCategoryMaps(Products);
+      mapAll = maps.mapAll || {};
+      mapInStock = maps.mapInStock || {};
+    } catch (e) {
+      console.error("getCategories buildProductCategoryMaps:", e.message);
+    }
+    try {
+      firstImgByKey = await firstProductImageByCategoryKey(Products);
+    } catch (e) {
+      console.error("getCategories firstProductImageByCategoryKey:", e.message);
+    }
+
+    const data = categories.map((c) => {
+      const nk = normCategoryKey(c.name);
+      const shop = productCountForCategoryName(mapInStock, c.name);
+      const all = productCountForCategoryName(mapAll, c.name);
+      const saved = c.image && String(c.image).trim();
+      const displayThumbnail = saved || firstImgByKey[nk] || null;
+
+      const inferredMain = inferMainForCategoryName(c.name);
+      const dbMain = c.main && allowedMain.includes(String(c.main).toLowerCase())
+        ? String(c.main).toLowerCase()
+        : null;
+      const effectiveMain = dbMain || inferredMain || null;
+
+      return {
+        ...c,
+        productCount: all,
+        productCountInStock: shop,
+        productCountAll: all,
+        displayThumbnail,
+        inferredMain,
+        effectiveMain,
+        mainIsInferred: !dbMain && Boolean(inferredMain),
+      };
+    });
+
+    const needThumb = data
+      .filter((row) => !row.displayThumbnail && Number(row.productCount) > 0)
+      .map((r) => r.name);
+    if (needThumb.length) {
+      try {
+        const byExact = await firstProductImageByExactCategoryNames(Products, needThumb);
+        for (const row of data) {
+          if (!row.displayThumbnail && row.productCount > 0 && byExact[row.name]) {
+            row.displayThumbnail = byExact[row.name];
+          }
+        }
+      } catch (e) {
+        console.error("getCategories exact image fallback:", e.message);
+      }
+    }
+
+    const stillThumb = data.filter((row) => !row.displayThumbnail && Number(row.productCount) > 0);
+    if (stillThumb.length) {
+      try {
+        const col = Products.collection;
+        const or = stillThumb.map((r) => ({
+          category: new RegExp(`^${escapeRegex(String(r.name).trim())}$`, "i"),
+        }));
+        const prods = await col
+          .find(
+            { ...PRODUCT_NOT_DELETED, $or: or },
+            {
+              projection: {
+                category: 1,
+                image: 1,
+                images: 1,
+                imageUrl: 1,
+                thumbnail: 1,
+                photo: 1,
+              },
+            }
+          )
+          .sort({ _id: -1 })
+          .limit(1200)
+          .toArray();
+        for (const p of prods) {
+          const img = pickProductImage(p);
+          if (!img) continue;
+          const pk = normCategoryKey(categoryStringFromDoc(p.category));
+          for (const row of data) {
+            if (row.displayThumbnail || !row.productCount) continue;
+            if (normCategoryKey(row.name) !== pk) continue;
+            row.displayThumbnail = img;
+            break;
+          }
+        }
+      } catch (e) {
+        console.error("getCategories case-insensitive image fallback:", e.message);
+      }
+    }
 
     res.json({
       success: true,
-      data: categories,
+      data,
       pagination: {
         total,
         page: pageNumber,
         limit: limitNumber,
-        totalPages: Math.ceil(total / limitNumber)
+        totalPages: Math.ceil(total / limitNumber) || 1
       }
     });
 
@@ -2297,7 +2491,11 @@ const updateCategory = async (req, res) => {
   const categorySchema = Joi.object({
     name: Joi.string().trim().min(2).required(),
     image: Joi.string().allow("", null),
-    isActive: Joi.boolean().optional()
+    isActive: Joi.alternatives()
+      .try(Joi.boolean(), Joi.string().trim().lowercase().valid("true", "false", "1", "0"))
+      .optional(),
+    main: Joi.string().valid(...categoryMainValues).required(),
+    sortOrder: Joi.number().integer().min(0).max(99999).optional(),
   });
   try {
     const { error, value } = categorySchema.validate(req.body);
@@ -2309,18 +2507,62 @@ const updateCategory = async (req, res) => {
       });
     }
 
-    const updated = await Category.findByIdAndUpdate(
-      req.params.id,
-      value,
-      { new: true }
-    );
+    const prev = await Category.findOne({
+      _id: req.params.id,
+      isDeleted: false,
+    });
 
-    if (!updated) {
+    if (!prev) {
       return res.status(404).json({
         success: false,
         message: "Category not found"
       });
     }
+
+    const oldName = prev.name;
+    value.main = normalizeCategoryMain(value.main);
+    value.updatedAt = Date.now();
+
+    const nameTaken = await Category.findOne({
+      name: value.name,
+      isDeleted: false,
+      _id: { $ne: req.params.id },
+    });
+    if (nameTaken) {
+      return res.status(400).json({
+        success: false,
+        message: "Another category already uses this name",
+      });
+    }
+
+    const nextIsActive =
+      value.isActive !== undefined
+        ? coerceCategoryIsActiveFromRequest(value.isActive, true)
+        : coerceCategoryIsActiveFromRequest(prev.isActive, true);
+
+    const updated = await Category.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          name: value.name,
+          image: value.image ?? "",
+          main: value.main,
+          sortOrder: value.sortOrder ?? 0,
+          isActive: nextIsActive,
+          updatedAt: Date.now(),
+        },
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (value.name !== oldName) {
+      await Products.updateMany(
+        { category: oldName, isDeleted: false },
+        { $set: { category: value.name, updatedAt: Date.now() } }
+      );
+    }
+
+    await invalidateProductCatalogCache();
 
     res.json({
       success: true,
@@ -2330,7 +2572,54 @@ const updateCategory = async (req, res) => {
   } catch (err) {
     res.status(500).json({
       success: false,
-      message: err.message
+      message: safeApiMessage(err, "Could not update category"),
+    });
+  }
+};
+
+/** Toggle category visibility on the storefront (MongoDB `isActive` only). */
+const patchCategoryActive = async (req, res) => {
+  const bodySchema = Joi.object({
+    isActive: Joi.alternatives()
+      .try(Joi.boolean(), Joi.string().trim().lowercase().valid("true", "false", "1", "0"))
+      .required(),
+  });
+  try {
+    const { error, value } = bodySchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.details[0].message,
+      });
+    }
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid category id" });
+    }
+
+    const prev = await Category.findOne({ _id: id, isDeleted: false });
+    if (!prev) {
+      return res.status(404).json({ success: false, message: "Category not found" });
+    }
+
+    const nextActive = coerceCategoryIsActiveFromRequest(value.isActive, true);
+    const updated = await Category.findByIdAndUpdate(
+      id,
+      { $set: { isActive: nextActive, updatedAt: Date.now() } },
+      { new: true, runValidators: true }
+    );
+
+    await invalidateProductCatalogCache();
+
+    return res.json({
+      success: true,
+      data: updated,
+      message: nextActive ? "Category activated" : "Category deactivated",
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: safeApiMessage(err, "Could not update category status"),
     });
   }
 };
@@ -2350,6 +2639,8 @@ const deleteCategory = async (req, res) => {
       });
     }
 
+    await invalidateProductCatalogCache();
+
     res.json({
       success: true,
       message: "Category deactivated successfully"
@@ -2358,7 +2649,159 @@ const deleteCategory = async (req, res) => {
   } catch (err) {
     res.status(500).json({
       success: false,
-      message: err.message
+      message: safeApiMessage(err, "Could not delete category"),
+    });
+  }
+};
+
+const uploadCategoryImage = async (req, res) => {
+  try {
+    const imageUrl = await finalizeCategoryImageUpload(
+      req.file,
+      req,
+      adminUploadsDest
+    );
+    if (!imageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "No image file uploaded",
+      });
+    }
+
+    const categoryId = req.body?.categoryId;
+    if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
+      await Category.findByIdAndUpdate(categoryId, {
+        image: imageUrl,
+        updatedAt: Date.now(),
+      });
+    }
+
+    await invalidateProductCatalogCache();
+
+    return res.json({
+      success: true,
+      message: "Image optimized and saved",
+      data: { imageUrl },
+    });
+  } catch (err) {
+    console.error("uploadCategoryImage:", err);
+    return res.status(500).json({
+      success: false,
+      message: safeApiMessage(
+        err,
+        "Could not save image. Use JPG, PNG, or WebP under 5MB."
+      ),
+    });
+  }
+};
+
+const bulkAssignProductsToCategory = async (req, res) => {
+  const schema = Joi.object({
+    categoryName: Joi.string().trim().min(2).required(),
+    productIds: Joi.array()
+      .items(Joi.string().length(24).hex())
+      .min(1)
+      .max(500)
+      .required(),
+  });
+  try {
+    const { error, value } = schema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.details[0].message,
+      });
+    }
+
+    const cat = await Category.findOne({
+      isDeleted: false,
+      name: {
+        $regex: new RegExp(
+          `^${escapeRegex(value.categoryName.trim())}$`,
+          "i"
+        ),
+      },
+    });
+    if (!cat) {
+      return res.status(404).json({
+        success: false,
+        message: "Category not found",
+      });
+    }
+
+    const canonicalName = cat.name;
+    const ids = value.productIds.map((id) => new mongoose.Types.ObjectId(id));
+    const result = await Products.updateMany(
+      { _id: { $in: ids }, isDeleted: false },
+      { $set: { category: canonicalName, updatedAt: Date.now() } }
+    );
+
+    await invalidateProductCatalogCache();
+
+    return res.json({
+      success: true,
+      message: "Products updated",
+      data: { modifiedCount: result.modifiedCount },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: safeApiMessage(err, "Bulk assign failed"),
+    });
+  }
+};
+
+const bulkMoveProductsToCategory = async (req, res) => {
+  const schema = Joi.object({
+    productIds: Joi.array()
+      .items(Joi.string().length(24).hex())
+      .min(1)
+      .max(500)
+      .required(),
+    targetCategoryName: Joi.string().trim().min(2).required(),
+  });
+  try {
+    const { error, value } = schema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.details[0].message,
+      });
+    }
+
+    const target = await Category.findOne({
+      isDeleted: false,
+      name: {
+        $regex: new RegExp(
+          `^${escapeRegex(value.targetCategoryName.trim())}$`,
+          "i"
+        ),
+      },
+    });
+    if (!target) {
+      return res.status(404).json({
+        success: false,
+        message: "Target category not found",
+      });
+    }
+
+    const ids = value.productIds.map((id) => new mongoose.Types.ObjectId(id));
+    const result = await Products.updateMany(
+      { _id: { $in: ids }, isDeleted: false },
+      { $set: { category: target.name, updatedAt: Date.now() } }
+    );
+
+    await invalidateProductCatalogCache();
+
+    return res.json({
+      success: true,
+      message: "Products moved",
+      data: { modifiedCount: result.modifiedCount },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: safeApiMessage(err, "Move failed"),
     });
   }
 };
@@ -2795,7 +3238,16 @@ router.post("/createCategory", adminAuth, createCategory);
 router.get("/getCategories", adminAuth, getCategories);
 router.get("/getCategory/:id", adminAuth, getCategory);
 router.put("/updateCategory/:id", adminAuth, updateCategory);
+router.patch("/category/:id/isActive", adminAuth, patchCategoryActive);
 router.delete("/deleteCategory/:id", adminAuth, deleteCategory);
+router.post(
+  "/category/upload-image",
+  adminAuth,
+  uploadCategoryImageMulter,
+  uploadCategoryImage
+);
+router.post("/bulkAssignCategoryProducts", adminAuth, bulkAssignProductsToCategory);
+router.post("/bulkMoveProductsCategory", adminAuth, bulkMoveProductsToCategory);
 router.get("/home-slider-settings", adminAuth, getHomeSliderSettingsAdmin);
 router.put("/home-slider-settings", adminAuth, updateHomeSliderSettingsAdmin);
 router.post("/home-slider-settings/upload", adminAuth, upload.single("file"), uploadHomeSliderImage);

@@ -12,10 +12,75 @@ const redisClient = require("../services/serviceRedis-cli");
 const { setKeyWithTime, getKey } = require("../services/serviceRedis");
 const { default: mongoose } = require("mongoose");
 const Category = require("../../db/models/categories");
+const {
+  escapeRegex,
+  buildProductCategoryMaps,
+  productCountForCategoryName,
+  categoryStringFromDoc,
+  firstProductImageByCategoryKey,
+  firstProductImageByExactCategoryNames,
+  normCategoryKey,
+  pickProductImage,
+  PRODUCT_NOT_DELETED,
+} = require("../../utils/categoryCounts");
+const { isCategoryActiveInDatabase } = require("../../utils/categoryActivity");
+const { getValuesForMain, inferMainForCategoryName } = require("../../utils/storefrontCategoryMeta");
+
+const FEATURED_MAIN_IDS = ["indian", "american", "chinese", "turkish"];
+const CATEGORY_STOREFRONT_QUERY = { isDeleted: { $ne: true }, isDisable: { $ne: true } };
+
+/** Same region filter as admin GET /admin/getCategories?main=… (Categories dashboard table). */
+function adminDashboardMainTabMongoFilter(main) {
+  const storefrontNames = getValuesForMain(main);
+  return {
+    isDeleted: false,
+    $or: [
+      { main: main },
+      ...(storefrontNames.length ? [{ name: { $in: storefrontNames } }] : []),
+    ],
+  };
+}
+
+function categoryMatchesFeaturedTabStrict(c, main, nameKeySet) {
+  const rawMain =
+    c.main != null && String(c.main).trim() !== "" ? String(c.main).toLowerCase().trim() : "";
+  const validMain = FEATURED_MAIN_IDS.includes(rawMain) ? rawMain : null;
+
+  if (validMain) {
+    return validMain === main;
+  }
+
+  const nk = normCategoryKey(c.name);
+  if (nameKeySet.has(nk)) return true;
+  return inferMainForCategoryName(c.name) === main;
+}
+
+/** When strict matching yields nothing, align with admin “effective main” + canonical names for this tab. */
+function categoryMatchesFeaturedTabRelaxed(c, main, nameKeySet) {
+  const rawMain =
+    c.main != null && String(c.main).trim() !== "" ? String(c.main).toLowerCase().trim() : "";
+  const dbMain = FEATURED_MAIN_IDS.includes(rawMain) ? rawMain : null;
+  const inferred = inferMainForCategoryName(c.name);
+  const effectiveMain = dbMain || inferred;
+  if (effectiveMain === main) return true;
+  if (!dbMain && nameKeySet.has(normCategoryKey(c.name))) return true;
+  return false;
+}
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const EASYSHIP_API_KEY = process.env.EASYSHIP_API_KEY || "";
 
 require("dotenv").config();
+
+/** Browsers / proxies must not cache mutable storefront JSON (avoids stale categories after admin changes). */
+function setCatalogNoCacheHeaders(res) {
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0",
+    Pragma: "no-cache",
+    Expires: "0",
+    "Surrogate-Control": "no-store",
+  });
+}
 
 const formatJoiErrors = (error) => {
   if (!error.details) return '';
@@ -102,6 +167,7 @@ const applyVoucher = async ({
 const getProducts = async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
+      setCatalogNoCacheHeaders(res);
       return res.status(503).json({
         success: false,
         message:
@@ -126,7 +192,7 @@ const getProducts = async (req, res) => {
 
     const filter = {
       inStock: true,
-      isDeleted: false,
+      ...PRODUCT_NOT_DELETED,
     };
 
     if (category !== "All") {
@@ -177,6 +243,7 @@ const getProducts = async (req, res) => {
           if (Array.isArray(list) && list.length === 0) {
             /* skip stale empty cache (e.g. DB was seeded after cache) */
           } else {
+            setCatalogNoCacheHeaders(res);
             return res.json(parsed);
           }
         } catch (_) {
@@ -186,9 +253,17 @@ const getProducts = async (req, res) => {
     }
 
     let total = null;
+    /** All non-deleted SKUs for this category string (any stock). Featured strip / admin totals. */
+    let totalCountAll = null;
 
     if (!cursor) {
       total = await Products.countDocuments(filter);
+      if (category && category !== "All" && String(category).trim() !== "") {
+        totalCountAll = await Products.countDocuments({
+          ...PRODUCT_NOT_DELETED,
+          category: String(category).trim(),
+        });
+      }
     }
 
 
@@ -222,6 +297,7 @@ const getProducts = async (req, res) => {
       success: true,
       data: normalizedProducts,
       totalCount: total,
+      totalCountAll: totalCountAll !== null ? totalCountAll : total,
       nextCursor: products.length
         ? products[products.length - 1]._id
         : null,
@@ -236,10 +312,12 @@ const getProducts = async (req, res) => {
       await setKeyWithTime(cacheKey, JSON.stringify(response), 1);
     }
 
+    setCatalogNoCacheHeaders(res);
     return res.json(response);
 
   } catch (error) {
     console.error("Get products error:", error);
+    setCatalogNoCacheHeaders(res);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch products",
@@ -415,16 +493,28 @@ const getProductById = async (req, res) => {
 
 const categories = async (req, res) => {
   try {
-    const categories = await Products.distinct('category');
+    const raw = await Products.distinct("category");
+    const names = (raw || []).map((c) => categoryStringFromDoc(c)).filter(Boolean);
+    const inactiveRows = await Category.collection
+      .find(CATEGORY_STOREFRONT_QUERY)
+      .project({ name: 1, isActive: 1, isDisable: 1, isDeleted: 1 })
+      .toArray();
+    const inactiveKeys = new Set();
+    for (const c of inactiveRows) {
+      if (!isCategoryActiveInDatabase(c)) {
+        inactiveKeys.add(normCategoryKey(c.name));
+      }
+    }
+    const filtered = names.filter((n) => !inactiveKeys.has(normCategoryKey(n)));
     res.json({
       success: true,
-      data: categories
+      data: filtered,
     });
   } catch (error) {
-    console.error('Get categories error:', error);
+    console.error("Get categories error:", error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching categories'
+      message: "Error fetching categories",
     });
   }
 };
@@ -1095,10 +1185,14 @@ const contactForm = async (req, res) => {
       contactId: contact._id
     });
 
+    const contactInboxEmail =
+      (process.env.CONTACT_FORM_TO_EMAIL && String(process.env.CONTACT_FORM_TO_EMAIL).trim()) ||
+      "contact@zippyyy.com";
+
     setImmediate(async () => {
       try {
         const adminMailOptions = {
-          to: "zippyyycare@gmail.com" || process.env.EMAIL_USER || process.env.EMAIL_USER,
+          to: contactInboxEmail,
           subject: `New Contact Form Submission: ${subject}`,
           html: `
             <h2>New Contact Form Submission</h2>
@@ -1608,26 +1702,209 @@ const getVouchers = async (req, res) => {
 
 const getCategories = async (req, res) => {
   try {
-    const limitNumber = parseInt(30);
+    /** Match admin “All” list: not deleted, same sort as dashboard (Sort column, then name). */
+    const raw = await Category.collection
+      .find({ isDeleted: false })
+      .sort({ sortOrder: 1, name: 1 })
+      .limit(120)
+      .toArray();
 
-    const filter = {
-      isActive: true,
-      isDeleted: false,
-    };
+    const categories = raw.filter(isCategoryActiveInDatabase);
 
-    const categories = await Category.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(limitNumber);
-
-    res.json({
+    setCatalogNoCacheHeaders(res);
+    return res.json({
       success: true,
       data: categories,
     });
 
   } catch (err) {
-    res.status(500).json({
+    setCatalogNoCacheHeaders(res);
+    return res.status(500).json({
       success: false,
       message: err.message
+    });
+  }
+};
+
+const getFeaturedCategories = async (req, res) => {
+  try {
+    const main = String(req.query.main || "indian").toLowerCase();
+    if (!FEATURED_MAIN_IDS.includes(main)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid main filter",
+      });
+    }
+
+    /**
+     * Primary path: same Mongo filter + sort as admin Categories page for this region tab.
+     * Fallback: broad read + JS tab rules, then product-derived names (legacy DB).
+     */
+    const storefrontNames = getValuesForMain(main);
+    const nameKeySet = new Set(storefrontNames.map((n) => normCategoryKey(n)));
+
+    let rawDocs = await Category.collection
+      .find(adminDashboardMainTabMongoFilter(main))
+      .sort({ sortOrder: 1, name: 1 })
+      .limit(200)
+      .toArray();
+
+    let list = rawDocs.filter(isCategoryActiveInDatabase);
+
+    if (list.length === 0) {
+      rawDocs = await Category.collection
+        .find(CATEGORY_STOREFRONT_QUERY)
+        .sort({ sortOrder: 1, name: 1 })
+        .limit(200)
+        .toArray();
+      const active = rawDocs.filter(isCategoryActiveInDatabase);
+      list = active.filter((c) => categoryMatchesFeaturedTabStrict(c, main, nameKeySet));
+      if (list.length === 0) {
+        list = active.filter((c) => categoryMatchesFeaturedTabRelaxed(c, main, nameKeySet));
+      }
+    }
+
+    /** Product.category fallback when no Category rows match this tab (legacy DB or missing Category docs). */
+    if (list.length === 0) {
+      try {
+        const inactiveRows = await Category.collection
+          .find(CATEGORY_STOREFRONT_QUERY)
+          .project({ name: 1, isActive: 1, isDisable: 1, isDeleted: 1 })
+          .toArray();
+        const inactiveNameKeys = new Set();
+        for (const c of inactiveRows) {
+          if (!isCategoryActiveInDatabase(c)) {
+            inactiveNameKeys.add(normCategoryKey(c.name));
+          }
+        }
+
+        const agg = await Products.aggregate([
+          { $match: { ...PRODUCT_NOT_DELETED, category: { $exists: true, $nin: [null, ""] } } },
+          { $group: { _id: "$category", count: { $sum: 1 } } },
+        ]);
+        const seen = new Set();
+        const synthetic = [];
+        for (const row of agg) {
+          const name = categoryStringFromDoc(row._id);
+          const nk = normCategoryKey(name);
+          if (!nk || seen.has(nk)) continue;
+          if (inactiveNameKeys.has(nk)) continue;
+          if (nameKeySet.has(nk) || inferMainForCategoryName(name) === main) {
+            seen.add(nk);
+            synthetic.push({
+              name,
+              main: null,
+              image: "",
+              sortOrder: 0,
+              isActive: true,
+              isDeleted: false,
+              isDisable: false,
+            });
+          }
+        }
+        synthetic.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        list = synthetic.slice(0, 32);
+      } catch (e) {
+        console.error("getFeaturedCategories product fallback:", e.message);
+      }
+    }
+
+    list = list.slice(0, 32);
+
+    const { mapInStock, mapAll } = await buildProductCategoryMaps(Products);
+    let firstImgByKey = {};
+    try {
+      firstImgByKey = await firstProductImageByCategoryKey(Products, {
+        preferInStockFirst: true,
+      });
+    } catch (e) {
+      console.error("getFeaturedCategories firstProductImageByCategoryKey:", e.message);
+    }
+
+    /** No synthetic list: only active DB categories for this `main` appear on the storefront. */
+
+    const data = list.map((c) => {
+      const shop = productCountForCategoryName(mapInStock, c.name);
+      const all = productCountForCategoryName(mapAll, c.name);
+      const saved = c.image && String(c.image).trim();
+      const nk = normCategoryKey(c.name);
+      const fromProduct = firstImgByKey[nk] || null;
+      return {
+        name: c.name,
+        value: c.name,
+        /** Total non-deleted SKUs in this category (stable; not “in-stock only”). */
+        count: all,
+        /** In-stock subset (storefront listing uses inStock). */
+        inStockCount: shop,
+        image: saved || fromProduct || null,
+        sortOrder: c.sortOrder ?? 0,
+        isActive: true,
+      };
+    });
+
+    const needExact = data
+      .filter((row) => !row.image && row.count > 0)
+      .map((r) => r.name);
+    if (needExact.length) {
+      try {
+        const byExact = await firstProductImageByExactCategoryNames(Products, needExact);
+        for (const row of data) {
+          if (!row.image && row.count > 0 && byExact[row.name]) {
+            row.image = byExact[row.name];
+          }
+        }
+      } catch (e) {
+        console.error("getFeaturedCategories exact image fallback:", e.message);
+      }
+    }
+
+    const stillNoImg = data.filter((row) => !row.image && row.count > 0);
+    if (stillNoImg.length) {
+      try {
+        const col = Products.collection;
+        const or = stillNoImg.map((r) => ({
+          category: new RegExp(`^${escapeRegex(String(r.name).trim())}$`, "i"),
+        }));
+        const prods = await col
+          .find(
+            { ...PRODUCT_NOT_DELETED, $or: or },
+            {
+              projection: {
+                category: 1,
+                image: 1,
+                images: 1,
+                imageUrl: 1,
+                thumbnail: 1,
+                photo: 1,
+              },
+            }
+          )
+          .sort({ _id: -1 })
+          .limit(1200)
+          .toArray();
+        for (const p of prods) {
+          const img = pickProductImage(p);
+          if (!img) continue;
+          const pk = normCategoryKey(categoryStringFromDoc(p.category));
+          for (const row of data) {
+            if (row.image || !row.count) continue;
+            if (normCategoryKey(row.name) !== pk) continue;
+            row.image = img;
+            break;
+          }
+        }
+      } catch (e) {
+        console.error("getFeaturedCategories case-insensitive image fallback:", e.message);
+      }
+    }
+
+    setCatalogNoCacheHeaders(res);
+    return res.json({ success: true, data });
+  } catch (err) {
+    setCatalogNoCacheHeaders(res);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to load featured categories",
     });
   }
 };
@@ -1637,6 +1914,7 @@ const getHomeSliderSettings = async (req, res) => {
     const settings = await HomeSliderSettings.findOne({ key: "home-main-slider" }).lean();
 
     if (!settings) {
+      setCatalogNoCacheHeaders(res);
       return res.json({
         success: true,
         data: {
@@ -1667,6 +1945,7 @@ const getHomeSliderSettings = async (req, res) => {
         buttonTextColor: s.buttonTextColor || "#ffffff",
       }));
 
+    setCatalogNoCacheHeaders(res);
     return res.json({
       success: true,
       data: {
@@ -1681,6 +1960,7 @@ const getHomeSliderSettings = async (req, res) => {
       },
     });
   } catch (err) {
+    setCatalogNoCacheHeaders(res);
     return res.status(500).json({
       success: false,
       message: err.message || "Failed to fetch slider settings",
@@ -2121,6 +2401,7 @@ router.get('/orderCount', orderCount);
 router.get('/vouchers', getVouchers);
 router.post('/applyCoupon', validateCoupon);
 router.get('/getCategories', getCategories);
+router.get('/featured-categories', getFeaturedCategories);
 router.get('/referral/discount', getReferralDiscount);
 router.get('/home-slider-settings', getHomeSliderSettings);
 router.post('/shipping/quote', getShippingQuote);

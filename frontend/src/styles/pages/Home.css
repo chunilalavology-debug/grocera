@@ -525,20 +525,23 @@ img {
 }
 
 /* ----- Featured Categories (below hero) ----- */
-/* Hide scrollbar on all devices; content still scrollable */
 .featured-categories__scroll {
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
 }
 .featured-categories__scroll::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
+    display: none;
+}
+.featured-categories__card-wrap {
+    scroll-snap-align: start;
 }
 .featured-categories__card-title {
     font-weight: 800;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
 }
 
-/* Featured Categories: mobile layout and touch targets */
 .featured-categories__nav {
   min-width: 44px;
   min-height: 44px;
@@ -549,21 +552,9 @@ img {
 }
 
 @media (max-width: 640px) {
-  .featured-categories__card {
-    min-width: 155px;
-    width: 155px;
-  }
   .featured-categories__scroll {
-    -webkit-overflow-scrolling: touch;
-    padding-left: 0;
-    padding-right: 0;
-  }
-}
-
-@media (max-width: 380px) {
-  .featured-categories__card {
-    min-width: 140px;
-    width: 140px;
+    padding-left: 2px;
+    padding-right: 2px;
   }
 }
 

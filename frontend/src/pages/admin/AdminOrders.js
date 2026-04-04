@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../../services/api';
 import toast, { Toaster } from 'react-hot-toast';
 import { RefreshCw, Download, Upload, Search } from 'lucide-react';
@@ -20,11 +20,55 @@ export default function AdminOrders() {
   const [carrierInput, setCarrierInput] = useState('');
   const csvInputRef = useRef(null);
 
-  useEffect(() => {
-    loadOrders(1);
-  }, [filter]);
+  const formatOrders = useCallback((orders = []) => {
+    return orders.map(order => {
+      const totalQuantity = order.items?.reduce(
+        (sum, item) => sum + (item.quantity || 0),
+        0
+      );
 
-  const loadOrders = async (pageNo = 1) => {
+      return {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        trackingNumber: order.trackingNumber || '',
+        carrier: order.carrier || '',
+
+        amounts: {
+          subtotal: order.subtotal || 0,
+          tax: order.taxAmount || 0,
+          shipping: order.shippingAmount || 0,
+          total: order.totalAmount || 0,
+          remaining: order.remainingAmount || 0,
+        },
+
+        paymentMethod: order?.paymentMethod,
+        paymentCards: order?.paymentCards,
+        items: order.items?.map(item => ({
+          productId: item.product?._id,
+          productName: item.product?.name,
+          image: item.product?.image,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+
+        itemsCount: order.items?.length || 0,
+        totalQuantity,
+
+        addressId: order.addressId,
+        userId: order.userId,
+
+        timeline: {
+          createdAt: order.createdAt,
+          estimatedDelivery: order.estimatedDelivery,
+          deliveredAt: order.deliveredAt,
+        },
+      };
+    });
+  }, []);
+
+  const loadOrders = useCallback(async (pageNo = 1) => {
     try {
       setLoading(true);
       const response = await api.get(
@@ -42,11 +86,15 @@ export default function AdminOrders() {
         setError(response.message || 'Failed to fetch orders');
       }
     } catch (err) {
-      setError('Network error: ' + err.message);
+      setError('Network error: ' + (err?.message || 'unknown'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, formatOrders]);
+
+  useEffect(() => {
+    loadOrders(1);
+  }, [filter, loadOrders]);
 
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
@@ -131,7 +179,6 @@ export default function AdminOrders() {
         toast.success(`Imported ${response.importedCount || 0} orders`);
         if (response.failedCount > 0) {
           toast.error(`${response.failedCount} rows failed`);
-          console.warn('Order CSV failed rows:', response.failedRows);
         }
         loadOrders(1);
       } else {
@@ -143,54 +190,6 @@ export default function AdminOrders() {
       setImportingCsv(false);
       if (csvInputRef.current) csvInputRef.current.value = '';
     }
-  };
-
-  const formatOrders = (orders = []) => {
-    return orders.map(order => {
-      const totalQuantity = order.items?.reduce(
-        (sum, item) => sum + (item.quantity || 0),
-        0
-      );
-
-      return {
-        orderId: order._id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        paymentStatus: order.paymentStatus,
-        trackingNumber: order.trackingNumber || '',
-        carrier: order.carrier || '',
-
-        amounts: {
-          subtotal: order.subtotal || 0,
-          tax: order.taxAmount || 0,
-          shipping: order.shippingAmount || 0,
-          total: order.totalAmount || 0,
-          remaining: order.remainingAmount || 0,
-        },
-
-        paymentMethod: order?.paymentMethod,
-        paymentCards: order?.paymentCards,
-        items: order.items?.map(item => ({
-          productId: item.product?._id,
-          productName: item.product?.name,
-          image: item.product?.image,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-
-        itemsCount: order.items?.length || 0,
-        totalQuantity,
-
-        addressId: order.addressId,
-        userId: order.userId,
-
-        timeline: {
-          createdAt: order.createdAt,
-          estimatedDelivery: order.estimatedDelivery,
-          deliveredAt: order.deliveredAt,
-        },
-      };
-    });
   };
 
   const statusColor = {
@@ -238,7 +237,7 @@ export default function AdminOrders() {
     if (!selectedOrder) return;
     setTrackingNumberInput(selectedOrder.trackingNumber || '');
     setCarrierInput(selectedOrder.carrier || '');
-  }, [selectedOrder?.orderId]);
+  }, [selectedOrder]);
 
 
   if (loading && page === 1) return (

@@ -18,17 +18,6 @@ export default function AdminUsers() {
 
     const serverUrl = 'https://zippyyy.com/api'
 
-    const handleEdit = (id) => {
-        console.log("Edit user:", id);
-        setOpenAction(null);
-    };
-
-    const handleDelete = (id) => {
-        console.log("Delete user:", id);
-        setOpenAction(null);
-    };
-
-
     // --- Data Fetching Logic ---
     const fetchUsers = useCallback(async () => {
         try {
@@ -56,8 +45,7 @@ export default function AdminUsers() {
                 setUsers([]);
                 setTotalPages(1);
             }
-        } catch (error) {
-            console.error('Error fetching users:', error);
+        } catch {
             setUsers([]);
             setTotalPages(1);
         } finally {

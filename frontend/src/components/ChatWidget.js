@@ -27,7 +27,7 @@ const CHAT_FAQ = [
   {
     id: 'contact',
     question: 'How can I reach customer support?',
-    answer: 'You can call us at (934) 260-4322 or use the Contact Us page to send a message. We’re here to help with orders, products, and any questions.',
+    answer: 'Email us at contact@zippyyy.com or use the Contact Us page to send a message. We’re here to help with orders, products, and any questions.',
   },
 ];
 

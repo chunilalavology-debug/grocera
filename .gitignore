@@ -21,6 +21,12 @@ zippyyy-ships/**/server/data/*.sqlite-wal
 
 # CRA production build — Vercel runs `npm run build`; do not commit output
 frontend/build/
+dist/
+.cache/
+coverage/
+*.log
+.DS_Store
+Thumbs.db
 
 # Vercel CLI local link metadata
 .vercel

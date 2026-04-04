@@ -1,103 +1,246 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MAIN_CATEGORIES, SUBCATEGORIES_BY_MAIN } from '../../../config/categories';
 import { getApiBaseUrl } from '../../../config/apiBase';
 import api from '../../../services/api';
 import ScrollReveal from '../../../components/ScrollReveal';
+import { featuredCategoriesListFromResponse } from '../../../utils/featuredCategoriesResponse';
 
-/** Stronger pastel backgrounds for card image area */
-const CARD_BG_COLORS = [
-  'bg-rose-200',
-  'bg-emerald-200',
-  'bg-amber-200',
-  'bg-sky-200',
-  'bg-violet-200',
-  'bg-teal-200',
-  'bg-orange-200',
-  'bg-lime-200',
-];
-
-/** Resolve product image: support image, images[0], and relative paths */
 function getProductImageUrl(product) {
   if (!product) return null;
   const imageOrigin =
     getApiBaseUrl().replace(/\/api\/?$/, '') ||
     (typeof window !== 'undefined' ? window.location.origin : '');
-  const raw = product.image || (Array.isArray(product.images) && product.images[0]) || product.imageUrl || null;
+  const raw =
+    product.image || (Array.isArray(product.images) && product.images[0]) || product.imageUrl || null;
   if (!raw || typeof raw !== 'string') return null;
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
   if (raw.startsWith('/')) return imageOrigin + raw;
-  return raw;
+  return imageOrigin + '/' + raw.replace(/^\//, '');
 }
 
-/** Inline placeholder so it never 404s */
-const PLACEHOLDER_IMAGE = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="160" viewBox="0 0 200 160"%3E%3Crect fill="%23e2e8f0" width="200" height="160"/%3E%3Ctext fill="%2394a3b8" x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-size="14"%3ENo image%3C/text%3E%3C/svg%3E';
+function resolveCategoryImageUrl(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  const imageOrigin =
+    getApiBaseUrl().replace(/\/api\/?$/, '') ||
+    (typeof window !== 'undefined' ? window.location.origin : '');
+  if (raw.startsWith('/')) return imageOrigin + raw;
+  return imageOrigin + '/' + raw.replace(/^\//, '');
+}
+
+const BROKEN_IMAGE_FALLBACK =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="280"><rect fill="#e2e8f0" width="400" height="280" rx="12"/></svg>'
+  );
+
+function categoryRowIsActiveForFeatured(r) {
+  if (!r || !r.name) return false;
+  if (r.isActive === false || r.isActive === 0) return false;
+  if (typeof r.isActive === 'string' && ['false', '0', 'no'].includes(String(r.isActive).trim().toLowerCase())) {
+    return false;
+  }
+  return true;
+}
+
+function parseTotalFromProductsResponse(res) {
+  if (!res || typeof res !== 'object') return null;
+  const all = Number(res.totalCountAll);
+  if (Number.isFinite(all)) return Math.max(0, Math.floor(all));
+  const instock = Number(res.totalCount);
+  if (Number.isFinite(instock)) return Math.max(0, Math.floor(instock));
+  return null;
+}
+
+/** Fallback list when featured API is empty — names/order only; counts/images filled from /user/products. */
+function staticItemsForMain(mainId) {
+  const rows = SUBCATEGORIES_BY_MAIN[mainId] || [];
+  return rows.map((s) => ({
+    name: s.name,
+    value: s.value,
+    count: 0,
+    featuredImage: null,
+    _source: 'static',
+  }));
+}
 
 export default function FeaturedCategories() {
   const mains = MAIN_CATEGORIES.filter((m) => m.id !== 'all');
   const [activeMain, setActiveMain] = useState(mains[0]?.id || 'indian');
-  const [subcategoryImages, setSubcategoryImages] = useState({});
+  const [apiRows, setApiRows] = useState([]);
+  const [featuredLoadError, setFeaturedLoadError] = useState('');
+  const [featuredCatalogReady, setFeaturedCatalogReady] = useState(false);
+  /** `${main}:${value}` → real thumb URL + SKU count from Mongo via /user/products */
+  const [categoryOverlay, setCategoryOverlay] = useState({});
   const scrollRef = useRef(null);
 
-  const subcategories = SUBCATEGORIES_BY_MAIN[activeMain] || [];
+  const staticByMain = useMemo(() => {
+    const o = {};
+    ['indian', 'american', 'chinese', 'turkish'].forEach((id) => {
+      o[id] = staticItemsForMain(id);
+    });
+    return o;
+  }, []);
 
-  // Fetch one product image per subcategory from API (category-related image)
+  const baseDisplayList = useMemo(() => {
+    const useApi =
+      featuredCatalogReady &&
+      apiRows.filter((r) => r && r.name && categoryRowIsActiveForFeatured(r)).length > 0 &&
+      !featuredLoadError;
+    if (useApi) {
+      return apiRows
+        .filter((r) => r && r.name && categoryRowIsActiveForFeatured(r))
+        .map((r) => {
+          const n = Number(r.count);
+          const count = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+          return {
+            name: r.name,
+            value: r.value || r.name,
+            count,
+            featuredImage: r.image ? resolveCategoryImageUrl(r.image) : null,
+            _source: 'api',
+          };
+        });
+    }
+    return staticByMain[activeMain] || [];
+  }, [featuredCatalogReady, apiRows, featuredLoadError, activeMain, staticByMain]);
+
+  const rowsToShow = useMemo(() => {
+    return baseDisplayList.map((item) => {
+      const key = `${activeMain}:${item.value}`;
+      const o = categoryOverlay[key];
+      const thumb = item.featuredImage || (o?.thumb ? resolveCategoryImageUrl(o.thumb) : null);
+      const count = o && typeof o.total === 'number' ? o.total : item.count;
+      return {
+        ...item,
+        featuredImage: thumb,
+        count,
+      };
+    });
+  }, [baseDisplayList, activeMain, categoryOverlay]);
+
   useEffect(() => {
-    if (!subcategories.length) return;
     const controller = new AbortController();
+    let alive = true;
+    setFeaturedCatalogReady(false);
+    setFeaturedLoadError('');
+    setCategoryOverlay({});
+    (async () => {
+      try {
+        const res = await api.get('/user/featured-categories', {
+          params: { main: activeMain, _: Date.now() },
+          signal: controller.signal,
+          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        });
+        if (!alive) return;
+        if (res && res.success === false) {
+          setApiRows([]);
+          setFeaturedLoadError(
+            typeof res.message === 'string' && res.message.trim()
+              ? res.message.trim()
+              : 'Could not load featured categories.'
+          );
+        } else {
+          const rows = featuredCategoriesListFromResponse(res);
+          if (rows === null) {
+            setApiRows([]);
+            setFeaturedLoadError('api_html');
+          } else {
+            setApiRows(rows);
+          }
+        }
+      } catch {
+        if (alive && !controller.signal.aborted) {
+          setApiRows([]);
+          setFeaturedLoadError('network');
+        }
+      } finally {
+        if (alive) setFeaturedCatalogReady(true);
+      }
+    })();
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [activeMain]);
+
+  /**
+   * One /user/products call per visible category: real totalCountAll from Mongo + first product image.
+   * Replaces any demo counts and fills missing thumbnails.
+   */
+  useEffect(() => {
+    if (!featuredCatalogReady) return undefined;
+    if (baseDisplayList.length === 0) return undefined;
+
+    const controller = new AbortController();
+    let alive = true;
     (async () => {
       const results = await Promise.all(
-        subcategories.map(async (sub) => {
+        baseDisplayList.map(async (item) => {
           try {
             const res = await api.get('/user/products', {
-              params: { category: sub.value, main: activeMain, limit: 1 },
+              params: { category: item.value, main: activeMain, limit: 24 },
               signal: controller.signal,
             });
-            const product = res?.data?.[0];
-            const image = getProductImageUrl(product);
-            return { value: sub.value, image };
+            const list = Array.isArray(res?.data) ? res.data : [];
+            const p = list.find((x) => getProductImageUrl(x)) || list[0];
+            const url = getProductImageUrl(p);
+            const total = parseTotalFromProductsResponse(res);
+            return { value: item.value, thumb: url || null, total: total !== null ? total : 0 };
           } catch {
-            return { value: sub.value, image: null };
+            return { value: item.value, thumb: null, total: 0 };
           }
         })
       );
-      setSubcategoryImages((prev) => {
+      if (!alive) return;
+      setCategoryOverlay((prev) => {
         const next = { ...prev };
-        results.forEach(({ value, image }) => {
+        results.forEach(({ value, thumb, total }) => {
           const key = `${activeMain}:${value}`;
-          if (image) next[key] = image;
+          next[key] = { thumb: thumb || undefined, total };
         });
         return next;
       });
     })();
-    return () => controller.abort();
-  }, [activeMain]);
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [featuredCatalogReady, baseDisplayList, activeMain]);
 
   const scroll = (dir) => {
     if (!scrollRef.current) return;
-    const amount = 280;
-    scrollRef.current.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
+    const el = scrollRef.current;
+    const card = el.querySelector('[data-featured-card]');
+    const step = card ? card.offsetWidth + 16 : 280;
+    el.scrollBy({ left: dir === 'left' ? -step : step, behavior: 'smooth' });
   };
 
+  const showLiveHint =
+    featuredCatalogReady && featuredLoadError && rowsToShow.length > 0 && rowsToShow[0]._source === 'static';
+
   return (
-    <section className="featured-categories pt-10 pb-12 md:pt-14 md:pb-16 bg-slate-50/50">
-      <div className="container">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-            <h2 className="featured-categories__title text-2xl md:text-3xl font-extrabold text-slate-900">
+    <section className="featured-categories featured-categories--v2 bg-[#f4f6f8] pt-10 pb-12 md:pt-14 md:pb-16">
+      <div className="container max-w-7xl mx-auto px-4 sm:px-5 md:px-6">
+        <div className="featured-categories__header flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-y-3 mb-2">
+          <div className="flex flex-col gap-3 min-[480px]:flex-row min-[480px]:flex-wrap min-[480px]:items-center min-[480px]:gap-4">
+            <h2 className="featured-categories__title text-[1.35rem] sm:text-2xl md:text-[1.75rem] font-extrabold text-slate-900 tracking-tight m-0">
               Featured Categories
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Region">
               {mains.map((main) => (
                 <button
                   key={main.id}
                   type="button"
+                  role="tab"
+                  aria-selected={activeMain === main.id}
                   onClick={() => setActiveMain(main.id)}
-                  className={`featured-categories__tab px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  className={`featured-categories__tab rounded-full px-4 py-2.5 text-sm font-semibold transition-all border ${
                     activeMain === main.id
-                      ? 'bg-[#3090cf] text-white'
-                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                      ? 'bg-[#3090cf] text-white border-[#3090cf] shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
                   }`}
                 >
                   {main.name}
@@ -105,60 +248,78 @@ export default function FeaturedCategories() {
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center justify-end gap-2 sm:justify-start shrink-0">
             <button
               type="button"
               onClick={() => scroll('left')}
-              aria-label="Scroll left"
-              className="featured-categories__nav w-10 h-10 rounded-full bg-[#3090cf] text-white hover:bg-[#2680b8] border-0 flex items-center justify-center transition-colors shadow-sm"
+              aria-label="Scroll categories left"
+              className="featured-categories__nav flex h-11 w-11 items-center justify-center rounded-full bg-[#3090cf] text-white shadow-sm transition-colors hover:bg-[#2680b8] border-0"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={22} strokeWidth={2.25} />
             </button>
             <button
               type="button"
               onClick={() => scroll('right')}
-              aria-label="Scroll right"
-              className="featured-categories__nav w-10 h-10 rounded-full bg-[#3090cf] text-white hover:bg-[#2680b8] border-0 flex items-center justify-center transition-colors shadow-sm"
+              aria-label="Scroll categories right"
+              className="featured-categories__nav flex h-11 w-11 items-center justify-center rounded-full bg-[#3090cf] text-white shadow-sm transition-colors hover:bg-[#2680b8] border-0"
             >
-              <ChevronRight size={20} />
+              <ChevronRight size={22} strokeWidth={2.25} />
             </button>
           </div>
         </div>
 
-        <div
-          ref={scrollRef}
-          className="featured-categories__scroll flex gap-4 overflow-x-auto pt-2 pb-4 mt-2 scroll-smooth"
-        >
-          {subcategories.map((sub, idx) => (
-            <ScrollReveal key={`${activeMain}-${sub.value}`} className="flex-shrink-0">
-              <Link
-                to={`/products?category=${encodeURIComponent(sub.value)}&main=${activeMain}`}
-                className="featured-categories__card flex-shrink-0 block w-[180px] sm:w-[200px] bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-lg hover:border-[#3090cf]/30 transition-all duration-300 group"
+        {showLiveHint ? (
+          <p className="text-xs text-slate-500 mb-2" role="status">
+            Showing demo categories — connect the API to load your live catalog.
+          </p>
+        ) : null}
+
+        <div className="featured-categories__viewport -mx-1 sm:mx-0">
+          <div
+            ref={scrollRef}
+            className="featured-categories__scroll flex gap-4 overflow-x-auto scroll-smooth pb-2 pt-3"
+          >
+            {rowsToShow.map((sub) => (
+              <ScrollReveal
+                key={`${activeMain}-${sub.value}`}
+                className="featured-categories__card-wrap flex-shrink-0 snap-start"
               >
-                <div
-                  className={`h-32 sm:h-36 flex items-center justify-center overflow-hidden ${CARD_BG_COLORS[idx % CARD_BG_COLORS.length]}`}
+                <Link
+                  data-featured-card
+                  to={`/products?category=${encodeURIComponent(sub.value)}&main=${activeMain}`}
+                  className="featured-categories__card group flex flex-col w-[min(200px,calc(100vw-3.5rem))] sm:w-[200px] bg-white rounded-2xl overflow-hidden border border-slate-200/90 shadow-[0_4px_14px_-4px_rgba(15,23,42,0.12)] hover:shadow-[0_8px_24px_-6px_rgba(48,144,207,0.25)] hover:border-[#3090cf]/40 transition-all duration-300"
                 >
-                  <img
-                    src={subcategoryImages[`${activeMain}:${sub.value}`] || PLACEHOLDER_IMAGE}
-                    alt=""
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = PLACEHOLDER_IMAGE;
-                    }}
-                  />
-                </div>
-                <div className="p-4 text-center">
-                  <h3 className="featured-categories__card-title font-extrabold text-slate-900 text-base sm:text-[1.0625rem] leading-tight line-clamp-2 group-hover:text-[#3090cf] transition-colors">
-                    {sub.name}
-                  </h3>
-                  <span className="inline-block mt-2 text-sm font-bold text-slate-600">
-                    {typeof sub.count === 'number' ? `${sub.count} Items` : 'Browse'}
-                  </span>
-                </div>
-              </Link>
-            </ScrollReveal>
-          ))}
+                  <div className="featured-categories__card-media relative h-[132px] sm:h-[140px] w-full bg-slate-100 overflow-hidden">
+                    {sub.featuredImage ? (
+                      <img
+                        src={sub.featuredImage}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="absolute inset-0 h-full w-full object-cover"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = BROKEN_IMAGE_FALLBACK;
+                        }}
+                      />
+                    ) : (
+                      <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-400 px-3 text-center">
+                        No image
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col items-center justify-center px-3 py-3.5 sm:py-4 text-center border-t border-slate-100/80">
+                    <h3 className="featured-categories__card-title font-extrabold text-slate-900 text-[0.9375rem] sm:text-base leading-snug line-clamp-2 group-hover:text-[#3090cf] transition-colors">
+                      {sub.name}
+                    </h3>
+                    <span className="mt-1.5 text-sm font-medium text-slate-500 tabular-nums">
+                      {sub.count} {sub.count === 1 ? 'Item' : 'Items'}
+                    </span>
+                  </div>
+                </Link>
+              </ScrollReveal>
+            ))}
+          </div>
         </div>
       </div>
     </section>

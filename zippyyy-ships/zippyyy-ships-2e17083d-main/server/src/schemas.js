@@ -35,5 +35,7 @@ export const SelectedRateSchema = z.object({
 export const CheckoutSessionRequestSchema = z.object({
   draft: QuoteRequestSchema,
   selectedRate: SelectedRateSchema,
+  /** Customer-facing Stripe Promotion Code (validated server-side). */
+  promotionCode: z.string().min(1).max(64).optional(),
 });
 

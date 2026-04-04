@@ -44,8 +44,6 @@ export default function Checkout() {
   const [vouchers, setVouchers] = useState([]);
   const [isLoadingVouchers, setIsLoadingVouchers] = useState(false);
 
-  const [remainingFreeOrders, setRemainingFreeOrders] = useState(0);
-
   const GUEST_ADDRESS_ID = "guest";
   const [newAddress, setNewAddress] = useState({
     name: "",
@@ -64,9 +62,35 @@ export default function Checkout() {
   });
 
   const [paymentMethod, setPaymentMethod] = useState('card');
+  const [showOtcPolicyModal, setShowOtcPolicyModal] = useState(false);
+  const [otcPolicyAccepted, setOtcPolicyAccepted] = useState(false);
   const isVegetableCategory = (category = '') => {
     const c = String(category).toLowerCase();
     return c.includes('vegetable') || c === 'fresh vegetables' || c === 'vegetables';
+  };
+
+  const handleSelectCardPayment = () => {
+    setPaymentMethod('card');
+    setOtcPolicyAccepted(false);
+  };
+
+  const handleSelectOtcPayment = () => {
+    if (otcPolicyAccepted) {
+      setPaymentMethod('otc');
+      return;
+    }
+    setShowOtcPolicyModal(true);
+  };
+
+  const handleOtcPolicyAccept = () => {
+    setOtcPolicyAccepted(true);
+    setPaymentMethod('otc');
+    setShowOtcPolicyModal(false);
+  };
+
+  const handleOtcPolicyReject = () => {
+    setShowOtcPolicyModal(false);
+    setPaymentMethod('card');
   };
 
   const subtotal = total;
@@ -363,6 +387,15 @@ export default function Checkout() {
   }, [showCouponModal]);
 
   useEffect(() => {
+    if (!showOtcPolicyModal) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') handleOtcPolicyReject();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showOtcPolicyModal]);
+
+  useEffect(() => {
     if (!items?.length) {
       setRecommendedProducts([]);
       return;
@@ -571,7 +604,7 @@ export default function Checkout() {
                 <div className="space-y-2 border border-slate-200 rounded-xl overflow-hidden bg-white">
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('card')}
+                    onClick={handleSelectCardPayment}
                     className={`w-full flex items-center gap-4 p-4 min-h-[52px] sm:min-h-0 text-left transition-colors border-b border-slate-100 last:border-b-0 ${paymentMethod === 'card' ? 'bg-blue-50 border-l-4 border-l-[#3090cf]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
                   >
                     <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${paymentMethod === 'card' ? 'border-[#3090cf] bg-white' : 'border-slate-300'}`}>
@@ -585,7 +618,7 @@ export default function Checkout() {
 
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('otc')}
+                    onClick={handleSelectOtcPayment}
                     className={`w-full flex items-center gap-4 p-4 min-h-[52px] sm:min-h-0 text-left transition-colors ${paymentMethod === 'otc' ? 'bg-blue-50 border-l-4 border-l-[#3090cf]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
                   >
                     <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${paymentMethod === 'otc' ? 'border-[#3090cf] bg-white' : 'border-slate-300'}`}>
@@ -598,15 +631,8 @@ export default function Checkout() {
                   </button>
                 </div>
 
-                {paymentMethod === 'otc' && (
+                {paymentMethod === 'otc' && otcPolicyAccepted && (
                   <div className="mt-6 space-y-4">
-                    <div className="p-4 bg-blue-50/80 rounded-xl border border-[#3090cf]/30">
-                      <h4 className="text-sm font-bold text-slate-800 mb-2">OTC Card Payment & Privacy Notice</h4>
-                      <p className="text-sm text-slate-600 leading-relaxed">
-                        When you enter your OTC Card number and PIN to complete your purchase, the information is securely encrypted and used only to process your order.
-                        In some cases, a temporary encrypted record of the card details may be stored.
-                      </p>
-                    </div>
                     <div className="p-6 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
                       <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-2">OTC details</h4>
 
@@ -775,6 +801,11 @@ export default function Checkout() {
                     </div>
                   </label>
                 </div>
+                <p className="text-xs text-slate-600 mt-2 ml-1">
+                  {deliveryType === 'express'
+                    ? `Express delivery: $${deliveryFee.toFixed(2)} — included in your total below.`
+                    : `Standard delivery: ${deliveryFee === 0 ? 'Free — ' : `$${deliveryFee.toFixed(2)} — `}included in your total below.`}
+                </p>
               </div>
 
               {/* Tip / Support your delivery partner */}
@@ -835,7 +866,7 @@ export default function Checkout() {
                   value={deliveryFee}
                   isFree={deliveryFee === 0}
                 />
-                <SummaryRow label="Tax & Convenience Fee (8.87% + $1.99)" value={taxAndConvenienceFee} />
+                <SummaryRow label="Convenience Fee" value={taxAndConvenienceFee} />
                 <SummaryRow label="Packaging fee" value={PACKAGING_FEE} />
                 {tip > 0 && (
                   <SummaryRow
@@ -1133,6 +1164,47 @@ export default function Checkout() {
                   ))
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showOtcPolicyModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
+            aria-label="Close policy dialog"
+            onClick={handleOtcPolicyReject}
+          />
+          <div
+            className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 p-6 sm:p-8"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="otc-policy-title"
+          >
+            <h3 id="otc-policy-title" className="text-lg font-bold text-slate-900 mb-3">
+              OTC Card Payment &amp; Privacy Notice
+            </h3>
+            <p className="text-sm text-slate-600 leading-relaxed mb-6">
+              When you enter your OTC Card number and PIN to complete your purchase, the information is securely encrypted and used only to process your order.
+              In some cases, a temporary encrypted record of the card details may be stored.
+            </p>
+            <div className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
+              <button
+                type="button"
+                onClick={handleOtcPolicyReject}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl border-2 border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 transition-colors"
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                onClick={handleOtcPolicyAccept}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl bg-[#3090cf] text-white font-bold text-sm hover:bg-[#2878b3] transition-colors shadow-md shadow-blue-100"
+              >
+                Accept
+              </button>
             </div>
           </div>
         </div>

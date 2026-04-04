@@ -107,7 +107,7 @@ const DealTableRow = React.memo(({ deal, onEdit, onDelete }) => {
 DealTableRow.displayName = 'DealTableRow';
 
 function AdminDeals() {
-    const [deals, setDeals] = useState([]);
+    const [deals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editingDeal, setEditingDeal] = useState(null);
@@ -117,7 +117,8 @@ function AdminDeals() {
 
 
     const { searchTerm, debouncedSearchTerm, handleSearchChange } = useSearch('', 300);
-    const [productOptions, setProductOptions] = useState([]);
+    void debouncedSearchTerm;
+    const [productOptions] = useState([]);
     // Initial Form State
     const initialFormData = useMemo(() => ({
         dealName: '',
@@ -132,7 +133,7 @@ function AdminDeals() {
     }), []);
 
     const [formData, setFormData] = useState(initialFormData);
-    const [total, setTotal] = useState(0);
+    const [total] = useState(0);
 
 
 
@@ -151,7 +152,7 @@ function AdminDeals() {
         // setDeals(data?.list || []);
         // setTotal(data?.total || 0);
         setLoading(false);
-    }, [page, limit, debouncedSearchTerm, filterStatus]);
+    }, []);
 
     useEffect(() => {
         const fetchProducts = async () => {
@@ -161,8 +162,8 @@ function AdminDeals() {
                 // setProductOptions(
                 //     res.data.data.map(p => ({ value: p._id, label: p.name }))
                 // );
-            } catch (error) {
-                console.log("Products not found!", error);
+            } catch {
+                /* product list optional for deals UI */
             }
         };
         fetchProducts();

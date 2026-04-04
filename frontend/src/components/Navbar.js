@@ -12,10 +12,10 @@ import {
   ChevronDown,
   Menu,
   X,
-  Headphones,
   Grid3X3,
   Heart,
   Plus,
+  Mail,
 } from 'lucide-react';
 import Lottie from 'lottie-react';
 import { MAIN_CATEGORIES, SUBCATEGORIES_BY_MAIN } from '../config/categories';
@@ -43,7 +43,7 @@ const SEARCH_CATEGORIES = [
 /* Browse card uses MAIN_CATEGORIES + SUBCATEGORIES_BY_MAIN from config (grouped by main) */
 
 function Navbar() {
-  const { user, isAuthenticated, logout, isAdmin, isCoAdmin } = useAuth();
+  const { isAuthenticated, logout, isAdmin, isCoAdmin } = useAuth();
   const { itemCount } = useCart();
   const { wishlistCount, openDrawer: openWishlist } = useWishlist();
 
@@ -149,10 +149,22 @@ function Navbar() {
 
       {/* ----- 2. Main bar (logo + browse, search, location, compare, wishlist, cart, account, support) ----- */}
       <div className="header-main">
-        <div className="header-main__inner container">
+        <div className={`header-main__inner container${isAdmin ? " header-main__inner--admin-mobile" : ""}`}>
           <Link to="/" className="header-main__logo">
             <img src={logoRemo} alt="Zippyyy Grocery" className="header-main__logo-img" />
           </Link>
+
+          {!isAdmin && (
+            <NavLink
+              to="/zippyyy-ships"
+              className={({ isActive }) =>
+                `header-main__ships-tab mobile-only${isActive ? ' header-main__ships-tab--active' : ''}`
+              }
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              Zippyyy Ships
+            </NavLink>
+          )}
 
           <form className="header-search desktop-only" onSubmit={handleSearchSubmit}>
             <div className="header-search__category" ref={categoryDropdownRef}>
@@ -182,6 +194,7 @@ function Navbar() {
                       <button
                         type="button"
                         role="option"
+                        aria-selected={searchCategory === cat.value}
                         className={`header-search__category-option ${searchCategory === cat.value ? 'selected' : ''}`}
                         onClick={() => selectCategory(cat.value)}
                       >
@@ -213,13 +226,11 @@ function Navbar() {
               onClick={handleOpenWishlist}
             >
               <Heart size={22} className="header-main__action-icon" />
-              <span className="header-main__action-label">Wishlist</span>
               <span className="header-main__badge">{wishlistCount}</span>
             </button>
             {!isAdmin && (
               <Link to="/cart" className="header-main__action header-main__icon-action header-main__cart" aria-label="Cart">
                 <ShoppingCart size={22} className="header-main__action-icon" />
-                <span className="header-main__action-label">Cart</span>
                 <span className="header-main__badge">{itemCount}</span>
               </Link>
             )}
@@ -228,12 +239,11 @@ function Navbar() {
                 type="button"
                 className="header-main__account-btn"
                 onClick={() => setIsDropdownOpen((p) => !p)}
+                aria-label="Account"
                 aria-expanded={isDropdownOpen}
                 aria-haspopup="true"
               >
                 <User size={22} className="header-main__action-icon" />
-                <span className="desktop-only">Account</span>
-                <ChevronDown size={14} className="desktop-only" />
               </button>
               <div className={`header-main__dropdown ${isDropdownOpen ? 'show' : ''}`}>
             {isAuthenticated ? (
@@ -377,12 +387,9 @@ function Navbar() {
             )}
           </nav>
           <div className="header-nav__support desktop-only">
-            <a href="tel:9342604322" className="header-nav__support-link">
-              <Headphones size={24} className="header-nav__support-icon" />
-              <div>
-                <span className="header-nav__support-number">(934) 260-4322</span>
-                <span className="header-nav__support-text">24/7 Support Center</span>
-              </div>
+            <a href="mailto:contact@zippyyy.com" className="header-nav__support-link">
+              <Mail size={24} className="header-nav__support-icon" />
+              <span className="header-nav__support-email">contact@zippyyy.com</span>
             </a>
           </div>
         </div>
@@ -401,21 +408,11 @@ function Navbar() {
             </span>
             Hot Deals
           </Link>
-          <a
-            href={`${process.env.PUBLIC_URL || ''}/zippyyy-ships`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="header-mobile-menu__link"
-            onClick={toggleMobileMenu}
-          >
-            Zippyyy Ships
-          </a>
           <NavLink to="/" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Home</NavLink>
           <NavLink to="/products" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Shop</NavLink>
           <NavLink to="/about" className="header-mobile-menu__link" onClick={toggleMobileMenu}>About</NavLink>
           <NavLink to="/contact" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Contact</NavLink>
           <Link to="/products" className="header-mobile-menu__link" onClick={toggleMobileMenu}>Browse All Categories</Link>
-          <button type="button" className="header-mobile-menu__link" onClick={handleOpenWishlist}>Wishlist{wishlistCount > 0 ? ` (${wishlistCount})` : ''}</button>
           {isAuthenticated && (
             <>
               <div className="header-mobile-menu__divider" />
@@ -442,10 +439,14 @@ function Navbar() {
               <Link to="/register" className="header-mobile-menu__link header-mobile-menu__link--primary" onClick={toggleMobileMenu}>Sign Up</Link>
             </div>
           )}
-          <div className="header-mobile-menu__support">
-            <Headphones size={20} />
-            <span>1900 - 888 · 24/7 Support</span>
-          </div>
+          <a
+            href="mailto:contact@zippyyy.com"
+            className="header-mobile-menu__support"
+            onClick={toggleMobileMenu}
+          >
+            <Mail size={20} aria-hidden />
+            <span>contact@zippyyy.com</span>
+          </a>
         </div>
       </div>
       <div

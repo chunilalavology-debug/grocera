@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -14,12 +14,7 @@ export default function AdminMessages() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  useEffect(() => {
-    loadMessages(currentPage);
-    loadStats();
-  }, [currentPage, filter]);
-
-  const loadMessages = async (page) => {
+  const loadMessages = useCallback(async (page) => {
     try {
       setLoading(true);
       const response = await api.get(`/admin/messages?page=${page}&limit=10&status=${filter}`);
@@ -28,23 +23,28 @@ export default function AdminMessages() {
         setTotalPages(response.totalPages || 1);
         setCurrentPage(response.currentPage || 1);
       }
-    } catch (error) {
-      console.error('Error loading messages:', error);
+    } catch {
+      /* inbox load failed — UI shows empty state */
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       const response = await api.get(`/admin/messages/stats`);
       if (response.success) {
         setStats(response.stats || {});
       }
-    } catch (error) {
-      console.error('Error loading stats:', error);
+    } catch {
+      /* stats optional */
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadMessages(currentPage);
+    loadStats();
+  }, [currentPage, loadMessages, loadStats]);
 
   const handleReply = async () => {
     if (!replyText.trim()) {

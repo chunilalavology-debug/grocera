@@ -390,24 +390,17 @@ button.header-main__action {
 
 .header-main__icon-action {
   position: relative;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.4rem 0.55rem;
-  min-width: 60px;
-}
-
-.header-main__action-label {
-  font-size: 0.8rem;
-  white-space: nowrap;
+  justify-content: center;
+  gap: 0;
+  padding: 0.45rem;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .header-main__cart {
   position: relative;
-}
-
-.header-main__cart .header-main__action-label {
-  white-space: nowrap;
 }
 
 .header-main__badge {
@@ -462,8 +455,11 @@ button.header-main__action {
 .header-main__account-btn {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.65rem;
+  justify-content: center;
+  gap: 0;
+  padding: 0.45rem;
+  min-width: 44px;
+  min-height: 44px;
   border: none;
   background: none;
   color: var(--header-text);
@@ -836,20 +832,16 @@ button.header-main__action {
 }
 
 .header-nav__support-icon {
-  color: var(--header-green);
+  color: inherit;
   flex-shrink: 0;
+  opacity: 0.9;
 }
 
-.header-nav__support-number {
+.header-nav__support-email {
   display: block;
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--header-green);
-}
-
-.header-nav__support-text {
-  font-size: 0.8rem;
-  color: var(--header-text-muted);
+  font-weight: 500;
+  font-size: 1rem;
+  color: inherit;
 }
 
 /* ----- Visibility helpers ----- */
@@ -1000,6 +992,11 @@ button.header-main__action {
   gap: 0.5rem;
   font-size: 0.875rem;
   color: var(--header-text-muted);
+  text-decoration: none;
+}
+
+.header-mobile-menu__support:hover {
+  color: var(--header-green);
 }
 
 /* ----- Responsive ----- */
@@ -1094,25 +1091,99 @@ button.header-main__action {
     padding: 0.75rem 0;
   }
 
+  /* True center column for “Zippyyy Ships”; icons clustered on the right */
   .header-main__inner {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
+    column-gap: 0.35rem;
+    row-gap: 0.5rem;
     width: 100%;
+  }
+
+  .header-main__inner--admin-mobile {
+    grid-template-columns: auto 1fr;
+  }
+
+  .header-main__inner--admin-mobile .header-main__logo {
+    justify-self: start;
+  }
+
+  .header-main__inner--admin-mobile .header-main__actions {
+    justify-self: end;
   }
 
   .header-main__logo {
     flex-shrink: 0;
+    justify-self: start;
+    min-width: 0;
+  }
+
+  /* Center “Zippyyy Ships” in the middle grid column (tablet & mobile) */
+  .header-main__ships-tab {
+    justify-self: center;
+    text-align: center;
+    text-decoration: none;
+    color: var(--header-green);
+    font-weight: 700;
+    font-size: 0.8125rem;
+    line-height: 1.2;
+    padding: 0 0.2rem;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .header-main__ships-tab:active {
+    opacity: 0.85;
+  }
+
+  .header-main__ships-tab--active {
+    color: var(--header-green-dark);
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 
   .header-main__actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.125rem;
     flex-shrink: 0;
-    margin-left: auto;
+    margin-left: 0;
+    justify-self: end;
+    justify-content: flex-end;
+  }
+
+  /* Compact cart / account / smaller hamburger (desktop unchanged) */
+  .header-main__actions .header-main__action-icon {
+    width: 17px;
+    height: 17px;
+    min-width: 17px;
+    min-height: 17px;
+  }
+
+  .header-main__menu-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0.2rem;
+  }
+
+  .header-main__menu-btn svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .header-main__actions .header-main__badge {
+    min-width: 16px;
+    height: 16px;
+    font-size: 0.625rem;
+    padding: 0 4px;
+    top: -1px;
+    right: 0;
   }
 
   .header-search--mobile {
@@ -1175,32 +1246,37 @@ button.header-main__action {
     gap: 0.5rem;
   }
 
+  .header-main__ships-tab {
+    font-size: 0.78rem;
+    padding: 0 0.15rem;
+  }
+
   .header-main__logo-img {
     height: 44px;
     max-width: 120px;
   }
 
-  .header-main__action-label {
-    display: none;
-  }
-
-  /* Touch-friendly icon buttons (min 44px) */
+  /* Tight cluster; keep ~36px tap targets */
   .header-main__icon-action,
   .header-main__account .header-main__account-btn {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0.5rem;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0.28rem;
     justify-content: center;
   }
 
   .header-main__menu-btn {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0.5rem;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0.2rem;
   }
 
   .header-main__cart {
-    min-width: 44px;
+    min-width: 36px;
+  }
+
+  .header-main__actions {
+    gap: 0.1rem;
   }
 
   .header-search--mobile {
@@ -1216,11 +1292,6 @@ button.header-main__action {
   .header-search--mobile .header-search__input {
     padding: 0.7rem 1rem;
     font-size: 0.9375rem;
-  }
-
-  .header-nav__support-number,
-  .header-nav__support-text {
-    display: none;
   }
 }
 
@@ -1258,6 +1329,10 @@ button.header-main__action {
     max-width: 100px;
   }
 
+  .header-main__ships-tab {
+    font-size: 0.72rem;
+  }
+
   .header-search--mobile {
     margin-top: 0.5rem;
     padding-left: 0.875rem;
@@ -1276,13 +1351,37 @@ button.header-main__action {
   }
 
   .header-main__actions {
-    gap: 0.35rem;
+    gap: 0.06rem;
   }
 
   .header-main__icon-action,
-  .header-main__account .header-main__account-btn,
+  .header-main__account .header-main__account-btn {
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0.22rem;
+  }
+
   .header-main__menu-btn {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 32px;
+    min-height: 32px;
+    width: 32px;
+    height: 32px;
+    padding: 0.15rem;
+  }
+
+  .header-main__actions .header-main__action-icon {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+  }
+
+  .header-main__menu-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .header-main__cart {
+    min-width: 34px;
   }
 }

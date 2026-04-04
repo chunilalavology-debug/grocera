@@ -23,19 +23,14 @@ const userSellRateLimiter = async (req, res, next) => {
 
       await redisClient.incr(key);
     } else {
-      console.log("keySet")
       await redisClient.set(key, 1);
       await redisClient.expire(key, windowSeconds);
     }
 
     next();
   } catch (err) {
-    console.error("Rate limit error:", err);
-    return res.status(400).send({
-      success: false,
-      message: err.message,
-      data: null
-    });
+    console.error("Rate limit error (allowing request):", err.message);
+    next();
   }
 };
 

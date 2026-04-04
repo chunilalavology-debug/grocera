@@ -75,7 +75,7 @@ export function AuthProvider({ children }) {
           payload: { user: res.user, token },
         });
       } catch (err) {
-        console.error("Auto-login failed:", err.response?.data || err);
+        console.error("Auto-login failed:", err);
         delete api.defaults.headers.common["Authorization"];
         dispatch({ type: "LOGOUT" });
       } finally {
@@ -90,23 +90,33 @@ export function AuthProvider({ children }) {
   const login = async (credentials) => {
     try {
       const res = await api.post("/auth/login", credentials);
-      const { tokens, user } = res.data;
+      const payload = res?.data;
+      const user = payload?.user;
+      const tokens = payload?.tokens;
+      const access = tokens?.access;
 
-      console.log("Login response tokens:", user);
-      localStorage.setItem("token", tokens.access);
-      api.defaults.headers.common["Authorization"] = `Bearer ${tokens.access}`;
+      if (!user || !access) {
+        console.warn("Login response missing user or tokens:", res);
+        return {
+          success: false,
+          message: res?.message || "Invalid response from server. Is the API URL correct?",
+        };
+      }
+
+      localStorage.setItem("token", access);
+      api.defaults.headers.common["Authorization"] = `Bearer ${access}`;
 
       dispatch({
         type: "LOGIN_SUCCESS",
-        payload: { user, token: tokens.access },
+        payload: { user, token: access },
       });
 
       return { success: true, user };
     } catch (err) {
-      console.error("Login failed:", err.response?.data || err);
+      console.error("Login failed:", err);
       return {
         success: false,
-        message: err.message || "Login failed",
+        message: err?.message || "Login failed",
       };
     }
   };
@@ -164,8 +174,6 @@ export function AuthProvider({ children }) {
     register,
     logout,
   };
-
-  console.log("AuthContext value:", value);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

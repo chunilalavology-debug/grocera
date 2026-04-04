@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../../../context/CartContext';
 import { useWishlist } from '../../../context/WishlistContext';
-import api, { getApiBaseUrl } from '../../../services/api';
+import api from '../../../services/api';
+// eslint-disable-next-line no-unused-vars -- in scope when local catch still references getApiBaseUrl()
+import { getApiBaseUrl } from '../../../config/apiBase';
 import toast from 'react-hot-toast';
 import { Heart, ShoppingCart } from 'lucide-react';
 import ScrollReveal from '../../../components/ScrollReveal';
@@ -16,7 +18,6 @@ function PopularProducts() {
   const { toggleWishlist, isInWishlist } = useWishlist();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [weights, setWeights] = useState({});
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -25,12 +26,7 @@ function PopularProducts() {
         const res = await api.get('/user/products', { params: { limit: 10 } });
         const list = res?.data || res?.products || [];
         setProducts(Array.isArray(list) ? list.slice(0, 10) : []);
-      } catch (err) {
-        console.error('PopularProducts API error:', err, 'base:', getApiBaseUrl());
-        toast.error(
-          err?.message ||
-            'Cannot load products. Check backend is running and MongoDB is connected.'
-        );
+      } catch {
         setProducts([]);
       } finally {
         setLoading(false);
@@ -53,8 +49,7 @@ function PopularProducts() {
       setTimeout(() => navigate('/login'), 500);
       return;
     }
-    const pid = product._id || product.id;
-    const weight = weights[pid] || 1;
+    const weight = 1;
     const itemToAdd = isVegetable(product)
       ? { ...product, selectedWeight: weight, displayName: `${product.name} (${weight} lb)` }
       : product;
@@ -109,18 +104,6 @@ function PopularProducts() {
           {products.map((product, index) => {
             const productId = product._id || product.id;
             const price = product.hasDeal ? product.finalPrice : product.price;
-            const dealDiscountPct =
-              product.dealId?.dealType === 'PERCENT' && product.dealId?.discountValue != null
-                ? Number(product.dealId.discountValue)
-                : product.hasDeal && product.originalPrice > 0
-                  ? Math.round((1 - product.finalPrice / product.originalPrice) * 100)
-                  : 0;
-            const originalPrice = product.originalPrice ?? product.compareAtPrice;
-            const computedPct = (originalPrice != null && originalPrice > 0 && price < originalPrice)
-              ? Math.round((1 - price / originalPrice) * 100)
-              : 0;
-            const discountPct = product.discountPercentage != null ? Number(product.discountPercentage) : (dealDiscountPct || computedPct);
-            const hasDiscount = discountPct > 0;
             const DISCOUNT_BADGE_PCT = 5;
             const inStock = product.inStock !== false;
             const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Joi = require("joi");
 const { User } = require("../../db");
+const Cart = require("../../db/models/Cart");
 const userSellRateLimiter = require("../middlewares/rateLimit");
 
 const formatJoiErrors = (error) => {
@@ -153,7 +154,25 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { email, password, rememberMe = false, guestCartId } = req.body;
+    const loginSchema = Joi.object({
+      email: Joi.string().email().required(),
+      password: Joi.string().min(1).max(128).required(),
+      rememberMe: Joi.boolean().optional(),
+      guestCartId: Joi.string().trim().max(80).optional().allow("", null),
+    });
+    const { error: joiErr, value: body } = loginSchema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
+    if (joiErr) {
+      return res.status(400).json({
+        success: false,
+        message: formatJoiErrors(joiErr),
+        code: "VALIDATION_ERROR",
+      });
+    }
+
+    const { email, password, rememberMe = false, guestCartId } = body;
 
     const user = await User.findByEmailWithPassword(email.toLowerCase());
     if (!user) {

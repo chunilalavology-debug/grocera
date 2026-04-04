@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
@@ -8,23 +8,12 @@ import toast from 'react-hot-toast';
 import { Heart, ShoppingCart, Star } from 'lucide-react';
 import '../styles/pages/HotDeals.css';
 import { MAIN_CATEGORIES, getSubcategories, getMainForCategory } from '../config/categories';
+import {
+  featuredCategoriesListFromResponse,
+  featuredRowsToSubOptions,
+} from '../utils/featuredCategoriesResponse';
 import ScrollReveal from '../components/ScrollReveal';
 import StarRating from '../components/StarRating';
-
-const NON_SUBSCRIPTION_CATEGORIES = [
-  "spices",
-  "masala",
-  "rice",
-  "grains",
-  "lentils",
-  "pulses",
-  "snacks",
-  "sweets",
-  "frozen",
-  "pooja",
-  "idol",
-];
-const weightOptions = [1, 2, 3, 5];
 
 function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,8 +23,9 @@ function Products() {
   const { toggleWishlist, isInWishlist } = useWishlist();
   const [selectedMain, setSelectedMain] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [apiCategories, setApiCategories] = useState(['All']);
+  /** Same ordered list as admin Categories tab + home featured strip (GET /user/featured-categories). */
+  const [mainTabSubcategories, setMainTabSubcategories] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [products, setProducts] = useState([]);
@@ -46,14 +36,6 @@ function Products() {
   const [pagesCache, setPagesCache] = useState({});
   const [nextCursorByPage, setNextCursorByPage] = useState({});
   const [isMobileView, setIsMobileView] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
-
-  const isSubscribableProduct = (product) => {
-    if (!product?.category) return false;
-    const category = product.category.toLowerCase();
-    return !NON_SUBSCRIPTION_CATEGORIES.some((c) =>
-      category.includes(c)
-    );
-  };
 
   const searchKeyword = searchParams.get("search");
   const categoryFromUrl = searchParams.get("category");
@@ -80,7 +62,7 @@ function Products() {
     }
   }, [categoryFromUrl, mainFromUrl]);
 
-  const [productWeights, setProductWeights] = useState({});
+  const [productWeights] = useState({});
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
   const [sortBy, setSortBy] = useState('default');
@@ -99,13 +81,6 @@ function Products() {
     return category?.toLowerCase().includes('vegetable') ||
       category === 'Fresh Vegetables' ||
       category === 'Vegetables';
-  };
-
-  const handleWeightSelect = (productId, weight) => {
-    setProductWeights(prev => ({
-      ...prev,
-      [productId]: weight
-    }));
   };
 
   const handleAddToCart = (e, product) => {
@@ -162,7 +137,12 @@ function Products() {
       });
 
       if (!response?.success) {
-        toast.error(response?.message || "Could not load products");
+        if (page === 1) {
+          setProducts([]);
+          setTotalData(0);
+          setPagesCache({});
+          setNextCursorByPage({});
+        }
         return;
       }
 
@@ -177,12 +157,13 @@ function Products() {
       }
       setNextCursorByPage((prev) => ({ ...prev, [page]: response.nextCursor || null }));
 
-    } catch (error) {
-      console.error("Error fetching products:", error);
-      toast.error(
-        error?.message ||
-          "Cannot reach the API. Is the backend running on port 5000?"
-      );
+    } catch {
+      if (page === 1) {
+        setProducts([]);
+        setTotalData(0);
+        setPagesCache({});
+        setNextCursorByPage({});
+      }
     } finally {
       setLoading(false);
     }
@@ -195,6 +176,7 @@ function Products() {
     setNextCursorByPage({});
     setCurrentPage(1);
     fetchPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional reset + page-1 fetch when filters change
   }, [selectedCategory, selectedMain, debouncedSearch]);
 
   // When switching between mobile/desktop, reset cursor pagination so perPage stays correct (6 on mobile, 12 on desktop)
@@ -204,6 +186,7 @@ function Products() {
     setNextCursorByPage({});
     setCurrentPage(1);
     fetchPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional reset when perPage changes
   }, [perPage]);
 
   useEffect(() => {
@@ -217,15 +200,12 @@ function Products() {
 
   const fetchCategories = async () => {
     try {
-      setCategoriesLoading(true);
       const { data, success } = await api.get("/user/getCategories");
       if (success && Array.isArray(data)) {
         setApiCategories(["All", ...data.map((cat) => cat.name)]);
       }
-    } catch (error) {
-      console.error("Category fetch error:", error);
-    } finally {
-      setCategoriesLoading(false);
+    } catch {
+      /* API unreachable: keep default categories */
     }
   };
 
@@ -233,17 +213,55 @@ function Products() {
     fetchCategories();
   }, []);
 
-  const updateUrlFromFilters = (main, category) => {
-    const next = new URLSearchParams(searchParams);
-    if (main && main !== 'all') next.set('main', main);
-    else next.delete('main');
-    if (category && category !== 'All') next.set('category', category);
-    else next.delete('category');
-    setSearchParams(next, { replace: true });
-  };
+  const updateUrlFromFilters = useCallback(
+    (main, category) => {
+      const next = new URLSearchParams(searchParams);
+      if (main && main !== 'all') next.set('main', main);
+      else next.delete('main');
+      if (category && category !== 'All') next.set('category', category);
+      else next.delete('category');
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
+
+  useEffect(() => {
+    if (selectedMain === 'all') {
+      setMainTabSubcategories([]);
+      return undefined;
+    }
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await api.get('/user/featured-categories', {
+          params: { main: selectedMain, _: Date.now() },
+          signal: controller.signal,
+          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        });
+        if (res && res.success === false) return;
+        const rows = featuredCategoriesListFromResponse(res);
+        if (rows === null) return;
+        setMainTabSubcategories(featuredRowsToSubOptions(rows));
+      } catch {
+        if (!controller.signal.aborted) setMainTabSubcategories([]);
+      }
+    })();
+    return () => controller.abort();
+  }, [selectedMain]);
+
+  useEffect(() => {
+    if (selectedMain === 'all' || mainTabSubcategories.length === 0) return;
+    if (selectedCategory === 'All') return;
+    if (!mainTabSubcategories.some((s) => s.value === selectedCategory)) {
+      const next = mainTabSubcategories[0].value;
+      setSelectedCategory(next);
+      updateUrlFromFilters(selectedMain, next);
+    }
+  }, [mainTabSubcategories, selectedMain, selectedCategory, updateUrlFromFilters]);
 
   const handleMainSelect = (mainId) => {
     setSelectedMain(mainId);
+    setMainTabSubcategories([]);
     if (mainId === 'all') {
       setSelectedCategory('All');
       updateUrlFromFilters('all', 'All');
@@ -264,7 +282,10 @@ function Products() {
     updateUrlFromFilters(selectedMain, categoryValue);
   };
 
-  const subcategories = getSubcategories(selectedMain);
+  const subcategories =
+    selectedMain !== 'all' && mainTabSubcategories.length > 0
+      ? mainTabSubcategories
+      : getSubcategories(selectedMain);
 
   const minPriceNum = priceMin !== '' ? parseFloat(priceMin) : null;
   const maxPriceNum = priceMax !== '' ? parseFloat(priceMax) : null;
@@ -585,7 +606,6 @@ function Products() {
                 ? Math.round((1 - price / originalPrice) * 100)
                 : 0;
               const discountPct = product.discountPercentage != null ? Number(product.discountPercentage) : (dealDiscountPct || computedPct);
-              const hasDiscount = discountPct > 0;
               const displayDiscountPct = Math.max(0, Number(discountPct) || 0);
               const inStock = product.inStock !== false;
               const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;

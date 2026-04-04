@@ -27,6 +27,7 @@ if (isVercel) {
 const { morganMiddleware } = require("./routes/middlewares/morgan");
 const Order = require("./db/models/Order");
 const app = express();
+app.set("trust proxy", 1);
 const server = http.createServer(app);
 const Stripe = require("stripe");
 const { default: sendMail } = require("./utils/sendEmail");
@@ -507,7 +508,7 @@ if (require.main === module) {
           `Port ${PORT} is already in use. On Windows, 5000 is often taken by "Air Play Receiver" or another app.`
         );
         console.error(
-          `Fix: set PORT=5001 in backend/.env, then set REACT_APP_API_URL=http://localhost:5001/api in frontend/.env.development (or .env.local), restart both.`
+          `Fix: set PORT=5001 in backend/.env, then set REACT_APP_API_URL=http://localhost:5001/api in frontend/.env.local and restart npm start (dev proxy reads that URL).`
         );
       }
       process.exit(1);
