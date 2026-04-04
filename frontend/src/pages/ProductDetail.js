@@ -89,12 +89,6 @@ function ProductDetail() {
   const handleRelatedAddToCart = (e, p) => {
     e.preventDefault();
     e.stopPropagation();
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast.error('Please login first to add items to cart');
-      setTimeout(() => navigate('/login'), 500);
-      return;
-    }
     const weight = 1;
     const itemToAdd = isVegetableProduct(p) ? { ...p, selectedWeight: weight, displayName: `${p.name} (${weight} lb)` } : p;
     try {
@@ -108,17 +102,6 @@ function ProductDetail() {
 
   const handleAddToCart = async () => {
     if (!product) return;
-
-    let token = localStorage.getItem('token');
-
-    if (!token) {
-
-      toast.error("Please login first to add items to cart");
-
-      setTimeout(() => {
-        navigate('/login');
-      }, 500); // 0.5 sec delay
-    }
     try {
       setAddingToCart(true);
       const itemToAdd = isVegetable ? {
@@ -127,7 +110,12 @@ function ProductDetail() {
         displayName: `${product.name} (${selectedWeight} lb)`
       } : product;
 
-      await addToCart(itemToAdd, isVegetable ? 1 : quantity);
+      const result = addToCart(itemToAdd, isVegetable ? 1 : quantity);
+      if (result?.success === false) {
+        toast.error(result.message || 'Failed to add to cart');
+        return;
+      }
+      toast.success('Added to cart');
       navigate('/cart');
     } catch (err) {
       toast.error('Failed to add to cart');

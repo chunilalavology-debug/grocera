@@ -158,6 +158,7 @@ app.get("/verify-session/:id", async (req, res) => {
   });
 });
 
+app.use(jwt.attachUserFromBearerForOrderPayment);
 app.use(jwt());
 app.use("/upload", express.static(dir));
 app.use("/uploads", express.static(uploadsDir));

@@ -1,4 +1,5 @@
 const { expressjwt: jwt } = require("express-jwt");
+const jwtLib = require("jsonwebtoken");
 const { INVALID_TOKEN, DATA_NULL } = require("../../utils/constants");
 
 const API_END_POINT_V1 =
@@ -69,6 +70,9 @@ function isPublicJwtPath(req) {
 
   if (pathname === `${A}/user/contactForm` && m === "POST") return true;
 
+  /** Guest checkout — body must include shipping `address`; logged-in users send addressId + Bearer token */
+  if (pathname === `${A}/user/orderPayment` && m === "POST") return true;
+
   if (pathname === `${A}/products/list`) return true;
   if (pathname === `${A}/deals/list`) return true;
   if (pathname === `${A}/voucher/redeem` && m === "POST") return true;
@@ -77,7 +81,30 @@ function isPublicJwtPath(req) {
   return false;
 }
 
-module.exports = () => {
+/**
+ * POST /api/user/orderPayment is public (guest checkout). If a valid Bearer token is sent,
+ * attach req.user so logged-in customers still use addressId + referral logic.
+ */
+function attachUserFromBearerForOrderPayment(req, res, next) {
+  const pathname = pathnameForJwt(req);
+  if (pathname !== `${A}/user/orderPayment` || req.method.toUpperCase() !== "POST") {
+    return next();
+  }
+  const auth = req.headers.authorization;
+  if (!auth || typeof auth !== "string" || !/^Bearer\s+\S+/i.test(auth)) {
+    return next();
+  }
+  const token = auth.replace(/^Bearer\s+/i, "").trim();
+  try {
+    const decoded = jwtLib.verify(token, JWT_SECRET_KEY);
+    req.user = { id: decoded.id, email: decoded.email, role: decoded.role };
+  } catch (_) {
+    /* invalid/expired token — proceed as guest */
+  }
+  next();
+}
+
+function createJwtMiddleware() {
   return (req, res, next) => {
     jwt({
       secret: JWT_SECRET_KEY,
@@ -106,4 +133,8 @@ module.exports = () => {
       next();
     });
   };
-};
+}
+
+createJwtMiddleware.attachUserFromBearerForOrderPayment =
+  attachUserFromBearerForOrderPayment;
+module.exports = createJwtMiddleware;

@@ -896,6 +896,16 @@ const getReferralDiscount = async (req, res) => {
 };
 
 const orderPayment = async (req, res) => {
+  const guestAddressSchema = Joi.object({
+    name: Joi.string().trim().required(),
+    phone: Joi.string().trim().required(),
+    fullAddress: Joi.string().trim().required(),
+    city: Joi.string().trim().required(),
+    state: Joi.string().trim().allow("", null).optional(),
+    pincode: Joi.string().trim().required(),
+    addressType: Joi.string().trim().optional(),
+  });
+
   const checkoutSchema = Joi.object({
     items: Joi.array()
       .items(
@@ -907,7 +917,8 @@ const orderPayment = async (req, res) => {
       .min(1)
       .required(),
 
-    addressId: Joi.string().required(),
+    addressId: Joi.string().optional().allow(null, ""),
+    address: guestAddressSchema.optional(),
 
     tip: Joi.number().min(0).default(0),
     driverNote: Joi.string().allow(null, ""),
@@ -946,9 +957,33 @@ const orderPayment = async (req, res) => {
         message: formatJoiErrors(error)
       });
     }
-    const userId = req.user.id;
+
+    const userId = req.user?.id ? String(req.user.id) : null;
+    const isGuestCheckout = !userId;
+
+    if (isGuestCheckout && !value.address) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery address is required for guest checkout.",
+      });
+    }
+    if (!isGuestCheckout && !value.addressId) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a saved address or add one.",
+      });
+    }
+    if (!isGuestCheckout && value.address) {
+      return res.status(400).json({
+        success: false,
+        message: "Use addressId when signed in, not a raw address object.",
+      });
+    }
+
     const {
-      items, addressId,
+      items,
+      addressId,
+      address: guestAddressPayload,
       tip = 0,
       couponCode,
       paymentMethod = 'card',
@@ -1033,8 +1068,8 @@ const orderPayment = async (req, res) => {
       };
     });
 
-    // Apply referral discount automatically (only when no voucher/coupon code is used)
-    if (!couponCode) {
+    // Apply referral discount only for signed-in users (not guest checkout)
+    if (!couponCode && userId) {
       const user = await User.findById(userId).select('referralDiscountEligible').lean();
       const eligible = Boolean(user?.referralDiscountEligible);
       if (eligible) {
@@ -1075,8 +1110,20 @@ const orderPayment = async (req, res) => {
 
     const dbTotal = toDollars(stripeTotal);
 
+    const guestShippingDoc = isGuestCheckout && guestAddressPayload
+      ? {
+          name: guestAddressPayload.name,
+          phone: guestAddressPayload.phone,
+          fullAddress: guestAddressPayload.fullAddress,
+          city: guestAddressPayload.city,
+          state: guestAddressPayload.state || "",
+          pincode: guestAddressPayload.pincode,
+          addressType: guestAddressPayload.addressType || "Home",
+        }
+      : undefined;
+
     const order = await Orders.create({
-      userId,
+      userId: userId || null,
       items: orderItems,
       subtotal: dbSubtotal,
       taxAmount: dbTax,
@@ -1085,8 +1132,8 @@ const orderPayment = async (req, res) => {
       serviceFee,
       totalAmount: dbTotal,
       notes: driverNote,
-      addressId,
-      serviceFee: stripeServiceFee,
+      addressId: isGuestCheckout ? null : addressId,
+      guestShipping: guestShippingDoc,
       coupon: couponSnapshot,
       paymentStatus: "pending",
       status: "session"
@@ -1109,7 +1156,7 @@ const orderPayment = async (req, res) => {
           }
         ],
 
-        customer_email: req.user.email,
+        customer_email: req.user?.email || undefined,
 
         metadata: {
           orderId: order._id.toString()

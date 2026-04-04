@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import api from '../services/api';
@@ -65,7 +65,6 @@ function CountdownClock({ endTime }) {
 }
 
 export default function HotDeals() {
-  const navigate = useNavigate();
   const { addToCart } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
   const [products, setProducts] = useState([]);
@@ -201,12 +200,6 @@ export default function HotDeals() {
   const handleAddToCart = (e, product) => {
     e.preventDefault();
     e.stopPropagation();
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast.error('Please login first to add items to cart');
-      setTimeout(() => navigate('/login'), 500);
-      return;
-    }
     try {
       const result = addToCart(product, 1);
       if (result?.success !== false) toast.success('Added to cart');

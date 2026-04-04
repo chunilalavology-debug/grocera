@@ -15,14 +15,27 @@ const orderSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    index: true
+    required: false,
+    default: null,
+    index: true,
   },
 
   addressId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Address',
-    required: true,
+    required: false,
+    default: null,
+  },
+
+  /** Guest checkout: delivery snapshot when userId/addressId are not used */
+  guestShipping: {
+    name: String,
+    phone: String,
+    fullAddress: String,
+    city: String,
+    state: String,
+    pincode: String,
+    addressType: String,
   },
 
   items: [{
