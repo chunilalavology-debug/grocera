@@ -265,14 +265,17 @@ userSchema.methods.generateRefreshToken = function (deviceInfo = 'Unknown') {
     { expiresIn: '30d' }
   );
 
-  // Add to user's refresh tokens
+  // Legacy docs may omit refreshTokens — avoid "Cannot read properties of undefined (reading 'push')"
+  if (!Array.isArray(this.refreshTokens)) {
+    this.refreshTokens = [];
+  }
+
   this.refreshTokens.push({
     token: refreshToken,
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
     deviceInfo
   });
 
-  // Keep only last 5 refresh tokens per user
   if (this.refreshTokens.length > 5) {
     this.refreshTokens = this.refreshTokens.slice(-5);
   }
@@ -336,7 +339,7 @@ userSchema.methods.createStripeCustomer = async function (stripe) {
 
 // Static method to find user by email with password
 userSchema.statics.findByEmailWithPassword = function (email) {
-  return this.findOne({ email }).select('+password');
+  return this.findOne({ email, isDeleted: { $ne: true } }).select("+password");
 };
 
 // Static method for secure user lookup

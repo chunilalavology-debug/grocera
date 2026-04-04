@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Joi = require("joi");
+const mongoose = require("mongoose");
 const { User } = require("../../db");
 const Cart = require("../../db/models/Cart");
 const userSellRateLimiter = require("../middlewares/rateLimit");
@@ -174,6 +175,14 @@ const login = async (req, res) => {
 
     const { email, password, rememberMe = false, guestCartId } = body;
 
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: "Database is not ready yet. Wait a few seconds and try again.",
+        code: "DB_NOT_READY",
+      });
+    }
+
     const user = await User.findByEmailWithPassword(email.toLowerCase());
     if (!user) {
       return res.status(401).json({
@@ -215,7 +224,11 @@ const login = async (req, res) => {
     );
 
     if (guestCartId) {
-      await Cart.findOrCreateCart(user._id, guestCartId);
+      try {
+        await Cart.findOrCreateCart(user._id, guestCartId);
+      } catch (cartErr) {
+        console.error("Login guest cart merge failed (continuing login):", cartErr.message);
+      }
     }
 
     if (rememberMe) {
@@ -248,10 +261,15 @@ const login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error);
+    console.error("Login error:", error?.message || error, error?.stack);
     res.status(500).json({
       success: false,
-      message: 'Internal server error during login.'
+      message: "Internal server error during login.",
+      code: "LOGIN_SERVER_ERROR",
+      detail:
+        process.env.NODE_ENV !== "production"
+          ? error?.message
+          : undefined,
     });
   }
 };
