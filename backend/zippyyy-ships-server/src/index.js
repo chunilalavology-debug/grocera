@@ -506,4 +506,11 @@ if (!process.env.VERCEL) {
   });
 }
 
+// Warm item-category cache so first /api/quotes after cold start avoids an extra Easyship round trip.
+if (easyship) {
+  queueMicrotask(() => {
+    getItemCategories().catch(() => {});
+  });
+}
+
 export default app;

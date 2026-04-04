@@ -813,47 +813,49 @@ export default function Checkout() {
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-3 ml-1">
                   Tip / Support your delivery partner
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
-                  {[5, 10, 15, 20].map(percent => (
-                    <button
-                      key={percent}
-                      type="button"
-                      onClick={() => {
-                        // Agar wahi percent pehle se selected hai, toh reset kar do (Unselect)
-                        // Warna naya percent set karo
-                        if (tipPercent === percent) {
-                          setTipPercent(0);
-                        } else {
-                          setTipPercent(percent);
-                          setTipInput(''); // Input clear kar do jab button select ho
-                        }
-                      }}
-                      className={`py-3 min-h-[48px] sm:min-h-0 text-sm font-bold rounded-xl border-2 transition-all duration-200 ${tipPercent === percent
-                        ? 'border-blue-600 bg-blue-50 text-blue-700' // Selected Style (Classic Blue)
-                        : 'border-gray-100 bg-white text-gray-600 hover:border-gray-300' // Unselected Classic Style
-                        }`}
-                    >
-                      {percent}%
-                    </button>
-                  ))}
-
-                  <div className="relative">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                    {[5, 10, 15, 20].map(percent => (
+                      <button
+                        key={percent}
+                        type="button"
+                        onClick={() => {
+                          if (tipPercent === percent) {
+                            setTipPercent(0);
+                          } else {
+                            setTipPercent(percent);
+                            setTipInput('');
+                          }
+                        }}
+                        className={`py-3 min-h-[48px] sm:min-h-0 text-sm font-bold rounded-xl border-2 transition-all duration-200 ${tipPercent === percent
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-gray-100 bg-white text-gray-600 hover:border-gray-300'
+                          }`}
+                      >
+                        {percent}%
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative max-w-full sm:max-w-xs">
                     <input
                       type="number"
-                      placeholder="Custom"
+                      placeholder="Custom amount ($)"
                       value={tipInput}
                       onChange={(e) => {
                         setTipInput(e.target.value);
-                        setTipPercent(0); // Percent reset ho jayega jab custom likhenge
+                        setTipPercent(0);
                       }}
-                      className={`w-full py-3 min-h-[48px] sm:min-h-0 px-2 text-sm font-bold rounded-xl border-2 outline-none transition-all text-center ${tipInput
+                      className={`w-full py-3 min-h-[48px] sm:min-h-0 pl-7 pr-3 text-sm font-bold rounded-xl border-2 outline-none transition-all ${tipInput
                         ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-gray-100 bg-white focus:border-gray-300'
+                        : 'border-gray-100 bg-white focus:border-gray-300 text-gray-600'
                         }`}
                     />
-                    {tipInput && (
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-700 text-xs">$</span>
-                    )}
+                    <span
+                      className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${tipInput ? 'text-blue-700' : 'text-gray-400'}`}
+                      aria-hidden
+                    >
+                      $
+                    </span>
                   </div>
                 </div>
               </div>
