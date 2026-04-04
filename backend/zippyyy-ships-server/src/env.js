@@ -12,7 +12,14 @@ function trimSecret(val) {
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().default(3001),
-  APP_URL: z.string().url().default("http://localhost:8080"),
+  APP_URL: z.preprocess(
+    (v) => {
+      if (v === undefined || v === null) return undefined;
+      const s = String(v).trim();
+      return s.length ? s : undefined;
+    },
+    z.string().url().default("http://localhost:8080"),
+  ),
   /** Comma-separated extra allowed CORS origins (e.g. preview URL + production). */
   CORS_ORIGINS: z.string().optional(),
   EASYSHIP_API_KEY: z.preprocess(trimSecret, z.string().min(1).optional()),

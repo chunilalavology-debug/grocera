@@ -1,16 +1,30 @@
-import Database from "better-sqlite3";
+import { createRequire } from "module";
 import path from "path";
 import fs from "fs";
 
-const dataDir = path.resolve(process.cwd(), "data");
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+const require = createRequire(import.meta.url);
 
-const dbPath = path.join(dataDir, "zippyyy.sqlite");
-export const db = new Database(dbPath);
+let db = null;
 
-db.pragma("journal_mode = WAL");
+/**
+ * Open SQLite on first use only so /api/health and /api/quotes can run without
+ * loading better-sqlite3 until checkout routes need persistence.
+ * On Vercel, only /tmp is writable — use that for the DB file.
+ */
+function getDb() {
+  if (db) return db;
+  const Database = require("better-sqlite3");
+  const onVercel = Boolean(process.env.VERCEL);
+  const dataDir = onVercel
+    ? path.join("/tmp", "zippyyy-ships-data")
+    : path.resolve(process.cwd(), "data");
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
-db.exec(`
+  const dbPath = path.join(dataDir, "zippyyy.sqlite");
+  db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+
+  db.exec(`
   CREATE TABLE IF NOT EXISTS shipments (
     checkout_session_id TEXT PRIMARY KEY,
     status TEXT NOT NULL,
@@ -29,8 +43,12 @@ db.exec(`
   );
 `);
 
+  return db;
+}
+
 export function upsertDraft({ checkoutSessionId, draft, selectedRate }) {
-  const stmt = db.prepare(`
+  const d = getDb();
+  const stmt = d.prepare(`
     INSERT INTO shipments (
       checkout_session_id, status, created_at, draft_json, selected_rate_json
     ) VALUES (
@@ -51,7 +69,8 @@ export function upsertDraft({ checkoutSessionId, draft, selectedRate }) {
 }
 
 export function getShipmentBySessionId(checkoutSessionId) {
-  const row = db
+  const d = getDb();
+  const row = d
     .prepare(`SELECT * FROM shipments WHERE checkout_session_id = ?`)
     .get(checkoutSessionId);
   if (!row) return null;
@@ -71,6 +90,7 @@ export function getShipmentBySessionId(checkoutSessionId) {
 }
 
 export function setShipmentStatus(checkoutSessionId, status, patch = {}) {
+  const d = getDb();
   const fields = {
     status,
     easyship_shipment_id: patch.easyshipShipmentId ?? null,
@@ -81,7 +101,7 @@ export function setShipmentStatus(checkoutSessionId, status, patch = {}) {
     last_error: patch.lastError ?? null,
   };
 
-  const stmt = db.prepare(`
+  const stmt = d.prepare(`
     UPDATE shipments SET
       status=@status,
       easyship_shipment_id=COALESCE(@easyship_shipment_id, easyship_shipment_id),
@@ -104,4 +124,3 @@ function safeJson(s) {
     return null;
   }
 }
-
