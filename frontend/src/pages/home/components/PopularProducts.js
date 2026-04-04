@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../../../context/CartContext';
 import { useWishlist } from '../../../context/WishlistContext';
+import { useHomePageDataOptional } from '../../../context/HomePageDataContext';
 import api from '../../../services/api';
 // eslint-disable-next-line no-unused-vars -- in scope when local catch still references getApiBaseUrl()
 import { getApiBaseUrl } from '../../../config/apiBase';
@@ -15,10 +16,23 @@ const SITE_COLOR = '#3090cf';
 function PopularProducts() {
   const { addToCart } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
+  const homeData = useHomePageDataOptional();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (homeData) {
+      if (homeData.homeProductsLoading) {
+        setLoading(true);
+        return;
+      }
+      if (homeData.homeProducts?.length) {
+        setProducts(homeData.homeProducts.slice(0, 10));
+        setLoading(false);
+        return;
+      }
+    }
+
     const fetchProducts = async () => {
       try {
         setLoading(true);
@@ -32,7 +46,11 @@ function PopularProducts() {
       }
     };
     fetchProducts();
-  }, []);
+  }, [
+    homeData,
+    homeData?.homeProducts,
+    homeData?.homeProductsLoading,
+  ]);
 
   const isVegetable = (p) =>
     p?.category?.toLowerCase().includes('vegetable') ||

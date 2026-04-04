@@ -18,8 +18,9 @@ export default function ScrollReveal({ children, className = "", as: Tag = "div"
         if (entry.isIntersecting) setInView(true);
       },
       {
-        rootMargin: "0px 0px -40px 0px",
-        threshold: 0.1,
+        /** Reveal a bit before the section enters view so above-the-fold + first scroll feel instant */
+        rootMargin: "120px 0px -24px 0px",
+        threshold: 0.05,
       }
     );
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useHomePageDataOptional } from '../../../context/HomePageDataContext';
 import api from '../../../services/api';
 import { Star } from 'lucide-react';
 import ScrollReveal from '../../../components/ScrollReveal';
@@ -14,10 +15,23 @@ const COLUMNS = [
 ];
 
 function ProductColumns() {
+  const homeData = useHomePageDataOptional();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (homeData) {
+      if (homeData.homeProductsLoading) {
+        setLoading(true);
+        return;
+      }
+      if (homeData.homeProducts?.length) {
+        setProducts(homeData.homeProducts);
+        setLoading(false);
+        return;
+      }
+    }
+
     const fetchProducts = async () => {
       try {
         setLoading(true);
@@ -32,7 +46,11 @@ function ProductColumns() {
       }
     };
     fetchProducts();
-  }, []);
+  }, [
+    homeData,
+    homeData?.homeProducts,
+    homeData?.homeProductsLoading,
+  ]);
 
   // Split products into four columns: by index and by sort logic
   const getColumnProducts = () => {

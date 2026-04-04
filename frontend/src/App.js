@@ -24,9 +24,9 @@ import PrivacyPolicy from './privacypolicy/PrivacyPolicy';
 import TermsConditions from './termsconditions/TermsConditions';
 import Loader from './services/Loader';
 import CategoryDashboard from './pages/admin/Catgories';
+import Home from './pages/home/Home';
 
 // Lazy loaded pages (loaded when needed)
-const Home = lazy(() => import('./pages/home/Home'));
 const Products = lazy(() => import('./pages/Products'));
 const Category = lazy(() => import('./pages/Category'));
 const ProductDetail = lazy(() => import('./pages/ProductDetail'));

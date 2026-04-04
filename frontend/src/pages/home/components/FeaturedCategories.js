@@ -6,6 +6,7 @@ import { getApiBaseUrl } from '../../../config/apiBase';
 import api from '../../../services/api';
 import ScrollReveal from '../../../components/ScrollReveal';
 import { featuredCategoriesListFromResponse } from '../../../utils/featuredCategoriesResponse';
+import { mapPool } from '../../../utils/mapPool';
 
 function getProductImageUrl(product) {
   if (!product) return null;
@@ -177,23 +178,22 @@ export default function FeaturedCategories() {
     const controller = new AbortController();
     let alive = true;
     (async () => {
-      const results = await Promise.all(
-        baseDisplayList.map(async (item) => {
-          try {
-            const res = await api.get('/user/products', {
-              params: { category: item.value, main: activeMain, limit: 24 },
-              signal: controller.signal,
-            });
-            const list = Array.isArray(res?.data) ? res.data : [];
-            const p = list.find((x) => getProductImageUrl(x)) || list[0];
-            const url = getProductImageUrl(p);
-            const total = parseTotalFromProductsResponse(res);
-            return { value: item.value, thumb: url || null, total: total !== null ? total : 0 };
-          } catch {
-            return { value: item.value, thumb: null, total: 0 };
-          }
-        })
-      );
+      /** Max 4 concurrent /user/products calls so cold Vercel + browser limits don’t stall the page */
+      const results = await mapPool(4, baseDisplayList, async (item) => {
+        try {
+          const res = await api.get('/user/products', {
+            params: { category: item.value, main: activeMain, limit: 24 },
+            signal: controller.signal,
+          });
+          const list = Array.isArray(res?.data) ? res.data : [];
+          const p = list.find((x) => getProductImageUrl(x)) || list[0];
+          const url = getProductImageUrl(p);
+          const total = parseTotalFromProductsResponse(res);
+          return { value: item.value, thumb: url || null, total: total !== null ? total : 0 };
+        } catch {
+          return { value: item.value, thumb: null, total: 0 };
+        }
+      });
       if (!alive) return;
       setCategoryOverlay((prev) => {
         const next = { ...prev };
