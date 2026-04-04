@@ -3,7 +3,7 @@
   "functions": {
     "api/index.js": {
       "includeFiles": "src/**",
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "api/health.js": {
       "maxDuration": 10

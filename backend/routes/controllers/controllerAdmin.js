@@ -1604,7 +1604,7 @@ const getAdminProducts = async (req, res) => {
     limit: Joi.number().integer().min(1).max(500).optional(),
     search: Joi.string().max(100).allow(null, ""),
     category: Joi.string().max(160).allow(null, "")
-  })
+  }).unknown(true);
   try {
     await connectDB();
     await validation.validateAsync(req.query, { abortEarly: true });
@@ -1967,7 +1967,7 @@ const getDeals = async (req, res) => {
     search: Joi.string().max(100).optional(),
     productId: Joi.string().optional(),
     status: Joi.string().valid("Active", "Inactive", "Expired", "Scheduled").optional()
-  });
+  }).unknown(true);
   try {
     await idValidation.validateAsync(req.query, { abortEarly: true });
     let {

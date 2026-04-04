@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/quotes.js": { "maxDuration": 60 },
+    "api/quotes.js": { "maxDuration": 120 },
     "api/health.js": { "maxDuration": 30 },
     "api/checkout/session.js": { "maxDuration": 60 },
     "api/checkout/promotion-code.js": { "maxDuration": 30 },

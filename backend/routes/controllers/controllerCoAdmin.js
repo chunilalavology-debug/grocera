@@ -107,7 +107,7 @@ const getAdminProducts = async (req, res) => {
     limit: Joi.number().integer().min(1).max(100).optional(),
     search: Joi.string().max(100).allow(null, ""),
     category: Joi.string().max(50).allow(null, "")
-  })
+  }).unknown(true);
   try {
     await connectDB();
     await validation.validateAsync(req.query, { abortEarly: true });

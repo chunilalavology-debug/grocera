@@ -30,6 +30,11 @@ async function forwardToShips(req, res, apiPath) {
     return;
   }
 
+  const timeoutMs = Math.min(
+    Math.max(Number(process.env.SHIPS_PROXY_TIMEOUT_MS) || 90_000, 5_000),
+    110_000
+  );
+
   let upstream;
   try {
     upstream = await fetch(url, {
@@ -39,8 +44,18 @@ async function forwardToShips(req, res, apiPath) {
         Accept: "application/json",
       },
       body,
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
+    const name = e && typeof e === "object" && "name" in e ? e.name : "";
+    if (name === "AbortError" || name === "TimeoutError") {
+      res.status(504).json({
+        error: "SHIPS_UPSTREAM_TIMEOUT",
+        message:
+          "Shipping quotes timed out. Ensure SHIPS_API_BASE points to your Zippyyy Ships server, upgrade Vercel function duration if needed (quotes), and verify EASYSHIP_API_KEY on the Ships deployment.",
+      });
+      return;
+    }
     res.status(502).json({
       error: "SHIPS_UPSTREAM_UNREACHABLE",
       message: e instanceof Error ? e.message : "Failed to reach ships API",
