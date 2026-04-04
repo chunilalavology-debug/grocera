@@ -24,12 +24,13 @@ const useSearch = (initial, delay) => {
 const DealTableRow = React.memo(({ deal, onEdit, onDelete }) => {
     const getStatus = useCallback(() => {
         const now = new Date();
-        if (deal.endTime < now) return { text: '❌ Expired', class: 'expired' };
-        if (deal.startTime > now) return { text: '📅 Scheduled', class: 'scheduled' };
-        if (deal.status === 'Active') return { text: '✅ Active', class: 'active' };
-        if (deal.status === 'Inactive') return { text: '⏸ Inactive', class: 'inactive' };
-        return { text: 'Status Unknown', class: 'unknown' };
-    }, [deal.endTime, deal.startTime, deal.status]);
+        const start = deal.startAt ? new Date(deal.startAt) : null;
+        const end = deal.endAt ? new Date(deal.endAt) : null;
+        if (end && end < now) return { text: '❌ Expired', class: 'expired' };
+        if (start && start > now) return { text: '📅 Scheduled', class: 'scheduled' };
+        if (deal.isActive) return { text: '✅ Active', class: 'active' };
+        return { text: '⏸ Inactive', class: 'inactive' };
+    }, [deal.startAt, deal.endAt, deal.isActive]);
 
     const status = getStatus();
 
@@ -42,14 +43,14 @@ const DealTableRow = React.memo(({ deal, onEdit, onDelete }) => {
 
             {/* 2. Type & Discount */}
             <div className="col-type-discount" data-label="Type/Discount">
-                <span className={`deal-type-badge ${deal.dealType.toLowerCase().replace(/\s/g, '-')}`}>{deal.dealType}</span>
+                <span className={`deal-type-badge ${String(deal.dealType || '').toLowerCase().replace(/\s/g, '-')}`}>{deal.dealType}</span>
                 <span className="deal-discount">{deal.discountValue}</span>
             </div>
 
             {/* 3. Applies To */}
             <div className="col-applies-to" data-label="Applies To">
                 {Array.isArray(deal.productId) && deal.productId.length > 0
-                    ? deal.productId.map(p => p.name).join(', ')
+                    ? deal.productId.map(p => (typeof p === 'object' && p ? p.name : p)).filter(Boolean).join(', ')
                     : '—'}
             </div>
 
@@ -106,19 +107,20 @@ const DealTableRow = React.memo(({ deal, onEdit, onDelete }) => {
 
 DealTableRow.displayName = 'DealTableRow';
 
+const FORM_TO_API_DEAL_TYPE = { PERCENT: 'Percentage', FLAT: 'Fixed', BOGO: 'BOGO' };
+const API_TO_FORM_DEAL_TYPE = { Percentage: 'PERCENT', Fixed: 'FLAT', BOGO: 'BOGO' };
+
 function AdminDeals() {
-    const [deals] = useState([]);
+    const [deals, setDeals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editingDeal, setEditingDeal] = useState(null);
     const [filterStatus, setFilterStatus] = useState('All');
     const [page, setPage] = useState(1);
-    const [limit] = useState(3);
-
+    const [limit] = useState(10);
 
     const { searchTerm, debouncedSearchTerm, handleSearchChange } = useSearch('', 300);
-    void debouncedSearchTerm;
-    const [productOptions] = useState([]);
+    const [productOptions, setProductOptions] = useState([]);
     // Initial Form State
     const initialFormData = useMemo(() => ({
         dealName: '',
@@ -133,37 +135,50 @@ function AdminDeals() {
     }), []);
 
     const [formData, setFormData] = useState(initialFormData);
-    const [total] = useState(0);
+    const [total, setTotal] = useState(0);
 
-
-
-    // --- Data Fetching (Mocked) ---
     const loadDealsData = useCallback(async () => {
         setLoading(true);
-        // const { data } = await api.get('/deals', {
-        //     params: {
-        //         pageNo: page,
-        //         size: limit,
-        //         search: debouncedSearchTerm || undefined,
-        //         status: filterStatus !== 'All' ? filterStatus : undefined
-        //     }
-        // });
-
-        // setDeals(data?.list || []);
-        // setTotal(data?.total || 0);
-        setLoading(false);
-    }, []);
+        try {
+            const res = await api.get('/admin/deals', {
+                params: {
+                    pageNo: page,
+                    size: limit,
+                    search: debouncedSearchTerm?.trim() || undefined,
+                    status: filterStatus !== 'All' ? filterStatus : undefined,
+                },
+            });
+            if (res?.error) {
+                setDeals([]);
+                setTotal(0);
+                return;
+            }
+            const inner = res?.data;
+            setDeals(inner?.list || []);
+            setTotal(inner?.total ?? 0);
+        } catch {
+            setDeals([]);
+            setTotal(0);
+        } finally {
+            setLoading(false);
+        }
+    }, [page, limit, debouncedSearchTerm, filterStatus]);
 
     useEffect(() => {
         const fetchProducts = async () => {
             try {
-                // const res = await api.get('/products/selected'); // API se list
-                // res.data expected format: [{ _id, name }]
-                // setProductOptions(
-                //     res.data.data.map(p => ({ value: p._id, label: p.name }))
-                // );
+                const prodsRes = await api.get('/admin/products', {
+                    params: { page: 1, limit: 500, search: '', category: '' },
+                });
+                const list = Array.isArray(prodsRes?.data) ? prodsRes.data : [];
+                setProductOptions(
+                    list.map((p) => ({
+                        value: String(p._id),
+                        label: p.name || String(p._id),
+                    }))
+                );
             } catch {
-                /* product list optional for deals UI */
+                setProductOptions([]);
             }
         };
         fetchProducts();
@@ -198,10 +213,12 @@ function AdminDeals() {
 
             setFormData({
                 dealName: deal.dealName || '',
-                dealType: deal.dealType || 'PERCENT',
-                discountValue: deal.discountValue || '',
+                dealType: API_TO_FORM_DEAL_TYPE[deal.dealType] || 'PERCENT',
+                discountValue: deal.discountValue ?? '',
                 productId: Array.isArray(deal.productId)
-                    ? deal.productId.map(p => p._id) // 👈 important
+                    ? deal.productId.map((p) =>
+                          typeof p === 'object' && p != null ? String(p._id) : String(p)
+                      )
                     : [],
                 startAt: deal.startAt
                     ? deal.startAt.substring(0, 10)
@@ -240,24 +257,43 @@ function AdminDeals() {
     const handleSubmit = useCallback(async (e) => {
         e.preventDefault();
 
-        try {
-            if (editingDeal) {
-                // 🔁 UPDATE
-                await api.put(`/deals/${editingDeal._id}`, formData);
-                alert('Deal updated successfully');
-            } else {
-                // ➕ CREATE
-                let res = await api.post('/deals', formData);
-                if (res.data.error) {
-                    alert(res.data.message || "Faild To Create Deals")
-                    return
-                }
-                alert('Deal created successfully');
-            }
+        const dealType = FORM_TO_API_DEAL_TYPE[formData.dealType];
+        const isBogo = formData.dealType === 'BOGO';
+        const discountValue = isBogo ? 0 : Number(formData.discountValue);
+        if (!formData.productId?.length) {
+            alert('Select at least one product');
+            return;
+        }
+        if (!isBogo && (!Number.isFinite(discountValue) || discountValue <= 0)) {
+            alert('Enter a valid discount value');
+            return;
+        }
 
+        const payload = {
+            dealName: formData.dealName.trim(),
+            dealType,
+            discountValue,
+            productId: formData.productId.map(String),
+            startAt: new Date(formData.startAt).toISOString(),
+            endAt: new Date(`${formData.endAt}T23:59:59`).toISOString(),
+            isActive: Boolean(formData.isActive),
+            showOnProductPage: Boolean(formData.showOnProductPage),
+        };
+
+        try {
+            let res;
+            if (editingDeal) {
+                res = await api.put(`/admin/deals/${editingDeal._id}`, payload);
+            } else {
+                res = await api.post('/admin/deals', payload);
+            }
+            if (res?.error) {
+                alert(res.message || 'Request failed');
+                return;
+            }
+            alert(editingDeal ? 'Deal updated successfully' : 'Deal created successfully');
             closeModal();
             loadDealsData();
-
         } catch (err) {
             console.error(err);
             alert('Something went wrong');
@@ -269,10 +305,10 @@ function AdminDeals() {
         if (!window.confirm("Are you sure you want to delete this deal?")) return;
 
         try {
-            const res = await api.delete(`/deals/${dealId}`);
+            const res = await api.delete(`/admin/deals/${dealId}`);
 
-            if (res.data?.error) {
-                alert(res.data.message || "Delete failed");
+            if (res?.error) {
+                alert(res.message || "Delete failed");
                 return;
             }
 
@@ -413,12 +449,12 @@ function AdminDeals() {
                         </button>
 
                         <span className="page-info">
-                            Page <strong>{page}</strong> of <strong>{Math.ceil(total / limit)}</strong>
+                            Page <strong>{page}</strong> of <strong>{Math.max(1, Math.ceil(total / limit) || 1)}</strong>
                         </span>
 
                         <button
                             className="page-btn"
-                            disabled={page >= Math.ceil(total / limit)}
+                            disabled={page >= Math.max(1, Math.ceil(total / limit) || 1)}
                             onClick={() => setPage(p => p + 1)}
                         >
                             Next ➡
@@ -456,13 +492,14 @@ function AdminDeals() {
                                     >
                                         <option value="PERCENT">Percentage Off</option>
                                         <option value="FLAT">Fixed Price Reduction</option>
+                                        <option value="BOGO">Buy One Get One</option>
                                     </select>
 
                                 </div>
 
                                 <div className="form-group">
                                     <label htmlFor="discount">Discount/Mechanism *</label>
-                                    <input type="number" id="discount" name="discountValue" value={formData.discountValue} onChange={handleInputChange} required placeholder="E.g., 15% or $5 off or B2G1F" />
+                                    <input type="number" id="discount" name="discountValue" value={formData.discountValue} onChange={handleInputChange} required={formData.dealType !== 'BOGO'} placeholder="E.g., 15% or $5 off (0 for BOGO)" />
                                 </div>
 
                                 <div className="form-group">

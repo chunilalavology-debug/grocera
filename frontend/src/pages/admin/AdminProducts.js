@@ -196,16 +196,22 @@ function AdminProducts() {
       const res = await api.get("/admin/products", {
         params: { page, limit, search: debouncedSearchTerm || "", category: selectedCategory === "All" ? "" : selectedCategory }
       });
-      setProducts(res.data || []);
+      if (res && res.success === false) {
+        toast.error(res.message || "Failed to fetch products");
+        setProducts([]);
+        return;
+      }
+      const list = Array.isArray(res?.data) ? res.data : [];
+      setProducts(list);
       setTotalPages(res.pagination?.totalPages || 1);
       setProductStats({
-        total: res.pagination?.total || 0,
+        total: res.pagination?.total ?? list.length,
         inStock: res.stats?.inStock || 0,
         outOfStock: res.stats?.outOfStock || 0,
         totalValue: res.stats?.totalValue || 0,
       });
     } catch (err) {
-      toast.error("Failed to fetch products");
+      toast.error(err?.message || "Failed to fetch products");
     } finally {
       setLoading(false);
     }

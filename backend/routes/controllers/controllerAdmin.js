@@ -14,7 +14,6 @@ const Contact = require("../../db/models/Contact");
 const Address = require("../../db/models/Address");
 const { default: sendMail } = require("../../utils/sendEmail");
 const OrderConform = require("../../utils/template/userOrderConform");
-const { error } = require("console");
 const OrderDelivered = require("../../utils/template/userOrderDeliverd");
 const OrderCancelled = require("../../utils/template/userOrderCancelled");
 const userOrderStatusUpdate = require("../../utils/template/userOrderStatusUpdate");
@@ -40,6 +39,7 @@ const {
 } = require("../../utils/storefrontCategoryMeta");
 const { safeApiMessage } = require("../../utils/safeApiMessage");
 const { invalidateProductCatalogCache } = require("../../utils/invalidateProductCatalogCache");
+const { connectDB } = require("../../lib/db");
 const adminAuth = [authorize(['admin'])];
 
 const formatJoiErrors = (error) => {
@@ -1606,6 +1606,7 @@ const getAdminProducts = async (req, res) => {
     category: Joi.string().max(160).allow(null, "")
   })
   try {
+    await connectDB();
     await validation.validateAsync(req.query, { abortEarly: true });
     let { page = 1, limit = 20, search = '', category } = req.query;
 
@@ -1614,8 +1615,9 @@ const getAdminProducts = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
+    /** Match storefront / catalog: include docs where isDeleted is missing (legacy imports). */
     let query = {
-      isDeleted: false
+      ...PRODUCT_NOT_DELETED,
     };
 
     if (search) {
@@ -1634,7 +1636,7 @@ const getAdminProducts = async (req, res) => {
       };
     }
 
-    const [products, total, inStockCount, outOfStockCount] = await Promise.all([
+    const [products, total, inStockCount, outOfStockCount, valueAgg] = await Promise.all([
       Products.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -1644,7 +1646,24 @@ const getAdminProducts = async (req, res) => {
       Products.countDocuments(query),
       Products.countDocuments({ ...query, inStock: true }),
       Products.countDocuments({ ...query, inStock: false }),
+      Products.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: null,
+            totalValue: {
+              $sum: {
+                $multiply: [
+                  { $ifNull: ["$price", 0] },
+                  { $ifNull: ["$quantity", 0] },
+                ],
+              },
+            },
+          },
+        },
+      ]),
     ]);
+    const totalValue = valueAgg?.[0]?.totalValue ?? 0;
     res.status(200).json({
       success: true,
       data: products,
@@ -1657,7 +1676,8 @@ const getAdminProducts = async (req, res) => {
       stats: {
         inStock: inStockCount,
         outOfStock: outOfStockCount,
-      }
+        totalValue,
+      },
     });
 
   } catch (error) {
@@ -1783,7 +1803,10 @@ const getVouchers = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res.json({ error: true, message: err, message });
+    return res.json({
+      error: true,
+      message: safeApiMessage(err, "Failed to fetch vouchers"),
+    });
   }
 };
 
@@ -2970,7 +2993,7 @@ const uploadHomeSliderImage = async (req, res) => {
 // =========================
 const exportProductsCsv = async (req, res) => {
   try {
-    const products = await Products.find({ isDeleted: false })
+    const products = await Products.find({ ...PRODUCT_NOT_DELETED })
       .sort({ createdAt: -1 })
       .lean();
 

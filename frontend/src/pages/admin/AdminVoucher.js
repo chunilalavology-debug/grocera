@@ -181,11 +181,12 @@ export default function AdminVoucher() {
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            const { data } = await api.get('/admin/vouchers', {
+            const body = await api.get('/admin/vouchers', {
                 params: { pageNo, size: pageSize, search: debouncedSearchTerm }
             });
-            setVouchers(data?.list || []);
-            setTotal(data?.total || 0);
+            const inner = body?.data;
+            setVouchers(inner?.list || []);
+            setTotal(inner?.total ?? 0);
         } catch (error) {
             toast.error("Failed to sync database");
         } finally {
@@ -204,11 +205,13 @@ export default function AdminVoucher() {
                 ? await api.put(`/admin/vouchers/${editingVoucher._id}`, payload)
                 : await api.post('/admin/vouchers', payload);
 
-            if (res.data.success || !res.data.error) {
-                toast.success(editingVoucher ? "Database Updated" : "Campaign Launched");
-                setShowModal(false);
-                loadData();
+            if (res?.error) {
+                toast.error(res.message || "Process interrupted");
+                return;
             }
+            toast.success(editingVoucher ? "Database Updated" : "Campaign Launched");
+            setShowModal(false);
+            loadData();
         } catch (err) {
             toast.error("Process interrupted");
         } finally {
@@ -219,7 +222,11 @@ export default function AdminVoucher() {
     const handleDelete = async (id) => {
         if (!window.confirm("Permanent deletion cannot be undone. Proceed?")) return;
         try {
-            await api.delete(`/vouchers/${id}`);
+            const res = await api.delete(`/admin/vouchers/${id}`);
+            if (res?.error) {
+                toast.error(res.message || "Deletion failed");
+                return;
+            }
             toast.success("Voucher Terminated");
             loadData();
         } catch (err) {

@@ -25,6 +25,7 @@ const {
 } = require("../../utils/categoryCounts");
 const { isCategoryActiveInDatabase } = require("../../utils/categoryActivity");
 const { getValuesForMain, inferMainForCategoryName } = require("../../utils/storefrontCategoryMeta");
+const { connectDB } = require("../../lib/db");
 
 const FEATURED_MAIN_IDS = ["indian", "american", "chinese", "turkish"];
 const CATEGORY_STOREFRONT_QUERY = { isDeleted: { $ne: true }, isDisable: { $ne: true } };
@@ -1006,8 +1007,11 @@ const orderPayment = async (req, res) => {
 
     const productIds = items.map(i => i.product);
 
+    await connectDB();
+
     const products = await Product.find({
-      _id: { $in: productIds }
+      _id: { $in: productIds },
+      isDeleted: { $ne: true },
     }).lean();
 
     let stripeSubtotal = 0;
@@ -1016,40 +1020,6 @@ const orderPayment = async (req, res) => {
     let serviceFee = 5
     const TAX_RATE = 0.08875;
     let couponSnapshot = null;
-
-    if (couponCode) {
-      const coupon = await Voucher.findOne({
-        code: couponCode,
-        isActive: true
-      });
-
-      if (!coupon) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid or expired coupon"
-        });
-      }
-
-      if (coupon.discountType === "percentage") {
-        discountAmount = (dbSubtotal * coupon.discountValue) / 100;
-
-        if (coupon.maxDiscount) {
-          discountAmount = Math.min(discountAmount, coupon.maxDiscount);
-        }
-      } else {
-        discountAmount = coupon.discountValue;
-      }
-
-      discountAmount = +discountAmount.toFixed(2);
-
-      couponSnapshot = {
-        couponId: coupon._id,
-        code: coupon.code,
-        discountType: coupon.discountType,
-        discountValue: coupon.discountValue,
-        discountAmount
-      };
-    }
 
     const orderItems = items.map(item => {
       const product = products.find(
@@ -1076,6 +1046,44 @@ const orderPayment = async (req, res) => {
         subtotal: itemSubtotal
       };
     });
+
+    if (couponCode) {
+      const coupon = await Voucher.findOne({
+        code: couponCode,
+        isActive: true,
+        isDeleted: { $ne: true },
+      });
+
+      if (!coupon) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid or expired coupon"
+        });
+      }
+
+      if (coupon.discountType === "percentage") {
+        discountAmount = (dbSubtotal * coupon.discountValue) / 100;
+
+        if (coupon.maxDiscountAmount) {
+          discountAmount = Math.min(discountAmount, coupon.maxDiscountAmount);
+        }
+      } else {
+        discountAmount = coupon.discountValue;
+      }
+
+      discountAmount = +discountAmount.toFixed(2);
+      if (discountAmount > dbSubtotal) {
+        discountAmount = dbSubtotal;
+      }
+
+      couponSnapshot = {
+        couponId: coupon._id,
+        code: coupon.code,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        discountAmount
+      };
+    }
 
     // Apply referral discount only for signed-in users (not guest checkout)
     if (!couponCode && userId) {
@@ -1116,6 +1124,18 @@ const orderPayment = async (req, res) => {
       stripeTip +
       stripeServiceFee -
       stripeDiscount;
+
+    /** Stripe minimum charge (USD cents). Avoid session creation errors. */
+    if (
+      (paymentMethod === "card" || paymentMethod === "stripe") &&
+      stripeTotal < 50
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Order total is below the minimum payment amount ($0.50). Adjust your cart, tip, or discount.",
+      });
+    }
 
     const dbTotal = toDollars(stripeTotal);
 

@@ -206,8 +206,9 @@ export default function Checkout() {
         toast.error("Please enter your OTC card number to proceed.");
         return;
       }
-      if (!cardDetails.cvv || cardDetails.cvv.length < 3) {
-        toast.error("Please enter a valid PIN");
+      const pinDigits = String(cardDetails.cvv || "").replace(/\D/g, "");
+      if (pinDigits.length !== 4) {
+        toast.error("Please enter a 4-digit OTC PIN");
         return;
       }
     }
@@ -251,7 +252,7 @@ export default function Checkout() {
 
       if (paymentMethod === 'otc') {
         payload.cardNumber = cardDetails.number;
-        payload.pin = cardDetails.cvv;
+        payload.pin = String(cardDetails.cvv || "").replace(/\D/g, "").slice(0, 4);
         payload.name = cardDetails.nameOnCard;
       }
 
@@ -296,7 +297,7 @@ export default function Checkout() {
     if (!fullAddress) errors.fullAddress = "Street address is required.";
     if (!city) errors.city = "City is required.";
     if (!pincode) errors.pincode = "ZIP / postal code is required.";
-    else if (!/^[A-Za-z0-9][A-Za-z0-9\s\-]{2,}$/.test(pincode))
+    else if (!/^[A-Za-z0-9][A-Za-z0-9\s-]{2,}$/.test(pincode))
       errors.pincode = "ZIP / postal code looks invalid.";
 
     const allowedTypes = ADDRESS_TYPE_OPTIONS.map((o) => o.value);

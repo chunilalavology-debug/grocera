@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const Joi = require("joi");
 const { Products } = require("../../db");
+const { PRODUCT_NOT_DELETED } = require("../../utils/categoryCounts");
+const { connectDB } = require("../../lib/db");
 const { authorize } = require("../middlewares/rbacMiddleware");
 const Order = require("../../db/models/Order");
 const coAdminAuth = [authorize(['co-admin'])];
@@ -107,6 +109,7 @@ const getAdminProducts = async (req, res) => {
     category: Joi.string().max(50).allow(null, "")
   })
   try {
+    await connectDB();
     await validation.validateAsync(req.query, { abortEarly: true });
     let { page = 1, limit = 20 } = req.query;
 
@@ -116,7 +119,7 @@ const getAdminProducts = async (req, res) => {
     const skip = (page - 1) * limit;
 
     let query = {
-      isDeleted: false
+      ...PRODUCT_NOT_DELETED,
     };
 
     if (req.query.search) {
@@ -135,6 +138,8 @@ const getAdminProducts = async (req, res) => {
         .lean(),
 
       Products.countDocuments(query),
+      Products.countDocuments({ ...query, inStock: true }),
+      Products.countDocuments({ ...query, inStock: false }),
     ]);
     res.status(200).json({
       success: true,

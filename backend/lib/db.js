@@ -51,6 +51,12 @@ async function connectDB() {
     return mongoose.connection;
   }
 
+  // db/index.js or a prior request may have already called mongoose.connect() (readyState 2).
+  if (mongoose.connection.readyState === 2 && typeof mongoose.connection.asPromise === "function") {
+    await mongoose.connection.asPromise();
+    return mongoose.connection;
+  }
+
   if (!cached.promise) {
     cached.promise = mongoose.connect(uri, MONGOOSE_OPTS).then(() => mongoose);
   }

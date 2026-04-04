@@ -16,7 +16,7 @@ export default function AdminUsers() {
     const [openAction, setOpenAction] = useState(null);
 
 
-    const serverUrl = 'https://zippyyy.com/api'
+    const apiBase = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
 
     // --- Data Fetching Logic ---
     const fetchUsers = useCallback(async () => {
@@ -31,7 +31,7 @@ export default function AdminUsers() {
                 role: filterRole
             });
 
-            const response = await fetch(`https://zippyyy.com/api/admin/users?${queryParams}`, {
+            const response = await fetch(`${apiBase}/admin/users?${queryParams}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -51,7 +51,7 @@ export default function AdminUsers() {
         } finally {
             setLoading(false);
         }
-    }, [page, filterRole]);
+    }, [page, filterRole, apiBase]);
 
     useEffect(() => {
         fetchUsers();
@@ -71,7 +71,7 @@ export default function AdminUsers() {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://zippyyy.com/api'}/admin/users/${userId}/role`, {
+            const response = await fetch(`${apiBase}/admin/users/${userId}/role`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -106,7 +106,7 @@ export default function AdminUsers() {
         if (!token) return;
         try {
             const res = await axios.put(
-                `${serverUrl}/admin/user/status/${id}`,
+                `${apiBase}/admin/user/status/${id}`,
                 {},
                 {
                     headers: {
@@ -140,7 +140,7 @@ export default function AdminUsers() {
         if (!token) return;
         try {
             const res = await axios.delete(
-                `${serverUrl}/admin/user/delete/${id}`,
+                `${apiBase}/admin/user/delete/${id}`,
                 {},
                 {
                     headers: {

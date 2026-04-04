@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const Joi = require("joi");
-const mongoose = require("mongoose");
 const { User } = require("../../db");
 const Cart = require("../../db/models/Cart");
+const { connectDB } = require("../../lib/db");
 const userSellRateLimiter = require("../middlewares/rateLimit");
 
 const formatJoiErrors = (error) => {
@@ -67,6 +67,18 @@ const register = async (req, res) => {
       address,
       preferences = {}
     } = req.body;
+
+    try {
+      await connectDB();
+    } catch (dbErr) {
+      console.error("register connectDB:", dbErr?.message || dbErr);
+      return res.status(503).json({
+        success: false,
+        message:
+          "Database is not reachable. Check MONGO_URI on the server, MongoDB Atlas network access, then try again.",
+        code: "DB_NOT_READY",
+      });
+    }
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -175,10 +187,14 @@ const login = async (req, res) => {
 
     const { email, password, rememberMe = false, guestCartId } = body;
 
-    if (mongoose.connection.readyState !== 1) {
+    try {
+      await connectDB();
+    } catch (dbErr) {
+      console.error("login connectDB:", dbErr?.message || dbErr);
       return res.status(503).json({
         success: false,
-        message: "Database is not ready yet. Wait a few seconds and try again.",
+        message:
+          "Database is not reachable. Check MONGO_URI on the server, MongoDB Atlas network access, then try again.",
         code: "DB_NOT_READY",
       });
     }

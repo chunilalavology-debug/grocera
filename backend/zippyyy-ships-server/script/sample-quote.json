@@ -1,0 +1,20 @@
+{
+  "from": {
+    "name": "Quote",
+    "phone": "0000000000",
+    "address_line_1": "N/A",
+    "city": "N/A",
+    "postal_code": "10001",
+    "country_alpha2": "US"
+  },
+  "to": {
+    "name": "Quote",
+    "phone": "0000000000",
+    "address_line_1": "N/A",
+    "city": "N/A",
+    "postal_code": "94105",
+    "country_alpha2": "US"
+  },
+  "parcel": { "length": 10, "width": 10, "height": 10, "weight": 1 },
+  "currency": "USD"
+}
