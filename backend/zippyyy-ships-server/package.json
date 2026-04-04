@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "build": "node -e \"console.log('vercel: no static build')\""
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
