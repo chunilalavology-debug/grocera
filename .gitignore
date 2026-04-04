@@ -14,10 +14,7 @@ frontend/.env.production
 backend/utils/serviceAccount.json
 **/serviceAccount.json
 
-# Local SQLite (runtime / dev)
-zippyyy-ships/**/server/data/*.sqlite
-zippyyy-ships/**/server/data/*.sqlite-shm
-zippyyy-ships/**/server/data/*.sqlite-wal
+# Local SQLite (runtime / dev) — ships API lives in backend/zippyyy-ships-server
 backend/zippyyy-ships-server/data/*.sqlite
 backend/zippyyy-ships-server/data/*.sqlite-shm
 backend/zippyyy-ships-server/data/*.sqlite-wal
