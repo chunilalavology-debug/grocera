@@ -1,10 +1,16 @@
 {
   "version": 2,
   "functions": {
-    "api/[[...slug]].js": {
+    "api/index.js": {
       "includeFiles": "src/**",
       "maxDuration": 60
+    },
+    "api/health.js": {
+      "maxDuration": 10
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/[[...slug]]" }]
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/api/index.js" }
+  ]
 }
