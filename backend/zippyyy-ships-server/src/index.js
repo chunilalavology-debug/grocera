@@ -47,18 +47,22 @@ app.get("/", (_req, res) => {
     ok: true,
     service: "zippyyy-ships-api",
     health: "/api/health",
+    healthAlt: "/health",
     hint: "Use /api/health and /api/quotes from the storefront (SHIPS_API_BASE).",
   });
 });
 
-app.get("/api/health", (_req, res) => {
+function sendShipsHealth(_req, res) {
   res.json({
     ok: true,
     easyshipConfigured: Boolean(env.EASYSHIP_API_KEY),
     stripeConfigured: Boolean(env.STRIPE_SECRET_KEY),
     stripeWebhookConfigured: Boolean(env.STRIPE_WEBHOOK_SECRET),
   });
-});
+}
+
+app.get("/api/health", sendShipsHealth);
+app.get("/health", sendShipsHealth);
 
 app.post("/api/quotes", async (req, res) => {
   if (!easyship) return res.status(501).json({ error: "EASYSHIP_NOT_CONFIGURED" });
