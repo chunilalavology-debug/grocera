@@ -73,6 +73,9 @@ function isPublicJwtPath(req) {
   /** Guest checkout — body must include shipping `address`; logged-in users send addressId + Bearer token */
   if (pathname === `${A}/user/orderPayment` && m === "POST") return true;
 
+  /** Order confirmation page — signed token from checkout (guests have no JWT) */
+  if (pathname === `${A}/user/orderByViewToken` && m === "GET") return true;
+
   if (pathname === `${A}/products/list`) return true;
   if (pathname === `${A}/deals/list`) return true;
   if (pathname === `${A}/voucher/redeem` && m === "POST") return true;

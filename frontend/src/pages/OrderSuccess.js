@@ -13,27 +13,39 @@ function OrderSuccess() {
   const [failedImageIndices, setFailedImageIndices] = useState(() => new Set());
 
   const token = localStorage.getItem("token");
-  const orderId = searchParams.get('order');
+  const orderId = searchParams.get("order");
+  const viewToken = searchParams.get("t") || searchParams.get("token");
 
   useEffect(() => {
     const fetchOrderDetails = async () => {
       try {
-        const response = await api.get(`/user/getUserOrderById/?orderId=${orderId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        if (response.success) {
-          setOrderDetails(response.data);
-          clearCart();
+        if (viewToken) {
+          const response = await api.get(
+            `/user/orderByViewToken?token=${encodeURIComponent(viewToken)}`
+          );
+          if (response.success && response.data) {
+            setOrderDetails(response.data);
+            clearCart();
+            return;
+          }
+        }
+        if (token && orderId) {
+          const response = await api.get(`/user/getUserOrderById/?orderId=${orderId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (response.success && response.data) {
+            setOrderDetails(response.data);
+            clearCart();
+          }
         }
       } catch {
-        /* Silent: network/API unavailable */
+        /* Handled by empty state + fallback UI */
       } finally {
         setLoading(false);
       }
     };
 
-    if (orderId) fetchOrderDetails();
+    if (orderId || viewToken) fetchOrderDetails();
     else setLoading(false);
     // Intentionally run once on mount for this order id (avoid re-clearing cart on token/context churn).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial fetch only
@@ -47,20 +59,27 @@ function OrderSuccess() {
 
     const interval = setInterval(async () => {
       try {
-        const response = await api.get(`/user/getUserOrderById/?orderId=${orderId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        let response;
+        if (viewToken) {
+          response = await api.get(
+            `/user/orderByViewToken?token=${encodeURIComponent(viewToken)}`
+          );
+        } else if (token && orderId) {
+          response = await api.get(`/user/getUserOrderById/?orderId=${orderId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
         if (response?.success) {
           setOrderDetails(response.data);
           if (response.data?.paymentStatus === "paid") clearInterval(interval);
         }
-      } catch (err) {
+      } catch {
         // ignore transient polling errors
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [shipping, orderDetails, orderId, token]);
+  }, [shipping, orderDetails, orderId, token, viewToken]);
 
   // Auto download shipping label when payment is paid
   useEffect(() => {
@@ -120,7 +139,42 @@ function OrderSuccess() {
     );
   }
 
-  if (!orderDetails) return null;
+  if (!orderDetails) {
+    return (
+      <div className="min-h-screen bg-[#FDFDFD] flex flex-col items-center justify-center px-6 pb-24 text-center">
+        <div className="max-w-md">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-emerald-500 rounded-full mb-6 shadow-lg shadow-emerald-100">
+            <Check className="w-6 h-6 text-white" strokeWidth={3} />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Order placed</h1>
+          <p className="text-gray-500 text-sm mb-6">
+            {orderId
+              ? "Your payment was received. We could not load the full receipt on this device — often this happens when you checked out as a guest or the confirmation link expired."
+              : "Something went wrong loading this page."}
+          </p>
+          {orderId && (
+            <p className="text-xs font-mono text-gray-400 mb-8 break-all">
+              Order reference: {orderId}
+            </p>
+          )}
+          <div className="flex flex-col gap-3">
+            <Link
+              to="/orders"
+              className="w-full bg-black text-white px-6 py-3 rounded-xl font-bold text-sm"
+            >
+              View orders (sign in)
+            </Link>
+            <Link
+              to="/products"
+              className="w-full bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-bold text-sm"
+            >
+              Continue shopping
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const steps = ["pending", "processing", "shipped", "delivered"];
   const currentStatusIndex = steps.indexOf(orderDetails.status?.toLowerCase()) !== -1
@@ -193,9 +247,9 @@ function OrderSuccess() {
                     <div key={index} className="flex items-center gap-4 group">
                       {/* Product Image Section */}
                       <div className="w-16 h-16 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-center overflow-hidden">
-                        {(item.product?.image || item?.product?.image) && !failedImageIndices.has(index) ? (
+                        {(item.productImage || item.product?.image) && !failedImageIndices.has(index) ? (
                           <img
-                            src={item.product?.image || item?.product?.image}
+                            src={item.productImage || item.product?.image}
                             alt={item.productName || item?.name || "Product"}
                             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                             onError={() => setFailedImageIndices((prev) => new Set([...prev, index]))}
@@ -229,15 +283,15 @@ function OrderSuccess() {
               <div className="mt-8 pt-6 border-t border-gray-50 space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Tax</span>
-                  <span className="font-semibold">{formatPrice(orderDetails.taxAmount)}</span>
+                  <span className="font-semibold">{formatPrice(orderDetails.taxAmount ?? 0)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Shipping</span>
-                  <span className="font-semibold">{formatPrice(orderDetails.shippingAmount)}</span>
+                  <span className="font-semibold">{formatPrice(orderDetails.shippingAmount ?? 0)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold pt-4">
                   <span>Total Amount</span>
-                  <span className="text-emerald-600 font-black">{formatPrice(orderDetails.totalAmount)}</span>
+                  <span className="text-emerald-600 font-black">{formatPrice(orderDetails.totalAmount ?? 0)}</span>
                 </div>
               </div>
             </div>
@@ -264,6 +318,23 @@ function OrderSuccess() {
                 <div className="mt-4 flex items-center gap-2 text-gray-400 font-semibold border-t border-gray-50 pt-4">
                   <Phone size={14} className="text-gray-300" />
                   <span>{orderDetails.addressId.phone}</span>
+                </div>
+              </div>
+            )}
+            {!orderDetails.addressId && orderDetails.guestShipping && (
+              <div className="text-sm leading-relaxed">
+                <p className="font-bold text-gray-900 mb-1">{orderDetails.guestShipping.name}</p>
+                <p className="text-gray-500 font-medium">{orderDetails.guestShipping.fullAddress}</p>
+                <p className="text-gray-500 font-medium">
+                  {orderDetails.guestShipping.city}
+                  {orderDetails.guestShipping.state
+                    ? `, ${orderDetails.guestShipping.state}`
+                    : ""}{" "}
+                  - {orderDetails.guestShipping.pincode}
+                </p>
+                <div className="mt-4 flex items-center gap-2 text-gray-400 font-semibold border-t border-gray-50 pt-4">
+                  <Phone size={14} className="text-gray-300" />
+                  <span>{orderDetails.guestShipping.phone}</span>
                 </div>
               </div>
             )}

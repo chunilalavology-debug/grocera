@@ -263,7 +263,13 @@ export default function Checkout() {
           window.location.href = res.url;
         } else {
           toast.success("Order placed successfully!");
-          navigate('/order-success?order=' + res.data?._id);
+          const oid = res.data?._id ?? res.data?.id;
+          const vt = res.viewToken;
+          const q =
+            oid != null
+              ? `order=${oid}${vt ? `&t=${encodeURIComponent(vt)}` : ""}`
+              : "";
+          navigate(q ? `/order-success?${q}` : "/order-success");
         }
       } else {
         toast.error(res.message || "Checkout failed");

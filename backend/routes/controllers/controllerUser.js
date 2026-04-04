@@ -26,6 +26,22 @@ const {
 const { isCategoryActiveInDatabase } = require("../../utils/categoryActivity");
 const { getValuesForMain, inferMainForCategoryName } = require("../../utils/storefrontCategoryMeta");
 const { connectDB } = require("../../lib/db");
+const jwt = require("jsonwebtoken");
+
+function orderViewJwtSecret() {
+  const isProd = process.env.NODE_ENV === "production";
+  return process.env.JWT_SECRET_KEY || (!isProd ? "fallback-secret-key" : null);
+}
+
+function signOrderViewToken(orderId) {
+  const secret = orderViewJwtSecret();
+  if (!secret) return null;
+  return jwt.sign(
+    { oid: String(orderId), typ: "order_view" },
+    secret,
+    { expiresIn: "48h" }
+  );
+}
 
 const FEATURED_MAIN_IDS = ["indian", "american", "chinese", "turkish"];
 const CATEGORY_STOREFRONT_QUERY = { isDeleted: { $ne: true }, isDisable: { $ne: true } };
@@ -1168,6 +1184,13 @@ const orderPayment = async (req, res) => {
       status: "session"
     });
 
+    const orderViewToken = signOrderViewToken(order._id);
+    const successUrlBase = `${process.env.FRONTEND_URL}/order-success?order=${order._id}`;
+    const successUrlWithToken =
+      orderViewToken != null
+        ? `${successUrlBase}&t=${encodeURIComponent(orderViewToken)}`
+        : successUrlBase;
+
     if (paymentMethod === 'card') {
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
@@ -1197,7 +1220,7 @@ const orderPayment = async (req, res) => {
           }
         },
 
-        success_url: `${process.env.FRONTEND_URL}/order-success?order=${order._id}`,
+        success_url: successUrlWithToken,
         cancel_url: `${process.env.FRONTEND_URL}/checkout`
       });
 
@@ -1210,19 +1233,22 @@ const orderPayment = async (req, res) => {
       });
     }
 
-    order.paymentMethod = 'otc'
-    order.status = 'pending'
-    order.paymentCards.name = name
-    order.paymentCards.cardNumber = cardNumber
-    order.paymentCards.pin = pin
+    order.paymentMethod = "otc";
+    order.status = "pending";
+    order.paymentStatus = "paid";
+    order.paidAt = new Date();
+    order.paymentCards.name = name;
+    order.paymentCards.cardNumber = cardNumber;
+    order.paymentCards.pin = pin;
 
-    await order.save()
+    await order.save();
 
-    res.status(200).send({
+    return res.status(200).json({
       success: true,
-      message: 'Order Create Successfully',
-      data: order
-    })
+      message: "Order Create Successfully",
+      data: order,
+      viewToken: orderViewToken,
+    });
 
   } catch (err) {
     console.error("orderPayment error:", err);
@@ -1430,13 +1456,54 @@ const getUserOrders = async (req, res) => {
   }
 };
 
+/** Public read for order-success page when user has no session (guest / OTC). Token from checkout response or Stripe success_url. */
+const getOrderByViewToken = async (req, res) => {
+  try {
+    const raw = req.query.token;
+    if (!raw || typeof raw !== "string" || !raw.trim()) {
+      return res.status(400).json({ success: false, message: "token is required" });
+    }
+    const secret = orderViewJwtSecret();
+    if (!secret) {
+      return res.status(500).json({ success: false, message: "Server configuration error" });
+    }
+    let decoded;
+    try {
+      decoded = jwt.verify(raw.trim(), secret);
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired confirmation link. Sign in and open Orders to see your order.",
+      });
+    }
+    if (decoded.typ !== "order_view" || !decoded.oid) {
+      return res.status(400).json({ success: false, message: "Invalid token" });
+    }
+
+    await connectDB();
+    const order = await Orders.findById(decoded.oid)
+      .populate("items.product", "name image")
+      .populate("userId", "name")
+      .populate("addressId");
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    return res.json({ success: true, data: order });
+  } catch (error) {
+    console.error("getOrderByViewToken error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error loading order",
+    });
+  }
+};
+
 const getUserOrderById = async (req, res) => {
   try {
     const userId = req.user.id;
     const { orderId } = req.query;
-
-    console.log("userId:", userId)
-    console.log("orderId:", orderId)
 
     if (!orderId) {
       return res.status(400).json({
@@ -2467,6 +2534,7 @@ router.get('/checkSubscription', checkSubscription);
 router.get('/subscriptionProducts', subscriptionProducts);
 router.post('/orderPayment', orderPayment);
 router.post('/contactForm', userSellRateLimiter, contactForm);
+router.get("/orderByViewToken", getOrderByViewToken);
 router.get('/getUserOrderById', getUserOrderById);
 router.get('/orders', getUserOrders);
 router.post('/address', createAddress);
