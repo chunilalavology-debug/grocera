@@ -93,17 +93,56 @@ app.use(express.static("public"));
 // app.use(multer().any());
 
 const mongoose = require("mongoose");
-app.get(`${API_END_POINT_V1}/health`, (_req, res) => {
-  const rs = mongoose.connection.readyState;
+
+app.get("/", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "grocera-api",
+    health: `${API_END_POINT_V1}/health`,
+    note: "Root is public; most /api/* routes require a Bearer token.",
+  });
+});
+
+app.get(`${API_END_POINT_V1}/health`, async (_req, res) => {
   const labels = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
+  const uri = (process.env.MONGO_URI || process.env.DB_STRING || "").trim();
+  if (!uri) {
+    return res.status(503).json({
+      ok: false,
+      mongo: "no_uri",
+      apiBase: API_END_POINT_V1,
+      hint: "Set MONGO_URI or DB_STRING on Vercel (Production). Whitespace/newlines in pasted values break the URI.",
+    });
+  }
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      await Promise.race([
+        mongoose.connection.readyState === 2
+          ? mongoose.connection.asPromise()
+          : mongoose.connect(uri, { serverSelectionTimeoutMS: 8000, maxPoolSize: 10 }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Mongo selection timeout")), 8500),
+        ),
+      ]);
+    }
+  } catch (e) {
+    const rs = mongoose.connection.readyState;
+    return res.status(503).json({
+      ok: false,
+      mongo: labels[rs] ?? rs,
+      apiBase: API_END_POINT_V1,
+      detail: process.env.NODE_ENV !== "production" ? e.message : undefined,
+      hint:
+        "Atlas: Network Access allow 0.0.0.0/0 (or Vercel); verify DB user/password; URL-encode @ # : / ? in password; URI must include db name before ?.",
+    });
+  }
+  const rs = mongoose.connection.readyState;
   const mongoOk = rs === 1;
   res.status(mongoOk ? 200 : 503).json({
     ok: mongoOk,
-    mongo: labels[rs] ?? rs,
+    mongo: mongoOk ? "connected" : labels[rs] ?? rs,
     apiBase: API_END_POINT_V1,
-    hint: mongoOk
-      ? undefined
-      : "Set DB_STRING in backend/.env and ensure MongoDB is reachable (local service or Atlas).",
+    hint: mongoOk ? undefined : "Mongo did not reach connected state. Check Atlas cluster and connection string.",
   });
 });
 
