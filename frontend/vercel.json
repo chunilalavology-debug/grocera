@@ -12,7 +12,9 @@
     "api/user/shipping/checkout.js": { "maxDuration": 120 }
   },
   "rewrites": [
-    { "handle": "filesystem" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api).*)",
+      "destination": "/index.html"
+    }
   ]
 }
