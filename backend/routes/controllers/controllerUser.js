@@ -2289,21 +2289,46 @@ const parseAddressForEasyship = (fullAddress, postalCode) => {
   };
 };
 
+/** Match zippyyy-ships-server: Easyship v2024 totals often live under rates_in_origin_currency or nested shipment_charge. */
+function easyshipRowChargeTotalUSD(r) {
+  if (!r) return 0;
+  const ric = r?.rates_in_origin_currency;
+  const candidates = [
+    r?.shipment_charge_total,
+    r?.total_charge,
+    r?.shipment_charge?.total,
+    typeof r?.shipment_charge === "number" ? r.shipment_charge : null,
+    ric?.shipment_charge_total,
+    ric?.total_charge,
+    ric?.shipment_charge?.total,
+    typeof ric?.shipment_charge === "number" ? ric.shipment_charge : null,
+  ];
+  for (const v of candidates) {
+    if (v == null || v === "") continue;
+    const n = typeof v === "number" ? v : Number(v);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
 const mapEasyshipRateRow = (r) => {
   if (!r) return null;
-  const total = Number(r?.shipment_charge_total ?? r?.total_charge ?? 0);
+  const total = easyshipRowChargeTotalUSD(r);
   const cs = r?.courier_service || {};
   const handover = Array.isArray(r?.available_handover_options) ? r.available_handover_options : [];
   return {
     total,
-    courierName: cs?.name || r?.courier_name || r?.courier_service_name || "Easyship",
-    serviceName: r?.courier_service_name || cs?.umbrella_name || cs?.name || "",
-    easyshipRateId: r?.easyship_rate_id || "",
+    courierName:
+      r?.courier_name || cs?.umbrella_name || r?.courier?.name || cs?.name || r?.courier_service_name || "Courier",
+    serviceName: r?.courier_service_name || cs?.name || r?.full_description || cs?.umbrella_name || "",
+    easyshipRateId: r?.easyship_rate_id || r?.rate_id || cs?.id || "",
     minDeliveryDays: r?.min_delivery_time != null ? Number(r.min_delivery_time) : null,
     maxDeliveryDays: r?.max_delivery_time != null ? Number(r.max_delivery_time) : null,
     description: String(r?.full_description || r?.description || "").trim(),
     availableHandoverOptions: handover,
-    minimumPickupFee: Number(r?.minimum_pickup_fee || 0),
+    minimumPickupFee: Number(
+      r?.minimum_pickup_fee ?? r?.rates_in_origin_currency?.minimum_pickup_fee ?? 0,
+    ),
     insuranceFee: Number(r?.insurance_fee || 0),
   };
 };
@@ -2339,6 +2364,43 @@ const deliverySummaryFromRate = (rate, internalFallback) => {
   return "See carrier service details after payment for tracking and delivery updates.";
 };
 
+/** Customer-facing multiplier on Easyship (or internal) base quote. Set EASYSHIP_QUOTE_MARKUP_PERCENT=30 or MULTIPLIER=1.3 */
+function getShippingQuoteMarkupMultiplier() {
+  const raw = String(process.env.EASYSHIP_QUOTE_MARKUP_MULTIPLIER || "").trim();
+  if (raw) {
+    const m = Number(raw);
+    if (Number.isFinite(m) && m >= 1 && m <= 5) return m;
+  }
+  const pct = Number(process.env.EASYSHIP_QUOTE_MARKUP_PERCENT);
+  if (Number.isFinite(pct) && pct >= 0 && pct <= 200) return 1 + pct / 100;
+  return 1;
+}
+
+function applyShippingCustomerQuote(amount) {
+  const mult = getShippingQuoteMarkupMultiplier();
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * mult * 100) / 100;
+}
+
+function shippingQuoteRateJson(mapped, internalOnly) {
+  const base = mapped.total;
+  return {
+    quoteAmount: applyShippingCustomerQuote(base),
+    quoteAmountBase: base,
+    currency: "USD",
+    carrier: mapped.courierName,
+    serviceName: mapped.serviceName,
+    easyshipRateId: mapped.easyshipRateId || "",
+    deliverySummary: deliverySummaryFromRate(mapped, internalOnly),
+    handoverSummary: handoverSummaryFromRate(mapped),
+    minDeliveryDays: mapped.minDeliveryDays ?? null,
+    maxDeliveryDays: mapped.maxDeliveryDays ?? null,
+    minimumPickupFee: mapped.minimumPickupFee ?? 0,
+    insuranceFee: mapped.insuranceFee ?? 0,
+  };
+}
+
 const requestEasyshipRates = async (body) => {
   const {
     length,
@@ -2354,7 +2416,7 @@ const requestEasyshipRates = async (body) => {
     insuranceDeclaredValue,
   } = body;
 
-  if (!EASYSHIP_API_KEY) return null;
+  if (!EASYSHIP_API_KEY) return { rates: [], cheapest: null };
 
   const origin = parseAddressForEasyship(originAddress, originZip);
   const dest = parseAddressForEasyship(destinationAddress, destinationZip);
@@ -2448,14 +2510,14 @@ const requestEasyshipRates = async (body) => {
   }
 
   const list = Array.isArray(parsed?.rates) ? parsed.rates : [];
-  if (!list.length) return null;
+  if (!list.length) return { rates: [], cheapest: null };
 
   const mapped = list
     .map((r) => mapEasyshipRateRow(r))
     .filter((r) => r && Number.isFinite(r.total) && r.total > 0)
     .sort((a, b) => a.total - b.total);
 
-  return mapped[0] || null;
+  return { rates: mapped, cheapest: mapped[0] || null };
 };
 
 const computeShippingQuote = (input) => {
@@ -2520,6 +2582,7 @@ const shippingFormSchema = Joi.object({
   recipientName: Joi.string().trim().max(200).optional().allow(""),
   recipientPhone: Joi.string().trim().max(40).optional().allow(""),
   recipientEmail: Joi.string().trim().max(200).optional().allow(""),
+  easyshipRateId: Joi.string().trim().max(200).optional().allow(""),
 }).options({ stripUnknown: true, abortEarly: false });
 
 const getShippingQuote = async (req, res) => {
@@ -2530,36 +2593,68 @@ const getShippingQuote = async (req, res) => {
       return res.status(400).json({ success: false, message: formatJoiErrors(error) });
     }
 
-    let easyshipRate = null;
+    let easyshipResult = { rates: [], cheapest: null };
     try {
-      easyshipRate = await requestEasyshipRates(value);
+      easyshipResult = await requestEasyshipRates(value);
     } catch (e) {
       console.error("Easyship quote fallback:", e.message);
     }
 
-    const quoteAmount = easyshipRate?.total || computeShippingQuote(value);
+    const easyRates = easyshipResult?.rates || [];
+    const easyCheapest = easyshipResult?.cheapest || null;
+
+    let ratesPayload = [];
+    let internalOnly = true;
+
+    if (easyRates.length) {
+      internalOnly = false;
+      ratesPayload = easyRates.map((r) => shippingQuoteRateJson(r, false));
+    } else {
+      const bq = computeShippingQuote(value);
+      if (!bq || bq <= 0) {
+        setCatalogNoCacheHeaders(res);
+        return res.status(400).json({ success: false, message: "Invalid shipping inputs" });
+      }
+      const synthetic = {
+        total: bq,
+        courierName: "ZippyyyShips",
+        serviceName: "Standard (estimate)",
+        easyshipRateId: "",
+        minDeliveryDays: null,
+        maxDeliveryDays: null,
+        availableHandoverOptions: [],
+        minimumPickupFee: 0,
+        insuranceFee: 0,
+      };
+      ratesPayload = [shippingQuoteRateJson(synthetic, true)];
+    }
+
+    const first = ratesPayload[0];
+    const quoteAmount = first?.quoteAmount ?? 0;
     if (!quoteAmount || quoteAmount <= 0) {
       setCatalogNoCacheHeaders(res);
       return res.status(400).json({ success: false, message: "Invalid shipping inputs" });
     }
 
-    const internalOnly = !easyshipRate;
     setCatalogNoCacheHeaders(res);
     return res.json({
       success: true,
       data: {
         quoteAmount,
+        quoteAmountBase: first.quoteAmountBase,
+        markupMultiplier: getShippingQuoteMarkupMultiplier(),
         currency: "USD",
-        carrier: easyshipRate?.courierName || "ZippyyyShips",
-        serviceName: easyshipRate?.serviceName || "Standard (estimate)",
-        easyshipRateId: easyshipRate?.easyshipRateId || "",
-        source: easyshipRate ? "easyship" : "internal",
-        deliverySummary: deliverySummaryFromRate(easyshipRate, internalOnly),
-        handoverSummary: handoverSummaryFromRate(easyshipRate),
-        minDeliveryDays: easyshipRate?.minDeliveryDays ?? null,
-        maxDeliveryDays: easyshipRate?.maxDeliveryDays ?? null,
-        minimumPickupFee: easyshipRate?.minimumPickupFee ?? 0,
-        insuranceFee: easyshipRate?.insuranceFee ?? 0,
+        rates: ratesPayload,
+        carrier: first.carrier,
+        serviceName: first.serviceName,
+        easyshipRateId: first.easyshipRateId,
+        source: internalOnly ? "internal" : "easyship",
+        deliverySummary: first.deliverySummary,
+        handoverSummary: first.handoverSummary,
+        minDeliveryDays: first.minDeliveryDays,
+        maxDeliveryDays: first.maxDeliveryDays,
+        minimumPickupFee: first.minimumPickupFee,
+        insuranceFee: first.insuranceFee,
       },
     });
   } catch (err) {
@@ -2602,14 +2697,34 @@ const createShippingCheckout = async (req, res) => {
     const { error, value } = shippingFormSchema.validate(req.body ?? {});
     if (error) return res.status(400).json({ success: false, message: formatJoiErrors(error) });
 
-    let easyshipRate = null;
+    let easyshipResult = { rates: [], cheapest: null };
     try {
-      easyshipRate = await requestEasyshipRates(value);
+      easyshipResult = await requestEasyshipRates(value);
     } catch (e) {
       console.error("Easyship checkout fallback:", e.message);
     }
 
-    const quoteAmount = easyshipRate?.total || computeShippingQuote(value);
+    const easyRates = easyshipResult?.rates || [];
+    const easyCheapest = easyshipResult?.cheapest || null;
+    const wantedRateId = String(value.easyshipRateId || "").trim();
+
+    let selectedMapped = null;
+    if (easyRates.length) {
+      selectedMapped = easyCheapest;
+      if (wantedRateId) {
+        const hit = easyRates.find((x) => String(x.easyshipRateId || "") === wantedRateId);
+        if (hit) selectedMapped = hit;
+      }
+    }
+
+    const quoteBase =
+      selectedMapped && Number(selectedMapped.total) > 0
+        ? Number(selectedMapped.total)
+        : computeShippingQuote(value);
+    const easyshipRate =
+      selectedMapped && Number(selectedMapped.total) > 0 ? selectedMapped : null;
+
+    const quoteAmount = applyShippingCustomerQuote(quoteBase);
     if (!quoteAmount || quoteAmount <= 0) {
       return res.status(400).json({ success: false, message: "Invalid shipping inputs" });
     }
@@ -2682,6 +2797,7 @@ const createShippingCheckout = async (req, res) => {
       ins: Boolean(value.addInsurance),
       insVal: Number(value.insuranceDeclaredValue) || 0,
       src: easyshipRate ? "easyship" : "internal",
+      rateId: easyshipRate?.easyshipRateId || "",
     };
     const notesStr = `ZippyyyShips | ${JSON.stringify(shipMeta)}`.slice(0, 1000);
 

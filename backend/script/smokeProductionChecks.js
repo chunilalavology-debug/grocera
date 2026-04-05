@@ -83,12 +83,24 @@ function extractRatesArray(json) {
 }
 
 function rateTotal(r) {
-  return (
-    Number(r?.shipment_charge_total) ||
-    Number(r?.total_charge) ||
-    Number(r?.shipment_charge?.total) ||
-    0
-  );
+  if (!r) return 0;
+  const ric = r?.rates_in_origin_currency;
+  const candidates = [
+    r?.shipment_charge_total,
+    r?.total_charge,
+    r?.shipment_charge?.total,
+    typeof r?.shipment_charge === "number" ? r.shipment_charge : null,
+    ric?.shipment_charge_total,
+    ric?.total_charge,
+    ric?.shipment_charge?.total,
+    typeof ric?.shipment_charge === "number" ? ric.shipment_charge : null,
+  ];
+  for (const v of candidates) {
+    if (v == null || v === "") continue;
+    const n = typeof v === "number" ? v : Number(v);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
 }
 
 async function testEasyship(apiKey) {
@@ -119,17 +131,31 @@ async function testEasyship(apiKey) {
   const rates = extractRatesArray(json);
   const priced = rates.filter((r) => rateTotal(r) > 0);
   const first = priced[0];
+  const uniqueCouriers = new Set(
+    priced.map(
+      (r) =>
+        String(r.courier_name || r.courier?.name || r.courier_service?.umbrella_name || r.courier_service?.name || "")
+          .trim() || "unknown",
+    ),
+  );
+  const sampleRates = priced.slice(0, 8).map((r) => ({
+    courier: r.courier_name || r.courier_service?.umbrella_name || r.courier_service?.name || "?",
+    service: r.courier_service_name || r.full_description || "",
+    total: rateTotal(r),
+  }));
   return {
     ok: true,
     status: res.status,
     rateRowsReturned: rates.length,
     ratesWithPositiveTotal: priced.length,
+    uniqueCarrierNames: uniqueCouriers.size,
     firstCourier: first
       ? first.courier_name || first.courier?.name || first.courier_service?.name
       : null,
     firstTotal: first ? rateTotal(first) : null,
     firstCurrency:
       first?.shipment_charge_total_currency || first?.currency || "USD",
+    sampleRates,
   };
 }
 

@@ -368,6 +368,17 @@ const QuoteEngine = () => {
           success?: boolean;
           data?: {
             quoteAmount: number;
+            quoteAmountBase?: number;
+            rates?: Array<{
+              quoteAmount: number;
+              quoteAmountBase?: number;
+              currency?: string;
+              carrier?: string;
+              serviceName?: string;
+              easyshipRateId?: string;
+              minDeliveryDays?: number | null;
+              maxDeliveryDays?: number | null;
+            }>;
             currency?: string;
             carrier?: string;
             serviceName?: string;
@@ -381,17 +392,32 @@ const QuoteEngine = () => {
           throw new Error(gRes?.message || "Could not get a shipping quote.");
         }
         const d = gRes.data;
-        const single: ApiRate = {
-          courier_name: d.carrier || "ZippyyyShips",
-          courier_service_name: d.serviceName || "Estimate",
-          shipment_charge_total: Number(d.quoteAmount),
-          shipment_charge_total_currency: d.currency || "USD",
-          easyship_rate_id: d.easyshipRateId || "",
-          min_delivery_time: d.minDeliveryDays ?? null,
-          max_delivery_time: d.maxDeliveryDays ?? null,
-        };
-        setRates([single]);
-        setPricing(DEFAULT_PRICING);
+        const rows =
+          Array.isArray(d.rates) && d.rates.length > 0
+            ? d.rates
+            : [
+                {
+                  quoteAmount: d.quoteAmount,
+                  quoteAmountBase: d.quoteAmountBase,
+                  currency: d.currency,
+                  carrier: d.carrier,
+                  serviceName: d.serviceName,
+                  easyshipRateId: d.easyshipRateId,
+                  minDeliveryDays: d.minDeliveryDays,
+                  maxDeliveryDays: d.maxDeliveryDays,
+                },
+              ];
+        const mappedRates: ApiRate[] = rows.map((row) => ({
+          courier_name: row.carrier || "ZippyyyShips",
+          courier_service_name: row.serviceName || "Estimate",
+          shipment_charge_total: Number(row.quoteAmount),
+          shipment_charge_total_currency: row.currency || d.currency || "USD",
+          easyship_rate_id: row.easyshipRateId || "",
+          min_delivery_time: row.minDeliveryDays ?? null,
+          max_delivery_time: row.maxDeliveryDays ?? null,
+        }));
+        setRates(mappedRates);
+        setPricing({ markupMultiplier: 1, listPriceMultiplier: DEFAULT_PRICING.listPriceMultiplier });
       } else {
         const resp = await apiPost<{
           rates: ApiRate[];
@@ -444,6 +470,9 @@ const QuoteEngine = () => {
         payload.guestName = fromContact.name.trim();
         payload.guestEmail = fromContact.email.trim().toLowerCase();
         payload.guestPhone = fromContact.phone.trim();
+      }
+      if (selectedRateObj?.easyship_rate_id) {
+        payload.easyshipRateId = selectedRateObj.easyship_rate_id;
       }
       try {
         const resp = await groceraApiPost<{ success?: boolean; url?: string; message?: string }>(
@@ -915,7 +944,7 @@ const QuoteEngine = () => {
                         const Icon = pickIcon(rate.courier_name);
                         return (
                           <motion.button
-                            key={`${rate.courier_name}-${i}`}
+                            key={`${rate.easyship_rate_id || "r"}-${rate.courier_name}-${i}`}
                             onClick={() => setSelectedRate(i)}
                             whileHover={{ scale: 1.01 }}
                             whileTap={{ scale: 0.99 }}
