@@ -2364,6 +2364,9 @@ const deliverySummaryFromRate = (rate, internalFallback) => {
   return "See carrier service details after payment for tracking and delivery updates.";
 };
 
+/** When no markup env vars are set: production uses this (30% client default). Dev stays 1× unless env is set. */
+const EASYSHIP_QUOTE_DEFAULT_PRODUCTION_MULTIPLIER = 1.3;
+
 /** Customer-facing multiplier on Easyship (or internal) base quote. Set EASYSHIP_QUOTE_MARKUP_PERCENT=30 or MULTIPLIER=1.3 */
 function getShippingQuoteMarkupMultiplier() {
   const raw = String(process.env.EASYSHIP_QUOTE_MARKUP_MULTIPLIER || "").trim();
@@ -2371,8 +2374,12 @@ function getShippingQuoteMarkupMultiplier() {
     const m = Number(raw);
     if (Number.isFinite(m) && m >= 1 && m <= 5) return m;
   }
-  const pct = Number(process.env.EASYSHIP_QUOTE_MARKUP_PERCENT);
-  if (Number.isFinite(pct) && pct >= 0 && pct <= 200) return 1 + pct / 100;
+  const pctRaw = process.env.EASYSHIP_QUOTE_MARKUP_PERCENT;
+  if (pctRaw !== undefined && String(pctRaw).trim() !== "") {
+    const pct = Number(pctRaw);
+    if (Number.isFinite(pct) && pct >= 0 && pct <= 200) return 1 + pct / 100;
+  }
+  if (process.env.NODE_ENV === "production") return EASYSHIP_QUOTE_DEFAULT_PRODUCTION_MULTIPLIER;
   return 1;
 }
 
@@ -2509,7 +2516,12 @@ const requestEasyshipRates = async (body) => {
     throw new Error(msg);
   }
 
-  const list = Array.isArray(parsed?.rates) ? parsed.rates : [];
+  /** Easyship may return `rates` at root or under `data.rates` (match ships-server + smoke script). */
+  const list = (() => {
+    if (!parsed || typeof parsed !== "object") return [];
+    const r = parsed.rates ?? parsed.data?.rates;
+    return Array.isArray(r) ? r : [];
+  })();
   if (!list.length) return { rates: [], cheapest: null };
 
   const mapped = list

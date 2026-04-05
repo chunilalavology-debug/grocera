@@ -1,6 +1,6 @@
 import zipcodes from "zipcodes";
 
-type ZipRecord = { state?: string } | null | undefined;
+type ZipRecord = { state?: string; city?: string } | null | undefined;
 
 /**
  * Returns the 2-letter US state for a 5-digit ZIP, or undefined if unknown / incomplete.
@@ -13,4 +13,17 @@ export function usStateFromZip(zipInput: string): string | undefined {
   if (!st || typeof st !== "string") return undefined;
   const u = st.toUpperCase().trim();
   return u.length >= 2 ? u.slice(0, 2) : u;
+}
+
+/**
+ * City name for a US ZIP (Easyship recommends real city + state for US domestic to return more couriers).
+ */
+export function usCityFromZip(zipInput: string): string | undefined {
+  const digits = zipInput.trim().replace(/\D/g, "").slice(0, 5);
+  if (digits.length < 5) return undefined;
+  const rec = zipcodes.lookup(digits) as ZipRecord;
+  const c = rec?.city;
+  if (!c || typeof c !== "string") return undefined;
+  const t = c.trim();
+  return t.length ? t : undefined;
 }

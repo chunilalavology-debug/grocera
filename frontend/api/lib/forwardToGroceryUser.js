@@ -5,6 +5,10 @@
  *
  * Set REACT_APP_API_URL on this Vercel project (e.g. https://your-api.vercel.app/api), or
  * GROCERY_API_BASE to the same value.
+ *
+ * Shipping markup (EASYSHIP_QUOTE_MARKUP_PERCENT / EASYSHIP_QUOTE_MARKUP_MULTIPLIER) is applied
+ * inside the grocery Node API (controllerUser.js), not here. Add those env vars on the Vercel
+ * project (or host) that runs that API. This serverless proxy does not read EASYSHIP_QUOTE_*.
  */
 
 function normalizeGroceryApiBase() {

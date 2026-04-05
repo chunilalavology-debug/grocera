@@ -24,7 +24,7 @@ import Box3DPreview from "@/components/Box3DPreview";
 import { AddressAutocomplete, type TaggedAddress } from "@/components/AddressAutocomplete";
 import { apiPost, GROCERA_API_BASE, groceraApiPost, SHIPS_API_BASE } from "@/lib/api";
 import { PACKAGING_PRESETS, type PackagingCarrier, type PackagingPreset } from "@/lib/packagingPresets";
-import { usStateFromZip } from "@/lib/usStateFromZip";
+import { usCityFromZip, usStateFromZip } from "@/lib/usStateFromZip";
 
 const CARRIERS: PackagingCarrier[] = ["UPS", "FedEx", "USPS"];
 
@@ -351,15 +351,17 @@ const QuoteEngine = () => {
       if (USE_GROCERA_QUOTES) {
         const fromSt = (derivedFromState || "CA").slice(0, 2).toUpperCase();
         const toSt = (derivedToState || "NY").slice(0, 2).toUpperCase();
+        const fromCity = usCityFromZip(fromZip.trim()) || "City";
+        const toCity = usCityFromZip(toZip.trim()) || "City";
         const gPayload: Record<string, unknown> = {
           length: dims.length,
           width: dims.width,
           height: dims.height,
           weight: Number(weight),
           destinationZip: toZip.trim(),
-          destinationAddress: `100 Main St, City, ${toSt}`,
+          destinationAddress: `100 Main St, ${toCity}, ${toSt}`,
           originZip: fromZip.trim(),
-          originAddress: `100 Sender Ave, City, ${fromSt}`,
+          originAddress: `100 Sender Ave, ${fromCity}, ${fromSt}`,
           destinationResidential: setAsResidential,
           addInsurance: wantInsurance,
           insuranceDeclaredValue: wantInsurance ? Number(insuredAmount) || declared : declared,
