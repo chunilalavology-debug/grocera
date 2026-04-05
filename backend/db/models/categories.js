@@ -29,6 +29,20 @@ const categorySchema = new mongoose.Schema({
         default: 0,
     },
 
+    /** When false, category is hidden from the homepage featured strip (still usable in catalog/admin). */
+    featuredOnHome: {
+        type: Boolean,
+        default: true,
+    },
+
+    /** Optional label on the homepage strip; empty = use category name. */
+    homeDisplayTitle: {
+        type: String,
+        trim: true,
+        maxlength: 80,
+        default: '',
+    },
+
     ...addTimeStamp()
 });
 

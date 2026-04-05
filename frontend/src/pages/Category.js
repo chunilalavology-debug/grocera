@@ -83,7 +83,6 @@ export default function Category() {
       });
     } else {
       // For non-vegetables, always add 1 (quantity selector is only on single product page)
-      console.log('Adding to cart:', product, 'quantity:', 1);
       const result = addToCart(product, 1);
       
       if (result && result.success) {

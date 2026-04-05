@@ -12,6 +12,11 @@ const contactSchema = new mongoose.Schema({
     trim: true,
     lowercase: true
   },
+  phone: {
+    type: String,
+    trim: true,
+    default: '',
+  },
   queryType: {
     type: String,
     trim: true
@@ -35,13 +40,27 @@ const contactSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  /** Auto thank-you shown in admin + sent by email; does not block a later staff reply. */
+  autoAcknowledgment: {
+    type: String,
+    default: '',
+    trim: true,
+  },
   respondedAt: {
     type: Date
   },
   respondedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  }
+  },
+  /** Soft-delete: message stays in DB until permanently removed from Trash */
+  inTrash: {
+    type: Boolean,
+    default: false,
+  },
+  trashedAt: {
+    type: Date,
+  },
 }, {
   timestamps: true
 });

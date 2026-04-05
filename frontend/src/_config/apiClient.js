@@ -1,7 +1,8 @@
 // _config/apiClient.ts
 import axios from "axios";
 
-const BACKEND_URL = "http://localhost:5000/api/";
+/** Base must match Cloudinary upload routes in backend app.js (`/api/v1/...`). */
+const BACKEND_URL = "http://localhost:5000/api/v1/";
 
 
 /**
@@ -30,7 +31,6 @@ export const axiosRequest = async (
     const response = await axios(config);
     return response.data;
   } catch (error) {
-    console.log("err: ", error);
     if (axios.isAxiosError(error)) {
       let message = "Request failed";
 
@@ -62,7 +62,6 @@ export const uploadFiles = async ({
   endpoint = "/uploadMultipleImages",
   fieldName = "files",
 }) => {
-  console.log("files ---> ", files);
   if (!files.length) throw new Error("No files selected");
 
   const formData = new FormData();

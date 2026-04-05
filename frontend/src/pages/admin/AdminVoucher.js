@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Search } from 'lucide-react';
 import api from '../../services/api';
 import toast, { Toaster } from "react-hot-toast";
 
@@ -15,16 +16,14 @@ const useSearch = (initial, delay) => {
     return { searchTerm, debouncedSearchTerm, handleSearchChange };
 };
 
-const StatCard = ({ title, value, icon, color }) => (
-    <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-md transition-all group">
-        <div className="flex items-center gap-4">
-            <div className={`w-14 h-14 rounded-2xl ${color} flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform`}>
-                {icon}
-            </div>
-            <div>
-                <p className="text-xs font-black text-gray-400 uppercase tracking-widest">{title}</p>
-                <p className="text-2xl font-black text-gray-900">{value}</p>
-            </div>
+const StatCard = ({ title, value, icon }) => (
+    <div className="admin-stat-card">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-lg" aria-hidden>
+            {icon}
+        </div>
+        <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">{title}</p>
+            <p className="mt-0.5 text-xl font-semibold tabular-nums text-slate-900">{value}</p>
         </div>
     </div>
 );
@@ -241,106 +240,107 @@ export default function AdminVoucher() {
     }), [vouchers, total]);
 
     return (
-        <div className="min-h-screen bg-[#F8F9FC] p-6 md:p-12 font-sans selection:bg-blue-100 selection:text-blue-600">
+        <div className="admin-design-scope mx-auto max-w-[1600px] space-y-6 pb-12 font-sans text-slate-900">
             <Toaster position="top-right" />
 
-            <div className="max-w-7xl mx-auto">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
-                    <div className="space-y-2">
-                        <div className="inline-flex items-center px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100">
-                            Marketing Hub
-                        </div>
-                        <h1 className="text-5xl font-black text-gray-900 tracking-tight">Vouchers</h1>
-                        <p className="text-gray-500 font-medium">Manage and monitor your digital promotion assets.</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <StatCard title="Total vouchers" value={stats.total} icon="🏷️" />
+                <StatCard title="Live" value={stats.active} icon="⚡" />
+                <StatCard title="Redemptions" value={stats.discounted} icon="🔥" />
+            </div>
+
+            <div className="admin-card-surface overflow-hidden">
+                <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                    <div>
+                        <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Vouchers</h1>
+                        <p className="mt-1 text-sm text-slate-500">Promotion codes and usage limits.</p>
                     </div>
                     <button
+                        type="button"
                         onClick={() => { setEditingVoucher(null); setFormData({ code: '', discountType: 'percentage', discountValue: 0, minPurchase: 0, totalUsageLimit: '', endAt: '', isActive: true, maxDiscountAmount: '' }); setShowModal(true); }}
-                        className="px-8 py-5 bg-gray-900 hover:bg-black text-white font-black rounded-3xl shadow-2xl shadow-gray-200 transition-all flex items-center gap-3 group active:scale-95"
+                        className="admin-btn admin-btn--primary"
                     >
-                        <span className="text-2xl group-hover:rotate-90 transition-transform">+</span>
-                        <span className="text-xs uppercase tracking-[0.15em]">Create Campaign</span>
+                        + Create voucher
                     </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-                    <StatCard title="Total Inventory" value={stats.total} icon="🏷️" color="bg-indigo-50 text-indigo-600" />
-                    <StatCard title="Live Vouchers" value={stats.active} icon="⚡" color="bg-green-50 text-green-600" />
-                    <StatCard title="Redemptions" value={stats.discounted} icon="🔥" color="bg-orange-50 text-orange-600" />
-                </div>
-
-                <div className="bg-white p-4 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 mb-8">
-                    <div className="relative flex-1 group">
-                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-blue-500 transition-colors">🔍</span>
+                <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-3 sm:px-6">
+                    <div className="relative max-w-xl">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
                         <input
-                            type="text"
-                            placeholder="Find a voucher code..."
-                            className="w-full pl-14 pr-6 py-5 bg-gray-50/50 rounded-[2rem] outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/5 font-bold transition-all placeholder:text-gray-300"
+                            type="search"
+                            placeholder="Search by code…"
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
                             value={searchTerm}
                             onChange={handleSearchChange}
+                            aria-label="Search vouchers"
                         />
                     </div>
                 </div>
 
-                <div className="bg-white rounded-[3rem] shadow-xl shadow-gray-200/40 border border-gray-100 overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead className="bg-gray-50/50 border-b border-gray-100">
-                                <tr>
-                                    {['Campaign Code', 'Benefit', 'Min. Order', 'Progress', 'Expires', 'Status', ''].map((h) => (
-                                        <th key={h} className="py-7 px-8 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{h}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                                {loading ? (
-                                    <tr><td colSpan="7" className="py-32 text-center text-sm font-black text-gray-300 animate-pulse uppercase tracking-[0.3em]">Syncing Data...</td></tr>
-                                ) : vouchers.length === 0 ? (
-                                    <tr><td colSpan="7" className="py-32 text-center text-sm font-black text-gray-300 uppercase tracking-[0.3em]">Zero Assets Found</td></tr>
-                                ) : (
-                                    vouchers.map(v => (
-                                        <tr key={v._id} className="group hover:bg-gray-50/30 transition-colors">
-                                            <td className="py-7 px-8">
-                                                <div className="inline-flex px-4 py-2 bg-blue-50 text-blue-600 rounded-2xl font-black text-xs tracking-wider shadow-sm border border-blue-100/50 group-hover:scale-105 transition-transform">
-                                                    {v.code}
-                                                </div>
-                                            </td>
-                                            <td className="py-7 px-8">
-                                                <div className="flex flex-col">
-                                                    <span className="font-black text-gray-900 text-lg">
-                                                        {v.discountType === 'percentage' ? `${v.discountValue}%` : `$${v.discountValue}`}
-                                                        <span className="ml-1 text-[10px] text-gray-400 uppercase">Off</span>
-                                                    </span>
-                                                    {v.maxDiscountAmount > 0 && <span className="text-[10px] font-bold text-blue-500/70 uppercase">Max $ {v.maxDiscountAmount}</span>}
-                                                </div>
-                                            </td>
-                                            <td className="py-7 px-8 font-black text-gray-500 text-sm">$ {v.minPurchase || 0}</td>
-                                            <td className="py-7 px-8">
-                                                <div className="space-y-2">
-                                                    <div className="flex justify-between text-[9px] font-black text-gray-400 uppercase">
-                                                        <span>{v.usedCount || 0} used</span>
-                                                        <span>{v.totalUsageLimit || '∞'}</span>
-                                                    </div>
-                                                    <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden shadow-inner">
-                                                        <div
-                                                            className={`h-full rounded-full transition-all duration-1000 ${(v.usedCount / v.totalUsageLimit) > 0.8 ? 'bg-orange-400' : 'bg-blue-500'}`}
-                                                            style={{ width: `${v.totalUsageLimit ? (v.usedCount / v.totalUsageLimit) * 100 : 0}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="py-7 px-8">
-                                                <span className="text-xs font-black text-gray-400">
-                                                    {v.endAt ? new Date(v.endAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '∞'}
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                        <thead className="border-b border-slate-200 bg-slate-50/95">
+                            <tr className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                <th className="px-4 py-3">Code</th>
+                                <th className="px-4 py-3">Benefit</th>
+                                <th className="px-4 py-3">Min. order</th>
+                                <th className="px-4 py-3">Progress</th>
+                                <th className="px-4 py-3">Expires</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {loading ? (
+                                <tr><td colSpan="7" className="px-4 py-16 text-center text-sm text-slate-500">Loading…</td></tr>
+                            ) : vouchers.length === 0 ? (
+                                <tr><td colSpan="7" className="px-4 py-16 text-center text-sm text-slate-500">No vouchers yet.</td></tr>
+                            ) : (
+                                vouchers.map(v => (
+                                    <tr key={v._id} className="hover:bg-slate-50/80">
+                                        <td className="px-4 py-3">
+                                            <span className="inline-block rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 font-mono text-xs font-semibold text-emerald-900">
+                                                {v.code}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex flex-col">
+                                                <span className="font-semibold text-slate-900">
+                                                    {v.discountType === 'percentage' ? `${v.discountValue}%` : `$${v.discountValue}`}
+                                                    <span className="ml-1 text-xs font-normal text-slate-500">off</span>
                                                 </span>
-                                            </td>
-                                            <td className="py-7 px-8">
-                                                <div className={`inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${v.isActive ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                                                    {v.isActive ? '• Online' : '• Offline'}
+                                                {v.maxDiscountAmount > 0 ? <span className="text-xs text-slate-500">Max ${v.maxDiscountAmount}</span> : null}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600">${v.minPurchase || 0}</td>
+                                        <td className="px-4 py-3">
+                                            <div className="max-w-[120px] space-y-1">
+                                                <div className="flex justify-between text-[10px] font-medium uppercase text-slate-400">
+                                                    <span>{v.usedCount || 0}</span>
+                                                    <span>{v.totalUsageLimit || '∞'}</span>
                                                 </div>
-                                            </td>
-                                            <td className="py-7 px-8 text-right">
-                                                <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => {
+                                                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                                    <div
+                                                        className="h-full rounded-full bg-[var(--admin-primary)] transition-all duration-500"
+                                                        style={{ width: `${v.totalUsageLimit ? Math.min(100, (v.usedCount / v.totalUsageLimit) * 100) : 0}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600">
+                                            {v.endAt ? new Date(v.endAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={v.isActive ? 'admin-badge admin-badge--primary' : 'admin-badge'}>
+                                                {v.isActive ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
                                                         setEditingVoucher(v);
                                                         setFormData({
                                                             code: v.code, discountType: v.discountType, discountValue: v.discountValue,
@@ -349,34 +349,43 @@ export default function AdminVoucher() {
                                                             isActive: v.isActive, maxDiscountAmount: v.maxDiscountAmount || ''
                                                         });
                                                         setShowModal(true);
-                                                    }} className="w-10 h-10 bg-white shadow-sm border border-gray-100 rounded-xl flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 transition-all">✏️</button>
-                                                    <button onClick={() => handleDelete(v._id)} className="w-10 h-10 bg-white shadow-sm border border-gray-100 rounded-xl flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all">🗑️</button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {total > pageSize && (
-                        <div className="p-8 bg-gray-50/30 flex justify-center gap-4">
-                            <button
-                                disabled={pageNo === 1} onClick={() => setPageNo(p => p - 1)}
-                                className="px-6 py-3 bg-white border border-gray-100 rounded-2xl text-[10px] font-black uppercase tracking-widest disabled:opacity-30 hover:bg-gray-50 transition-all"
-                            >
-                                Previous
-                            </button>
-                            <button
-                                disabled={pageNo * pageSize >= total} onClick={() => setPageNo(p => p + 1)}
-                                className="px-6 py-3 bg-white border border-gray-100 rounded-2xl text-[10px] font-black uppercase tracking-widest disabled:opacity-30 hover:bg-gray-50 transition-all"
-                            >
-                                Next
-                            </button>
-                        </div>
-                    )}
+                                                    }}
+                                                    className="admin-btn admin-btn--secondary min-h-9 px-3 py-1.5 text-xs"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button type="button" onClick={() => handleDelete(v._id)} className="admin-btn admin-btn--danger min-h-9 px-3 py-1.5 text-xs">
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
                 </div>
+
+                {total > pageSize ? (
+                    <div className="flex flex-wrap justify-center gap-2 border-t border-slate-100 bg-slate-50/50 px-4 py-4">
+                        <button
+                            type="button"
+                            disabled={pageNo === 1}
+                            onClick={() => setPageNo(p => p - 1)}
+                            className="admin-btn admin-btn--secondary disabled:opacity-40"
+                        >
+                            Previous
+                        </button>
+                        <button
+                            type="button"
+                            disabled={pageNo * pageSize >= total}
+                            onClick={() => setPageNo(p => p + 1)}
+                            className="admin-btn admin-btn--secondary disabled:opacity-40"
+                        >
+                            Next
+                        </button>
+                    </div>
+                ) : null}
             </div>
 
             <VoucherFormModal

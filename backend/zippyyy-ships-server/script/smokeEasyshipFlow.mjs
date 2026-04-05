@@ -127,7 +127,26 @@ try {
 
   const ratesRes = await client.requestRates(payload);
   const rates = ratesRes?.rates ?? ratesRes?.data?.rates ?? [];
-  const withPrice = Array.isArray(rates) ? rates.filter((r) => Number(r.shipment_charge_total || r.total_charge || 0) > 0) : [];
+  const pickTotal = (r) => {
+    const ric = r?.rates_in_origin_currency;
+    const candidates = [
+      r?.shipment_charge_total,
+      r?.total_charge,
+      r?.shipment_charge?.total,
+      typeof r?.shipment_charge === "number" ? r.shipment_charge : null,
+      ric?.shipment_charge_total,
+      ric?.total_charge,
+      ric?.shipment_charge?.total,
+      typeof ric?.shipment_charge === "number" ? ric.shipment_charge : null,
+    ];
+    for (const v of candidates) {
+      if (v == null || v === "") continue;
+      const n = typeof v === "number" ? v : Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 0;
+  };
+  const withPrice = Array.isArray(rates) ? rates.filter((r) => pickTotal(r) > 0) : [];
   log({
     step: "easyship_rates",
     ok: true,
@@ -135,7 +154,15 @@ try {
     positiveTotalCount: withPrice.length,
   });
   if (withPrice.length === 0) {
-    log({ step: "easyship_rates", warning: "No rates with positive total — check addresses or Easyship account mode (sand vs prod)." });
+    const warn = {
+      step: "easyship_rates",
+      warning: "No rates with positive total — check addresses or Easyship account mode (sand vs prod).",
+    };
+    if (Array.isArray(rates) && rates.length > 0) {
+      warn.firstRateKeys = rates[0] && typeof rates[0] === "object" ? Object.keys(rates[0]) : [];
+      warn.firstRateSample = rates[0];
+    }
+    log(warn);
   }
 } catch (e) {
   log({

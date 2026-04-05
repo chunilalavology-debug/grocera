@@ -13,7 +13,25 @@ const isVercel = Boolean(process.env.VERCEL);
 const dir = isVercel ? path.join("/tmp", "upload") : path.join(__dirname, "upload");
 const uploadsDir = isVercel ? path.join("/tmp", "uploads") : path.join(__dirname, "uploads");
 const streamifier = require("streamifier");
+const multer = require("multer");
 const fs = require("fs");
+
+const cloudinaryUploadMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
+
+function handleCloudinaryMulter(mw) {
+  return (req, res, next) => {
+    mw(req, res, (err) => {
+      if (!err) return next();
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return apiErrorRes(req, res, "File too large (max 15MB).", null);
+      }
+      return apiErrorRes(req, res, err.message || "Upload failed", null);
+    });
+  };
+}
 const shippingLabelsDir = path.join(uploadsDir, "labels");
 if (isVercel) {
   [dir, uploadsDir, shippingLabelsDir].forEach((p) => {
@@ -30,11 +48,15 @@ const app = express();
 app.set("trust proxy", 1);
 const server = http.createServer(app);
 const Stripe = require("stripe");
-const { default: sendMail } = require("./utils/sendEmail");
-const OrderConform = require("./utils/template/userOrderConform");
-const AdminNotification = require("./utils/template/AdminNotification");
+const { sendNewOrderEmails } = require("./utils/orderEmails");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const PORT = process.env.PORT || 5000;
+/** Set STRIPE_WEBHOOK_DEBUG=1 to log Stripe event handling (off in production by default). */
+const stripeWhLog = (...args) => {
+  if (String(process.env.STRIPE_WEBHOOK_DEBUG || "").trim() === "1") {
+    console.log("[stripe webhook]", ...args);
+  }
+};
 const API_END_POINT_V1 =
   String(process.env.API_END_POINT_V1 || "/api").replace(/\/+$/, "") || "/api";
 const {
@@ -184,7 +206,6 @@ app.post(
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    console.log(`Unhandled event: ${event.type}`)
     try {
       switch (event.type) {
 
@@ -194,7 +215,7 @@ app.post(
           if (!orderId) break;
 
           await markPaidAndSendMail(orderId, session, req);
-          console.log("✅ Payment confirmed:", orderId);
+          stripeWhLog("checkout.session.completed", orderId);
           break;
         }
 
@@ -207,7 +228,7 @@ app.post(
             payment_intent: pi.id
           }, req);
 
-          console.log("✅ PaymentIntent succeeded:", orderId);
+          stripeWhLog("payment_intent.succeeded", orderId);
           break;
         }
 
@@ -220,7 +241,7 @@ app.post(
           if (!orderId) break;
 
           await markPaidAndSendMail(orderId, session, req);
-          console.log("✅ Async payment success:", orderId);
+          stripeWhLog("checkout.session.async_payment_succeeded", orderId);
           break;
         }
 
@@ -243,7 +264,7 @@ app.post(
             }
           );
 
-          console.log("❌ Async payment failed");
+          console.error("Stripe async payment failed:", session.metadata?.orderId);
           break;
         }
 
@@ -268,7 +289,7 @@ app.post(
             }
           );
 
-          console.log("⌛ Checkout abandoned:", orderId);
+          stripeWhLog("checkout.session.expired", orderId);
           break;
         }
 
@@ -289,14 +310,14 @@ app.post(
             order.refundDate = new Date();
             await order.save();
 
-            console.log("💸 Order refunded:", order.orderNumber);
+            stripeWhLog("charge.refunded", order.orderNumber);
           }
 
           break;
         }
 
         default:
-          console.log(`Unhandled event: ${event.type}`);
+          stripeWhLog("ignored event", event.type);
       }
 
       // ✅ ALWAYS ACK STRIPE FAST
@@ -315,6 +336,12 @@ app.use(express.json({ limit: "10mb" }));
 for (const [route, controller] of Object.entries(controllers)) {
   app.use(`${API_END_POINT_V1}/${route}`, controller);
 }
+
+const getPublicSiteSettings = require("./routes/publicSiteSettings");
+const putSiteBrandingSettings = require("./routes/putSiteBrandingSettings");
+const { authorize } = require("./routes/middlewares/rbacMiddleware");
+app.get(`${API_END_POINT_V1}/settings`, getPublicSiteSettings);
+app.put(`${API_END_POINT_V1}/settings`, authorize(["admin"]), putSiteBrandingSettings);
 
 cloudinary.config({
   cloud_name: CLOUDNARY_CLOUD_NAME,
@@ -338,40 +365,47 @@ function uploadToCloudinary(buffer, resourceType) {
   });
 }
 
-app.post("/api/v1/uploadImage", async (req, res) => {
-  console.log(req.files[0]);
-  if (!req.files[0]) {
-    return apiErrorRes(req, res, "No file uploaded.", null);
+app.post(
+  "/api/v1/uploadImage",
+  handleCloudinaryMulter(cloudinaryUploadMulter.any()),
+  async (req, res) => {
+    const file = req.files?.[0];
+    if (!file || !file.buffer) {
+      return apiErrorRes(req, res, "No file uploaded.", null);
+    }
+
+    const mimeType = file.mimetype;
+    let resourceType = "image";
+
+    if (mimeType === "application/pdf") {
+      resourceType = "raw";
+    }
+
+    try {
+      const result = await uploadToCloudinary(file.buffer, resourceType);
+
+      return apiSuccessRes(req, res, "SUCCESS.", {
+        imageName: file.originalname,
+        imageUrl: result.secure_url,
+      });
+    } catch (error) {
+      return apiErrorRes(req, res, "Error uploading image.", null);
+    }
   }
+);
 
-  const mimeType = req.files[0].mimetype;
-  let resourceType = "image"; // Default resource type
-
-  // Determine resource type based on mime type
-  if (mimeType === "application/pdf") {
-    resourceType = "raw"; // Use 'raw' for non-image files like PDFs
-  }
-
-  try {
-    const result = await uploadToCloudinary(req.files[0].buffer, resourceType);
-
-    return apiSuccessRes(req, res, "SUCCESS.", {
-      imageName: req.files[0].originalname,
-      imageUrl: result.secure_url,
-    });
-  } catch (error) {
-    return apiErrorRes(req, res, "Error uploading image.", null);
-  }
-});
-
-app.post("/api/v1/uploadMultipleImages", async (req, res) => {
-  if (!req.files || req.files.length === 0) {
+app.post(
+  "/api/v1/uploadMultipleImages",
+  handleCloudinaryMulter(cloudinaryUploadMulter.any()),
+  async (req, res) => {
+  const files = req.files || [];
+  if (!files.length) {
     return apiErrorRes(req, res, "No files uploaded.", null);
   }
 
   try {
     const uploadResults = await Promise.all(
-      req.files.map(async (file) => {
+      files.map(async (file) => {
         const mimeType = file.mimetype;
         let resourceType = "image"; // default
 
@@ -396,17 +430,29 @@ app.post("/api/v1/uploadMultipleImages", async (req, res) => {
 });
 
 async function markPaidAndSendMail(orderId, session, webhookReq) {
+  const sessionEmailRaw =
+    (session.customer_details && session.customer_details.email) ||
+    session.customer_email ||
+    (session.customer && session.customer.email) ||
+    "";
+  const sessionEmail = sessionEmailRaw ? String(sessionEmailRaw).trim().toLowerCase() : "";
+
+  const updatePayload = {
+    paymentStatus: "paid",
+    status: "confirmed",
+    stripePaymentIntentId: session.payment_intent,
+    paidAt: new Date(),
+  };
+  if (sessionEmail) {
+    updatePayload.customerEmail = sessionEmail;
+  }
+
   const order = await Order.findOneAndUpdate(
     {
       _id: orderId,
-      paymentStatus: { $ne: 'paid' }
+      paymentStatus: { $ne: "paid" },
     },
-    {
-      paymentStatus: 'paid',
-      status: 'confirmed',
-      stripePaymentIntentId: session.payment_intent,
-      paidAt: new Date()
-    },
+    { $set: updatePayload },
     { new: true }
   )
     .populate('userId', 'email name')
@@ -506,25 +552,10 @@ async function markPaidAndSendMail(orderId, session, webhookReq) {
     }
   }
 
-  if (order && !order.isShippingOrder && order.emailSent !== true) {
-    const userMail = {
-      to: order.userId?.email,
-      subject: `Zippyyy Order Confirmation – #${order.orderNumber}`,
-      html: OrderConform(order)
-    }
-
-    const adminMail = {
-      to: process.env.EMAIL_USER || "admin@zippyyy.com",
-      subject: `New Order Alert! 🚨 – #${order.orderNumber}`,
-      html: AdminNotification(order)
-    };
-
+  if (order) {
     setImmediate(() => {
-      sendMail(userMail)
-      sendMail(adminMail)
+      sendNewOrderEmails(order._id).catch((e) => console.error("sendNewOrderEmails:", e?.message || e));
     });
-
-    await Order.findByIdAndUpdate(order._id, { emailSent: true });
   }
 }
 

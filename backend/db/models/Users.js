@@ -35,6 +35,20 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  /** Public URL for uploaded admin/storefront avatar (set via admin profile upload). */
+  profileImageUrl: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 2048,
+  },
+  /** Preset avatar key when not using a custom upload (e.g. preset-violet). */
+  profileAvatarKey: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 64,
+  },
   email: {
     type: String,
     required: [true, 'Email is required'],

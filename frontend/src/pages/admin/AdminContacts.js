@@ -37,10 +37,10 @@ export default function AdminContacts() {
 
   const statusPillClass = useMemo(
     () => ({
-      new: "bg-blue-100 text-blue-700",
-      read: "bg-slate-100 text-slate-700",
-      responded: "bg-green-100 text-green-700",
-      closed: "bg-red-100 text-red-700",
+      new: "admin-badge admin-badge--primary",
+      read: "admin-badge",
+      responded: "admin-badge",
+      closed: "admin-badge",
     }),
     []
   );
@@ -59,69 +59,69 @@ export default function AdminContacts() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto">
-      <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="admin-design-scope mx-auto max-w-[1600px] space-y-6 pb-12 font-sans text-slate-900">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Manage Contacts</h1>
-          <p className="text-sm text-slate-500">Customer contact form submissions</p>
+          <h1 className="admin-shell-title">Manage contacts</h1>
+          <p className="admin-shell-desc">Customer contact form submissions</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 px-3 rounded-lg border border-slate-300 bg-white text-sm font-medium"
+            className="admin-select min-w-[160px] max-w-[220px]"
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
-                {s === "all" ? "All Status" : s.charAt(0).toUpperCase() + s.slice(1)}
+                {s === "all" ? "All status" : s.charAt(0).toUpperCase() + s.slice(1)}
               </option>
             ))}
           </select>
           <button
             type="button"
             onClick={() => loadContacts(page, statusFilter)}
-            className="h-10 px-4 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="admin-btn admin-btn--secondary"
           >
             Refresh
           </button>
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="admin-card-surface overflow-hidden">
         {loading ? (
-          <div className="py-14 text-center text-slate-500 text-sm">Loading contacts...</div>
+          <div className="py-14 text-center text-sm text-slate-500">Loading contacts…</div>
         ) : contacts.length === 0 ? (
-          <div className="py-14 text-center text-slate-500 text-sm">No contacts found.</div>
+          <div className="py-14 text-center text-sm text-slate-500">No contacts found.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr className="text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3 text-left font-semibold">Name</th>
-                  <th className="px-4 py-3 text-left font-semibold">Email</th>
-                  <th className="px-4 py-3 text-left font-semibold">Subject</th>
-                  <th className="px-4 py-3 text-left font-semibold">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold">Date</th>
-                  <th className="px-4 py-3 text-right font-semibold">Action</th>
+            <table className="w-full border-collapse text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50/95">
+                <tr className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left">Name</th>
+                  <th className="px-4 py-3 text-left">Email</th>
+                  <th className="px-4 py-3 text-left">Subject</th>
+                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100">
                 {contacts.map((c) => (
-                  <tr key={c._id} className="border-b border-slate-100 hover:bg-slate-50/70">
-                    <td className="px-4 py-3 text-sm font-medium text-slate-800">{c.name || "-"}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{c.email || "-"}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 max-w-[260px] truncate">{c.subject || "-"}</td>
+                  <tr key={c._id} className="hover:bg-slate-50/80">
+                    <td className="px-4 py-3 font-medium text-slate-800">{c.name || "-"}</td>
+                    <td className="px-4 py-3 text-slate-700">{c.email || "-"}</td>
+                    <td className="px-4 py-3 text-slate-700 max-w-[260px] truncate">{c.subject || "-"}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase ${statusPillClass[c.status] || "bg-slate-100 text-slate-700"}`}>
+                      <span className={statusPillClass[c.status] || "admin-badge"}>
                         {c.status || "new"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{new Date(c.createdAt).toLocaleString("en-IN")}</td>
+                    <td className="px-4 py-3 text-slate-600">{new Date(c.createdAt).toLocaleString("en-IN")}</td>
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
                         onClick={() => openDetails(c._id)}
-                        className="text-sm font-semibold text-[#3090cf] hover:text-[#246fa0] underline underline-offset-2"
+                        className="text-sm font-semibold text-[var(--admin-primary)] hover:text-[var(--admin-primary-hover)] underline underline-offset-2"
                       >
                         View
                       </button>
@@ -134,7 +134,7 @@ export default function AdminContacts() {
         )}
       </div>
 
-      <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
         <span>Total: {meta.totalContacts}</span>
         <div className="flex items-center gap-2">
           <button
@@ -145,11 +145,11 @@ export default function AdminContacts() {
               setPage(next);
               loadContacts(next, statusFilter);
             }}
-            className="px-3 py-1.5 rounded border border-slate-300 bg-white disabled:opacity-50"
+            className="admin-btn admin-btn--secondary disabled:opacity-50"
           >
             Prev
           </button>
-          <span>
+          <span className="tabular-nums">
             {meta.currentPage} / {meta.totalPages}
           </span>
           <button
@@ -160,7 +160,7 @@ export default function AdminContacts() {
               setPage(next);
               loadContacts(next, statusFilter);
             }}
-            className="px-3 py-1.5 rounded border border-slate-300 bg-white disabled:opacity-50"
+            className="admin-btn admin-btn--secondary disabled:opacity-50"
           >
             Next
           </button>
@@ -168,10 +168,10 @@ export default function AdminContacts() {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-[9999] bg-black/45 p-4 flex items-center justify-center">
-          <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-slate-800">{selected.subject || "Contact Details"}</h3>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 p-4">
+          <div className="admin-card-surface w-full max-w-3xl overflow-hidden shadow-lg shadow-slate-900/10">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h3 className="admin-section-heading">{selected.subject || "Contact details"}</h3>
               <button type="button" className="text-2xl text-slate-400 hover:text-slate-600" onClick={() => setSelected(null)}>
                 ×
               </button>

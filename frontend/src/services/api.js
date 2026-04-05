@@ -41,7 +41,11 @@ api.interceptors.request.use(
       (path === "/user/featured-categories" ||
         path === "/user/getCategories" ||
         path === "/user/categories" ||
-        path === "/user/products")
+        path === "/user/products" ||
+        path === "/settings" ||
+        path === "/user/site-settings" ||
+        path === "/user/home-slider-settings" ||
+        path === "/admin/home-slider-settings")
     ) {
       config.headers = config.headers || {};
       if (!config.headers["Cache-Control"]) config.headers["Cache-Control"] = "no-cache";
@@ -96,7 +100,9 @@ api.interceptors.response.use(
     const isCredentialAttempt =
       reqUrl === "/auth/login" || reqUrl === "/auth/register";
     if (status === 401 && !isCredentialAttempt) {
-      console.warn("Authentication expired or invalid token.");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Authentication expired or invalid token.");
+      }
       localStorage.removeItem("token");
       localStorage.removeItem("demoUser");
     }

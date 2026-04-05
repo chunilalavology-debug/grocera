@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import '../../styles/admin-tokens.css';
 import './CoAdminOrders.css';
 
 export default function CoAdminOrders() {
@@ -115,7 +116,7 @@ export default function CoAdminOrders() {
 
   if (loading && orders.length === 0) {
     return (
-      <div className="co-admin-container">
+      <div className="co-admin-container admin-design-scope">
         <div className="loading-section">
           <div className="spinner"></div>
           <p>Loading new orders...</p>
@@ -125,7 +126,7 @@ export default function CoAdminOrders() {
   }
 
   return (
-    <div className="co-admin-container">
+    <div className="co-admin-container admin-design-scope">
       <div className="co-admin-header">
         <div className="header-content">
           <h1>📋 New Orders</h1>

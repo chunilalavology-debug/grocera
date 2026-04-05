@@ -26,7 +26,7 @@ const HeroSection = () => {
     <section
       ref={sectionRef}
       id="hero"
-      className="relative isolate min-h-0 sm:min-h-[min(100dvh,880px)] md:min-h-screen flex items-start sm:items-center overflow-hidden pt-14 pb-5 sm:pt-20 sm:pb-12 md:pt-24 md:pb-16 lg:pt-16 lg:pb-0"
+      className="relative isolate min-h-0 sm:min-h-[min(100dvh,880px)] md:min-h-screen flex items-start sm:items-center overflow-hidden pb-5 sm:pb-12 md:pb-16 lg:pb-0 max-lg:!pt-36 lg:pt-24"
     >
       {/* Animated background gradient blobs with parallax — z-0 so copy/CTAs stay above */}
       <motion.div

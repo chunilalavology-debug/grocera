@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import '../../styles/admin-tokens.css';
 import './CoAdminDashboard.css';
 
 export default function CoAdminDashboard() {
@@ -246,7 +247,7 @@ export default function CoAdminDashboard() {
   }, []);
 
   return (
-    <div className="co-admin-dashboard">
+    <div className="co-admin-dashboard admin-design-scope">
       <div className="dashboard-header">
         <h1>📋 Co-Admin Panel</h1>
         <div className="tab-buttons">

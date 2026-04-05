@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { Heart, ShoppingCart, Zap, Star } from 'lucide-react';
 import ScrollReveal from '../components/ScrollReveal';
 import StarRating from '../components/StarRating';
+import { productCardBadgeFromApi } from '../utils/productCardBadge';
 import '../styles/pages/HotDeals.css';
 
 const SITE_COLOR = '#3090cf';
@@ -93,7 +94,9 @@ export default function HotDeals() {
     const fetchProducts = async () => {
       try {
         setLoading(true);
-        const res = await api.get('/user/products', { params: { limit: 200 } });
+        const res = await api.get('/user/products', {
+          params: { limit: 500, hotDealsOnly: 'true' },
+        });
         const list = res?.data || res?.products || [];
         const arr = Array.isArray(list) ? list : [];
 
@@ -158,7 +161,10 @@ export default function HotDeals() {
         if (hasValidMax && numPrice > maxPriceNum) return false;
       }
       if (categoryFilter && (String(p.category || p.categoryName || '').trim() !== String(categoryFilter).trim())) return false;
-      if (inStockOnly && (p.inStock === false || String(p.inStock).toLowerCase() === 'false')) return false;
+      if (inStockOnly) {
+        if (p.inStock === false || String(p.inStock).toLowerCase() === 'false') return false;
+        if ((Number(p.quantity) || 0) <= 0) return false;
+      }
       return true;
     })
     .sort((a, b) => {
@@ -352,7 +358,7 @@ export default function HotDeals() {
         {/* Right: Products grid */}
         <section className="hot-deals-products">
           <div className="hot-deals-products__inner">
-          <h2 className="hot-deals-products__heading">All products</h2>
+          <h2 className="hot-deals-products__heading">Hot deal products</h2>
           {loading ? (
             <div className="hot-deals-products__loading">
               <div className="hot-deals-products__spinner" />
@@ -375,15 +381,7 @@ export default function HotDeals() {
                 const avgRating = reviewCount
                   ? (product.reviews || []).reduce((a, r) => a + (Number(r?.rating) || 0), 0) / (product.reviews?.length || 1)
                   : (product.rating ?? 0);
-                const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
-                const isNewlyAdded = (() => {
-                  const date = product.createdAt || product.addedAt || product.created_at;
-                  if (!date) return false;
-                  return new Date(date).getTime() >= Date.now() - FIFTEEN_DAYS_MS;
-                })();
-                const orderCount = Number(product.orderCount ?? product.timesOrdered ?? product.salesCount ?? 0) || 0;
-                const isHot = orderCount > 5;
-                const rightBadge = isHot ? 'hot' : isNewlyAdded ? 'new' : 'sale';
+                const badgeInfo = productCardBadgeFromApi(product);
 
                 return (
                   <ScrollReveal key={productId}>
@@ -399,13 +397,13 @@ export default function HotDeals() {
                       )}
 
                       {/* Top-right badge */}
-                      {rightBadge && (
+                      {badgeInfo && (
                         <div className="absolute top-0 right-0 z-20 pointer-events-none flex flex-col items-end gap-1">
                           <span
                             className="inline-block text-[11px] font-bold uppercase tracking-wide px-4 py-1.5 rounded-tr-xl rounded-br-none rounded-bl-xl rounded-tl-none text-white shadow-sm"
                             style={{ backgroundColor: SITE_COLOR }}
                           >
-                            {rightBadge === 'hot' ? 'Hot' : rightBadge === 'new' ? 'New' : 'Sale'}
+                            {badgeInfo.label}
                           </span>
                         </div>
                       )}

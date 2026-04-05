@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, useState } from "react";
+import React, { createContext, useContext, useReducer, useEffect, useState, useCallback } from "react";
 import api from "../services/api";
 
 
@@ -75,7 +75,9 @@ export function AuthProvider({ children }) {
           payload: { user: res.user, token },
         });
       } catch (err) {
-        console.error("Auto-login failed:", err);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Auto-login failed:", err);
+        }
         delete api.defaults.headers.common["Authorization"];
         dispatch({ type: "LOGOUT" });
       } finally {
@@ -96,7 +98,9 @@ export function AuthProvider({ children }) {
       const access = tokens?.access;
 
       if (!user || !access) {
-        console.warn("Login response missing user or tokens:", res);
+        if (process.env.NODE_ENV === "development") {
+          console.warn("Login response missing user or tokens:", res);
+        }
         return {
           success: false,
           message: res?.message || "Invalid response from server. Is the API URL correct?",
@@ -113,7 +117,9 @@ export function AuthProvider({ children }) {
 
       return { success: true, user };
     } catch (err) {
-      console.error("Login failed:", err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Login failed:", err);
+      }
       return {
         success: false,
         message: err?.message || "Login failed",
@@ -142,7 +148,9 @@ export function AuthProvider({ children }) {
 
       return { success: true, user };
     } catch (err) {
-      console.error("Registration failed:", err.response?.data || err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Registration failed:", err.response?.data || err);
+      }
       return {
         success: false,
         message: err.message || "Registration failed",
@@ -156,6 +164,12 @@ export function AuthProvider({ children }) {
     delete api.defaults.headers.common["Authorization"];
     dispatch({ type: "LOGOUT" });
   };
+
+  const updateUser = useCallback((payload) => {
+    if (payload && typeof payload === "object") {
+      dispatch({ type: "UPDATE_USER", payload });
+    }
+  }, []);
 
   const value = {
     user: state.user,
@@ -173,6 +187,7 @@ export function AuthProvider({ children }) {
     login,
     register,
     logout,
+    updateUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

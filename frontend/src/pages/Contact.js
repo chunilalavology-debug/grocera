@@ -8,6 +8,7 @@ function Contact() {
     firstName: '',
     lastName: '',
     email: '',
+    phone: '',
     subject: '',
     message: '',
     inquiryType: 'general'
@@ -34,6 +35,7 @@ function Contact() {
       const payload = {
         name: `${formData.firstName} ${formData.lastName}`.trim(),
         email: formData.email,
+        phone: formData.phone || '',
         subject: formData.subject,
         message: formData.message,
         queryType: formData.inquiryType
@@ -47,7 +49,7 @@ function Contact() {
           duration: 4000
         });
         setFormData({
-          firstName: '', lastName: '', email: '',
+          firstName: '', lastName: '', email: '', phone: '',
           subject: '', message: '', inquiryType: 'general'
         });
       } else {
@@ -187,6 +189,19 @@ function Contact() {
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-slate-700">Phone <span className="text-slate-400 font-normal">(optional)</span></label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      className="contact-input w-full px-4 py-3 min-h-[46px] rounded-xl border border-slate-200 bg-slate-50/80 focus:bg-white focus:border-[#3090cf] focus:ring-2 focus:ring-[#3090cf]/20 outline-none transition-all"
+                      placeholder="+1 555 000 0000"
+                      autoComplete="tel"
+                    />
                   </div>
 
                   <div className="space-y-1.5">

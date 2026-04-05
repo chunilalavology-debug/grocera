@@ -53,8 +53,6 @@ function hasPermissionUser() {
       const redisToken = await serviceRedis.getKey('_TOKEN' + userId)
       const authToken = req.headers.authorization?.split(' ')[1];
 
-      console.log('redisTokenredisTokenredisTokenredisToken', redisToken);
-
       // Compare tokens
       if (!redisToken || !authToken || redisToken !== authToken) {
         return apiErrorRes(req, res, 'Invalid or expired token.', 'Unauthorized', 401);

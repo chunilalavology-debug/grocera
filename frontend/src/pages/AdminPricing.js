@@ -86,7 +86,6 @@ function AdminPricing() {
       if (response.ok) {
         // Reload products from server to ensure sync
         await fetchProducts();
-        console.log(`Updated product ${productId} price to ${newPrice}`);
       } else {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to update price');
@@ -100,8 +99,9 @@ function AdminPricing() {
   };
 
   const handleImageUpload = (productId, file) => {
-    // Handle image upload logic here
-    console.log(`Upload image for product ${productId}:`, file);
+    void productId;
+    void file;
+    /* Image upload not wired in this legacy screen — use Admin → Products. */
   };
 
   const quickPriceAdjust = (productId, percentage) => {

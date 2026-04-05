@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import toast from "react-hot-toast";
 
 export default function Checkout() {
   const { items, total, itemCount, addToCart } = useCart();
+  const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [recommendedProducts, setRecommendedProducts] = useState([]);
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
@@ -53,15 +56,23 @@ export default function Checkout() {
     { label: "Office", value: "Work" },
     { label: "Other", value: "Other" },
   ];
+  const [checkoutEmail, setCheckoutEmail] = useState("");
   const [newAddress, setNewAddress] = useState({
     name: "",
     phone: "",
+    email: "",
     fullAddress: "",
     city: "",
     state: "",
     pincode: "",
     addressType: "Home",
   });
+
+  useEffect(() => {
+    if (user?.email) {
+      setCheckoutEmail((prev) => (prev.trim() ? prev : String(user.email)));
+    }
+  }, [user?.email]);
 
   const updateNewAddress = (patch) => {
     setNewAddress((prev) => ({ ...prev, ...patch }));
@@ -86,6 +97,7 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [showOtcPolicyModal, setShowOtcPolicyModal] = useState(false);
   const [otcPolicyAccepted, setOtcPolicyAccepted] = useState(false);
+  const [otcPinVisible, setOtcPinVisible] = useState(false);
   const isVegetableCategory = (category = '') => {
     const c = String(category).toLowerCase();
     return c.includes('vegetable') || c === 'fresh vegetables' || c === 'vegetables';
@@ -197,6 +209,14 @@ export default function Checkout() {
       return;
     }
 
+    if (!isGuest) {
+      const em = String(checkoutEmail || "").trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+        toast.error("Please enter a valid email for order confirmation and updates.");
+        return;
+      }
+    }
+
     if (paymentMethod === 'otc') {
       if (!cardDetails.nameOnCard.trim()) {
         toast.error("Please enter the name for OTC payment");
@@ -207,8 +227,8 @@ export default function Checkout() {
         return;
       }
       const pinDigits = String(cardDetails.cvv || "").replace(/\D/g, "");
-      if (pinDigits.length !== 4) {
-        toast.error("Please enter a 4-digit OTC PIN");
+      if (pinDigits.length < 3 || pinDigits.length > 12) {
+        toast.error("Please enter your OTC PIN (3–12 digits)");
         return;
       }
     }
@@ -235,6 +255,7 @@ export default function Checkout() {
         payload.address = {
           name: guestAddr.name,
           phone: guestAddr.phone,
+          email: guestAddr.email,
           fullAddress: guestAddr.fullAddress,
           city: guestAddr.city,
           state: guestAddr.state,
@@ -243,6 +264,7 @@ export default function Checkout() {
         };
       } else {
         payload.addressId = selectedAddressId;
+        payload.customerEmail = String(checkoutEmail || "").trim();
       }
 
       // couponCode only for manual vouchers; referral discount is computed in backend
@@ -252,7 +274,7 @@ export default function Checkout() {
 
       if (paymentMethod === 'otc') {
         payload.cardNumber = cardDetails.number;
-        payload.pin = String(cardDetails.cvv || "").replace(/\D/g, "").slice(0, 4);
+        payload.pin = String(cardDetails.cvv || "").replace(/\D/g, "").slice(0, 12);
         payload.name = cardDetails.nameOnCard;
       }
 
@@ -291,6 +313,7 @@ export default function Checkout() {
     const errors = {};
     const name = String(newAddress.name ?? "").trim();
     const phone = String(newAddress.phone ?? "").trim();
+    const email = String(newAddress.email ?? "").trim();
     const fullAddress = String(newAddress.fullAddress ?? "").trim();
     const city = String(newAddress.city ?? "").trim();
     const pincode = String(newAddress.pincode ?? "").trim();
@@ -300,6 +323,8 @@ export default function Checkout() {
     if (!phone) errors.phone = "Phone number is required.";
     else if (digitsInPhone.length < 10)
       errors.phone = "Enter a valid phone number (at least 10 digits).";
+    if (!email) errors.email = "Email is required for order confirmation.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "Enter a valid email address.";
     if (!fullAddress) errors.fullAddress = "Street address is required.";
     if (!city) errors.city = "City is required.";
     if (!pincode) errors.pincode = "ZIP / postal code is required.";
@@ -331,6 +356,7 @@ export default function Checkout() {
         _id: GUEST_ADDRESS_ID,
         name: newAddress.name,
         phone: newAddress.phone,
+        email: newAddress.email,
         fullAddress: newAddress.fullAddress,
         city: newAddress.city,
         state: newAddress.state,
@@ -342,6 +368,7 @@ export default function Checkout() {
       setNewAddress({
         name: "",
         phone: "",
+        email: "",
         fullAddress: "",
         city: "",
         state: "",
@@ -380,6 +407,7 @@ export default function Checkout() {
         setNewAddress({
           name: "",
           phone: "",
+          email: "",
           fullAddress: "",
           city: "",
           state: "",
@@ -717,14 +745,39 @@ export default function Checkout() {
                       onChange={(e) => setCardDetails({ ...cardDetails, number: e.target.value })}
                     />
 
-                    <PremiumInput
-                      label="PIN"
-                      type="password"
-                      placeholder="****"
-                      maxLength="4"
-                      value={cardDetails.cvv}
-                      onChange={(e) => setCardDetails({ ...cardDetails, cvv: e.target.value })}
-                    />
+                    <div className="flex flex-col group">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2 ml-1 group-focus-within:text-blue-600 transition-colors">
+                        PIN
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={otcPinVisible ? 'text' : 'password'}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          placeholder="Enter PIN"
+                          maxLength={12}
+                          value={cardDetails.cvv}
+                          onChange={(e) =>
+                            setCardDetails({
+                              ...cardDetails,
+                              cvv: e.target.value.replace(/\D/g, '').slice(0, 12),
+                            })
+                          }
+                          className="w-full p-4 pr-12 bg-gray-50 border-2 rounded-2xl focus:bg-white focus:ring-4 focus:ring-blue-600/5 outline-none transition-all font-bold text-gray-800 placeholder:text-gray-300 text-sm border-transparent focus:border-blue-600/20"
+                          aria-label="OTC card PIN"
+                        />
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100/80 transition-colors"
+                          onClick={() => setOtcPinVisible((v) => !v)}
+                          aria-label={otcPinVisible ? 'Hide PIN' : 'Show PIN'}
+                        >
+                          {otcPinVisible ? <EyeOff size={20} strokeWidth={2} /> : <Eye size={20} strokeWidth={2} />}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-1.5 ml-1 font-medium">3–12 digits</p>
+                    </div>
                   </div>
                   </div>
                 )}
@@ -864,7 +917,7 @@ export default function Checkout() {
                     />
                     <div>
                       <span className="font-bold text-slate-800">Standard</span>
-                      <p className="text-xs text-slate-500 mt-0.5">Orders $50+ → Free. $25–$49 → $4.99. Below $25 → $9.99. Shipped within 24–48 hours.</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Shipped within 24–48 hours.</p>
                     </div>
                   </label>
                 </div>
@@ -970,6 +1023,20 @@ export default function Checkout() {
                 />
               </div>
 
+              {isAuthenticated ? (
+                <div className="mt-6">
+                  <PremiumInput
+                    label="Order confirmation email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                    value={checkoutEmail}
+                    onChange={(e) => setCheckoutEmail(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Receipts and status updates are sent here.</p>
+                </div>
+              ) : null}
+
               {/* <button
                 disabled={!selectedAddressId || isInitializing}
                 onClick={handleContinueToPayment}
@@ -1064,6 +1131,16 @@ export default function Checkout() {
                     onChange={(e) => updateNewAddress({ phone: e.target.value })}
                   />
                 </div>
+
+                <PremiumInput
+                  label="Email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={newAddress.email}
+                  error={addressFieldErrors.email}
+                  onChange={(e) => updateNewAddress({ email: e.target.value })}
+                />
 
                 {/* Row 2: Full Address */}
                 <PremiumInput

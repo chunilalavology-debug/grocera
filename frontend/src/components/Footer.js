@@ -4,6 +4,7 @@ import { Mail } from 'lucide-react';
 import '../styles/components/Footer.css';
 import logoRemo from "../assets-copy/navbar/logoRemo.svg";
 import { SUBCATEGORIES_BY_MAIN } from '../config/categories';
+import { useSiteBranding } from '../context/SiteBrandingContext';
 
 /* Footer category links from config: one per main (first sub) + a few extras for variety */
 const FOOTER_CATEGORY_LINKS = [
@@ -14,13 +15,18 @@ const FOOTER_CATEGORY_LINKS = [
   ...(SUBCATEGORIES_BY_MAIN.indian?.slice(2, 4) || []),
 ].filter(Boolean).slice(0, 8);
 function Footer() {
+  const { websiteName, websiteLogoSrc } = useSiteBranding();
   return (
     <footer className="footer">
       <div className="footer__container">
         <div className="footer__main">
           <section className="footer__block footer__brand">
             <Link to="/" className="footer__logo-link">
-              <img src={logoRemo} alt="Zippyyy" className="footer__logo-img" />
+              <img
+                src={websiteLogoSrc || logoRemo}
+                alt={websiteName || 'Zippyyy'}
+                className="footer__logo-img"
+              />
             </Link>
             <p className="footer__about">
               At Zippyyy, customer satisfaction is important to us. This Refund & Cancellation Policy explains when refunds, replacements, or cancellations may be issued for orders placed on zippyyy.com.

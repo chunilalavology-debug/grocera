@@ -1,9 +1,11 @@
 const mongoose = require("mongoose");
 
+/** Subdocuments use default _id so admin can save/reorder without losing slides. Title/image may be empty while drafting. */
 const slideSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true, trim: true, maxlength: 120 },
-    imageUrl: { type: String, required: true, trim: true, maxlength: 2048 },
+    title: { type: String, trim: true, maxlength: 120, default: "" },
+    subtitle: { type: String, trim: true, maxlength: 220, default: "" },
+    imageUrl: { type: String, trim: true, maxlength: 2048, default: "" },
     buttonText: { type: String, trim: true, maxlength: 40, default: "Shop Now" },
     buttonLink: { type: String, trim: true, maxlength: 1024, default: "/products" },
     cardBgColor: { type: String, trim: true, maxlength: 20, default: "#f8fafc" },
@@ -13,7 +15,7 @@ const slideSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
   },
-  { _id: false }
+  { _id: true }
 );
 
 const homeSliderSettingsSchema = new mongoose.Schema(

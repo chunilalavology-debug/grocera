@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import { Heart, ShoppingCart } from 'lucide-react';
 import ScrollReveal from '../../../components/ScrollReveal';
 import StarRating from '../../../components/StarRating';
+import { getProductCardDiscountPercent } from '../../../utils/productDiscountDisplay';
 
 const SITE_COLOR = '#3090cf';
 
@@ -115,7 +116,7 @@ function PopularProducts() {
           {products.map((product, index) => {
             const productId = product._id || product.id;
             const price = product.hasDeal ? product.finalPrice : product.price;
-            const DISCOUNT_BADGE_PCT = 5;
+            const cardDiscountPct = getProductCardDiscountPercent(product);
             const inStock = product.inStock !== false;
             const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
             const isNewlyAdded = (() => {
@@ -125,7 +126,7 @@ function PopularProducts() {
             })();
             const orderCount = Number(product.orderCount ?? product.timesOrdered ?? product.salesCount ?? 0) || 0;
             const isHot = orderCount > 5;
-            const rightBadge = !inStock ? null : isHot ? 'hot' : isNewlyAdded ? 'new' : 'sale';
+            const rightBadge = !inStock ? null : isHot ? 'hot' : isNewlyAdded ? 'new' : null;
             const reviewCount = product.reviews?.length ?? product.reviewCount ?? 0;
             const avgRating = reviewCount
               ? (product.reviews || []).reduce((a, r) => a + (Number(r?.rating) || 0), 0) / (product.reviews?.length || 1)
@@ -136,19 +137,21 @@ function PopularProducts() {
               <div
                 className="group relative bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:border-slate-300/80 transition-all duration-300 flex flex-col overflow-hidden"
               >
-                <span
-                  className="product-card__discount-tag absolute top-0 left-0 z-20 text-white text-xs font-bold pl-3 pr-4 py-1.5 min-w-[3rem] text-center rounded-tl-none rounded-bl-none rounded-tr-none rounded-br-xl shadow-sm"
-                  style={{ backgroundColor: '#e9aa42', color: '#fff' }}
-                >
-                  {DISCOUNT_BADGE_PCT}%
-                </span>
+                {cardDiscountPct > 0 && (
+                  <span
+                    className="product-card__discount-tag absolute top-0 left-0 z-20 text-white text-xs font-bold pl-3 pr-4 py-1.5 min-w-[3rem] text-center rounded-tl-none rounded-bl-none rounded-tr-none rounded-br-xl shadow-sm"
+                    style={{ backgroundColor: '#e9aa42', color: '#fff' }}
+                  >
+                    {cardDiscountPct}%
+                  </span>
+                )}
                 {rightBadge && (
                   <div className="absolute top-0 right-0 z-20 pointer-events-none flex flex-col items-end gap-1">
                     <span
                       className="product-card__sale-tag inline-block text-[11px] font-bold uppercase tracking-wide px-4 py-1.5 rounded-tr-xl rounded-br-none rounded-bl-xl rounded-tl-none text-white shadow-sm"
                       style={{ backgroundColor: SITE_COLOR }}
                     >
-                      {rightBadge === 'hot' ? 'Hot' : rightBadge === 'new' ? 'New' : 'Sale'}
+                      {rightBadge === 'hot' ? 'Hot' : 'New'}
                     </span>
                   </div>
                 )}

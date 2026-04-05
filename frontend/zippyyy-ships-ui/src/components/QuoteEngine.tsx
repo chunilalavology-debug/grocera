@@ -22,7 +22,7 @@ import {
 import shippingBox from "@/assets/shipping-box.png";
 import Box3DPreview from "@/components/Box3DPreview";
 import { AddressAutocomplete, type TaggedAddress } from "@/components/AddressAutocomplete";
-import { apiPost } from "@/lib/api";
+import { apiPost, GROCERA_API_BASE, groceraApiPost, SHIPS_API_BASE } from "@/lib/api";
 import { PACKAGING_PRESETS, type PackagingCarrier, type PackagingPreset } from "@/lib/packagingPresets";
 import { usStateFromZip } from "@/lib/usStateFromZip";
 
@@ -37,6 +37,7 @@ const TIP_OPTIONS = [
 type ApiRate = {
   courier_name: string;
   courier_service_name?: string;
+  courier_service_id?: string;
   shipment_charge_total: number;
   shipment_charge_total_currency: string;
   easyship_rate_id?: string;
@@ -48,6 +49,22 @@ type ApiRate = {
 };
 
 const SAVED_ADDR_KEY = "zippyyy-ships-saved-addresses-v1";
+
+const USE_GROCERA_CHECKOUT = Boolean(GROCERA_API_BASE);
+/** Same-origin /api/quotes hits grocery JWT without this — use public POST /user/shipping/quote instead. */
+const USE_GROCERA_QUOTES = Boolean(GROCERA_API_BASE) && !SHIPS_API_BASE;
+
+function getStorefrontAuthToken(): string | null {
+  try {
+    return localStorage.getItem("token");
+  } catch {
+    return null;
+  }
+}
+
+function isLikelyEmail(s: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
+}
 
 type PricingMeta = { markupMultiplier: number; listPriceMultiplier: number };
 const DEFAULT_PRICING: PricingMeta = { markupMultiplier: 1.25, listPriceMultiplier: 2 };
@@ -96,6 +113,9 @@ function formatQuotesFetchError(err: unknown): string {
   }
   if (code === "SHIPS_UPSTREAM_UNREACHABLE") {
     return "Could not reach the shipping API. Check SHIPS_API_BASE and that the ships server is running.";
+  }
+  if (raw.includes("Authentication required") || raw.includes("Please sign in again")) {
+    return "Shipping quotes are misrouted to the main API (JWT). Rebuild zippyyy-ships-ui after pulling the fix, or run zippyyy-ships-server on port 3001 so /api/quotes is proxied correctly.";
   }
   return parseApiErrorMessage(err);
 }
@@ -249,13 +269,20 @@ const QuoteEngine = () => {
         return true;
       case "quotes": return selectedRateObj !== null;
       case "details":
-        return (
-          Boolean(fromAddress && toAddress) &&
-          fromContact.name.trim().length > 1 &&
-          fromContact.phone.trim().length > 6 &&
-          toContact.name.trim().length > 1 &&
-          toContact.phone.trim().length > 6
-        );
+        if (
+          !fromAddress ||
+          !toAddress ||
+          fromContact.name.trim().length <= 1 ||
+          fromContact.phone.trim().length <= 6 ||
+          toContact.name.trim().length <= 1 ||
+          toContact.phone.trim().length <= 6
+        ) {
+          return false;
+        }
+        if (USE_GROCERA_CHECKOUT && !getStorefrontAuthToken() && !isLikelyEmail(fromContact.email)) {
+          return false;
+        }
+        return true;
       default: return false;
     }
   };
@@ -320,20 +347,67 @@ const QuoteEngine = () => {
           insured_currency: "USD",
         };
       }
-      const resp = await apiPost<{
-        rates: ApiRate[];
-        pricing?: Partial<PricingMeta>;
-      }>("/api/quotes", body);
-      setRates(resp.rates ?? []);
-      if (
-        resp.pricing &&
-        typeof resp.pricing.markupMultiplier === "number" &&
-        typeof resp.pricing.listPriceMultiplier === "number"
-      ) {
-        setPricing({
-          markupMultiplier: resp.pricing.markupMultiplier,
-          listPriceMultiplier: resp.pricing.listPriceMultiplier,
-        });
+
+      if (USE_GROCERA_QUOTES) {
+        const fromSt = (derivedFromState || "CA").slice(0, 2).toUpperCase();
+        const toSt = (derivedToState || "NY").slice(0, 2).toUpperCase();
+        const gPayload: Record<string, unknown> = {
+          length: dims.length,
+          width: dims.width,
+          height: dims.height,
+          weight: Number(weight),
+          destinationZip: toZip.trim(),
+          destinationAddress: `100 Main St, City, ${toSt}`,
+          originZip: fromZip.trim(),
+          originAddress: `100 Sender Ave, City, ${fromSt}`,
+          destinationResidential: setAsResidential,
+          addInsurance: wantInsurance,
+          insuranceDeclaredValue: wantInsurance ? Number(insuredAmount) || declared : declared,
+        };
+        const gRes = await groceraApiPost<{
+          success?: boolean;
+          data?: {
+            quoteAmount: number;
+            currency?: string;
+            carrier?: string;
+            serviceName?: string;
+            easyshipRateId?: string;
+            minDeliveryDays?: number | null;
+            maxDeliveryDays?: number | null;
+          };
+          message?: string;
+        }>("/user/shipping/quote", gPayload, undefined);
+        if (!gRes?.success || !gRes.data || !(Number(gRes.data.quoteAmount) > 0)) {
+          throw new Error(gRes?.message || "Could not get a shipping quote.");
+        }
+        const d = gRes.data;
+        const single: ApiRate = {
+          courier_name: d.carrier || "ZippyyyShips",
+          courier_service_name: d.serviceName || "Estimate",
+          shipment_charge_total: Number(d.quoteAmount),
+          shipment_charge_total_currency: d.currency || "USD",
+          easyship_rate_id: d.easyshipRateId || "",
+          min_delivery_time: d.minDeliveryDays ?? null,
+          max_delivery_time: d.maxDeliveryDays ?? null,
+        };
+        setRates([single]);
+        setPricing(DEFAULT_PRICING);
+      } else {
+        const resp = await apiPost<{
+          rates: ApiRate[];
+          pricing?: Partial<PricingMeta>;
+        }>("/api/quotes", body);
+        setRates(resp.rates ?? []);
+        if (
+          resp.pricing &&
+          typeof resp.pricing.markupMultiplier === "number" &&
+          typeof resp.pricing.listPriceMultiplier === "number"
+        ) {
+          setPricing({
+            markupMultiplier: resp.pricing.markupMultiplier,
+            listPriceMultiplier: resp.pricing.listPriceMultiplier,
+          });
+        }
       }
     } catch (e) {
       setRatesError(formatQuotesFetchError(e));
@@ -346,6 +420,47 @@ const QuoteEngine = () => {
   const startCheckout = async () => {
     if (!selectedRateObj || !fromAddress || !toAddress || !dims || !Number(weight)) return;
     setCheckoutError(null);
+
+    if (USE_GROCERA_CHECKOUT) {
+      const token = getStorefrontAuthToken();
+      const declared = Number(declaredCustomsValue) || 50;
+      const payload: Record<string, unknown> = {
+        length: dims.length,
+        width: dims.width,
+        height: dims.height,
+        weight: Number(weight),
+        destinationZip: (toAddress.components.postalCode || toZip).trim(),
+        destinationAddress: toAddress.formattedAddress,
+        originZip: fromZip.trim(),
+        originAddress: fromAddress.formattedAddress || "",
+        destinationResidential: setAsResidential,
+        addInsurance: wantInsurance,
+        insuranceDeclaredValue: wantInsurance ? Number(insuredAmount) || declared : declared,
+        recipientName: toContact.name.trim(),
+        recipientPhone: toContact.phone.trim(),
+        recipientEmail: toContact.email.trim(),
+      };
+      if (!token) {
+        payload.guestName = fromContact.name.trim();
+        payload.guestEmail = fromContact.email.trim().toLowerCase();
+        payload.guestPhone = fromContact.phone.trim();
+      }
+      try {
+        const resp = await groceraApiPost<{ success?: boolean; url?: string; message?: string }>(
+          "/user/shipping/checkout",
+          payload,
+          token,
+        );
+        if (!resp?.success || !resp.url) {
+          throw new Error(resp?.message || "Checkout did not return a payment URL.");
+        }
+        window.location.href = resp.url;
+      } catch (e) {
+        setCheckoutError(parseApiErrorMessage(e));
+      }
+      return;
+    }
+
     const declared = Number(declaredCustomsValue) || 50;
     const draft: Record<string, unknown> = {
       from: toEasyshipAddress(fromAddress, fromContact),
@@ -871,7 +986,8 @@ const QuoteEngine = () => {
                       })}
                       {rates.length === 0 && (
                         <div className="bg-secondary rounded-2xl p-6 text-sm text-muted-foreground">
-                          No rates returned. Check addresses/parcel details.
+                          No rates returned. US quotes often need a real city (ZIP-only uses placeholders); confirm parcel size/weight
+                          and Easyship API access in the dashboard.
                         </div>
                       )}
                     </div>
@@ -967,7 +1083,11 @@ const QuoteEngine = () => {
                           <input
                             value={fromContact.email}
                             onChange={(e) => setFromContact({ ...fromContact, email: e.target.value })}
-                            placeholder="Email (optional)"
+                            placeholder={
+                              USE_GROCERA_CHECKOUT
+                                ? "Email (required for guest payment)"
+                                : "Email (optional)"
+                            }
                             className="w-full bg-secondary p-4 rounded-2xl text-foreground outline-none focus:ring-2 focus:ring-primary/50"
                           />
                         </div>
@@ -1067,68 +1187,72 @@ const QuoteEngine = () => {
                 <motion.div key="checkout" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}>
                   <h3 className="text-xl font-bold text-foreground mb-6">Confirm & Pay</h3>
 
-                  <div className="mb-6 rounded-2xl border border-border/50 bg-card/50 p-5">
-                    <div className="mb-3 flex items-center gap-2">
-                      <Tag className="text-primary" size={16} />
-                      <span className="text-sm font-semibold text-foreground">Promotion code</span>
-                    </div>
-                    <p className="mb-3 text-xs text-muted-foreground">
-                      Have a code? Apply it here before continuing — discounts are applied in secure Stripe Checkout.
-                    </p>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-                      <input
-                        value={promoInput}
-                        onChange={(e) => {
-                          setPromoInput(e.target.value);
-                          setPromoError(null);
-                          setAppliedPromoCode(null);
-                        }}
-                        placeholder="Enter code"
-                        className="min-h-[48px] flex-1 rounded-2xl bg-secondary px-4 font-mono text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/50"
-                        disabled={promoApplying}
-                      />
-                      <motion.button
-                        type="button"
-                        onClick={() => void applyPromoCode()}
-                        disabled={promoApplying || !promoInput.trim()}
-                        whileHover={{ scale: promoApplying ? 1 : 1.02 }}
-                        whileTap={{ scale: promoApplying ? 1 : 0.98 }}
-                        className="rounded-2xl bg-secondary px-5 py-3 text-sm font-semibold text-foreground ring-1 ring-border hover:bg-primary/10 disabled:opacity-40"
-                      >
-                        {promoApplying ? "Checking…" : "Apply"}
-                      </motion.button>
-                    </div>
-                    {promoError && <p className="mt-2 text-xs text-destructive">{promoError}</p>}
-                    {appliedPromoCode && !promoError && (
-                      <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                        “{appliedPromoCode}” applied — your discount will show on the next screen.
+                  {!USE_GROCERA_CHECKOUT && (
+                    <div className="mb-6 rounded-2xl border border-border/50 bg-card/50 p-5">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Tag className="text-primary" size={16} />
+                        <span className="text-sm font-semibold text-foreground">Promotion code</span>
+                      </div>
+                      <p className="mb-3 text-xs text-muted-foreground">
+                        Have a code? Apply it here before continuing — discounts are applied in secure Stripe Checkout.
                       </p>
-                    )}
-                  </div>
-
-                  <div className="bg-secondary/70 rounded-2xl p-5 mb-6">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Heart className="text-primary" size={16} />
-                      <span className="font-semibold text-sm text-foreground">Support your shippers</span>
-                    </div>
-                    <div className="flex gap-2">
-                      {TIP_OPTIONS.map((t, i) => (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                        <input
+                          value={promoInput}
+                          onChange={(e) => {
+                            setPromoInput(e.target.value);
+                            setPromoError(null);
+                            setAppliedPromoCode(null);
+                          }}
+                          placeholder="Enter code"
+                          className="min-h-[48px] flex-1 rounded-2xl bg-secondary px-4 font-mono text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+                          disabled={promoApplying}
+                        />
                         <motion.button
-                          key={t.label}
-                          onClick={() => setTip(tip === i ? null : i)}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                            tip === i
-                              ? "bg-primary text-primary-foreground shadow-glow"
-                              : "bg-card text-foreground hover:bg-primary/10"
-                          }`}
+                          type="button"
+                          onClick={() => void applyPromoCode()}
+                          disabled={promoApplying || !promoInput.trim()}
+                          whileHover={{ scale: promoApplying ? 1 : 1.02 }}
+                          whileTap={{ scale: promoApplying ? 1 : 0.98 }}
+                          className="rounded-2xl bg-secondary px-5 py-3 text-sm font-semibold text-foreground ring-1 ring-border hover:bg-primary/10 disabled:opacity-40"
                         >
-                          {t.label}
+                          {promoApplying ? "Checking…" : "Apply"}
                         </motion.button>
-                      ))}
+                      </div>
+                      {promoError && <p className="mt-2 text-xs text-destructive">{promoError}</p>}
+                      {appliedPromoCode && !promoError && (
+                        <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                          “{appliedPromoCode}” applied — your discount will show on the next screen.
+                        </p>
+                      )}
                     </div>
-                  </div>
+                  )}
+
+                  {!USE_GROCERA_CHECKOUT && (
+                    <div className="bg-secondary/70 rounded-2xl p-5 mb-6">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Heart className="text-primary" size={16} />
+                        <span className="font-semibold text-sm text-foreground">Support your shippers</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {TIP_OPTIONS.map((t, i) => (
+                          <motion.button
+                            key={t.label}
+                            onClick={() => setTip(tip === i ? null : i)}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                              tip === i
+                                ? "bg-primary text-primary-foreground shadow-glow"
+                                : "bg-card text-foreground hover:bg-primary/10"
+                            }`}
+                          >
+                            {t.label}
+                          </motion.button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="border-t border-border pt-4 space-y-3">
                     <div className="flex justify-between gap-3 text-sm">
@@ -1172,7 +1296,7 @@ const QuoteEngine = () => {
                         ${getTotal()}
                       </motion.span>
                     </div>
-                    {appliedPromoCode && (
+                    {!USE_GROCERA_CHECKOUT && appliedPromoCode && (
                       <p className="text-[11px] text-muted-foreground">
                         Promo discounts apply to the Stripe payment step; total above is before your code.
                       </p>
@@ -1190,7 +1314,7 @@ const QuoteEngine = () => {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => void startCheckout()}
-                    disabled={!selectedRateObj || promoApplying}
+                    disabled={!selectedRateObj || (!USE_GROCERA_CHECKOUT && promoApplying)}
                   >
                     <motion.div
                       className="absolute inset-0 bg-gradient-to-r from-transparent via-primary-foreground/20 to-transparent"

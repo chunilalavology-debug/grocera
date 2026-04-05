@@ -2,13 +2,16 @@ const formatStatusLabel = (status) => {
   const map = {
     pending: "Pending",
     confirmed: "Confirmed",
-    processing: "Processed",
+    processing: "Processing",
+    on_hold: "On hold",
     packed: "Packed",
     shipped: "Shipped",
     on_the_way: "On the way",
     delivered: "Delivered",
+    completed: "Completed",
     cancelled: "Cancelled",
     refunded: "Refunded",
+    failed: "Failed",
   };
   return map[status] || String(status || "Updated");
 };
@@ -18,15 +21,20 @@ const statusIntro = (status) => {
     pending: "We have received your order and are preparing it.",
     confirmed: "Your order has been confirmed and payment has been verified.",
     processing: "Your order is being processed at our fulfillment center.",
+    on_hold: "Your order is on hold. We'll notify you when it moves forward.",
     packed: "Your items are packed and ready to dispatch.",
     shipped: "Your order has been shipped from our warehouse.",
     on_the_way: "Your package is out for delivery.",
     delivered: "Your order has been delivered successfully.",
+    completed: "Your order is complete. Thank you for shopping with us.",
     cancelled: "Your order has been cancelled as requested.",
     refunded: "Your order has been refunded.",
+    failed: "There was an issue with your order. Please contact support if you need help.",
   };
   return map[status] || "Your order status has been updated.";
 };
+
+const { getCustomerName } = require("../orderEmailUtils");
 
 const userOrderStatusUpdate = (order, status) => {
   const safeItems = Array.isArray(order?.items) ? order.items : [];
@@ -67,7 +75,7 @@ const userOrderStatusUpdate = (order, status) => {
       </tr>
       <tr>
         <td style="padding:22px 24px;">
-          <p style="margin:0 0 12px 0;color:#0f172a;font-size:15px;">Hi ${order?.userId?.name || "Customer"},</p>
+          <p style="margin:0 0 12px 0;color:#0f172a;font-size:15px;">Hi ${getCustomerName(order)},</p>
           <p style="margin:0 0 16px 0;color:#475569;font-size:14px;line-height:1.6;">${statusIntro(status)}</p>
           ${trackingRow}
           <div style="margin-top:14px;padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">

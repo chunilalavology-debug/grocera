@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard,
@@ -8,7 +8,6 @@ import {
   Users,
   MessageSquare,
   FileText,
-  Tag,
   Gift,
   Zap,
   SlidersHorizontal,
@@ -20,12 +19,20 @@ import {
   ChevronRight,
   ChevronDown,
   User,
+  Settings,
 } from 'lucide-react';
+import '../styles/admin-tokens.css';
 import './AdminLayout.css';
+import AdminUserAvatar from './AdminUserAvatar';
 
-const NAV_ITEMS = [
-  { to: '/admin/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { to: '/admin/products', label: 'Products', icon: Package },
+const PRODUCT_SUBLINKS = [
+  { to: '/admin/products', label: 'All products', end: false },
+  { to: '/admin/categories', label: 'Categories', end: false },
+];
+
+const NAV_ITEMS_BEFORE_PRODUCTS = [{ to: '/admin/dashboard', label: 'Overview', icon: LayoutDashboard }];
+
+const NAV_ITEMS_AFTER_PRODUCTS = [
   { to: '/admin/orders', label: 'Orders', icon: ClipboardList },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/messages', label: 'Messages', icon: MessageSquare },
@@ -33,15 +40,38 @@ const NAV_ITEMS = [
   { to: '/admin/voucher', label: 'Vouchers', icon: Gift },
   { to: '/admin/deals', label: 'Deals', icon: Zap },
   { to: '/admin/slider-settings', label: 'Slider Settings', icon: SlidersHorizontal },
-  { to: '/admin/categories', label: 'Categories', icon: Tag },
+];
+
+const SETTINGS_SUBLINKS = [
+  { to: '/admin/settings/general', label: 'General', end: true },
+  { to: '/admin/settings/profile', label: 'Profile', end: true },
+  { to: '/admin/settings', label: 'Notifications & homepage', end: true },
+  { to: '/admin/settings/email', label: 'Email & SMTP', end: false },
+  { to: '/admin/settings/templates', label: 'Email templates', end: false },
 ];
 
 function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const path = location.pathname;
+  const messagesFullBleed = path.startsWith('/admin/messages');
+  const catalogFullBleed = path.startsWith('/admin/products') || path.startsWith('/admin/categories');
+  const inProductArea = catalogFullBleed;
+  const inSettingsArea = path.startsWith('/admin/settings');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [productsNavOpen, setProductsNavOpen] = useState(inProductArea);
+  const [settingsNavOpen, setSettingsNavOpen] = useState(inSettingsArea);
   const userMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (inProductArea) setProductsNavOpen(true);
+  }, [inProductArea]);
+
+  useEffect(() => {
+    if (inSettingsArea) setSettingsNavOpen(true);
+  }, [inSettingsArea]);
 
   const handleLogout = () => {
     logout();
@@ -93,7 +123,7 @@ function AdminLayout() {
           <nav className="admin-sidebar__nav" aria-label="Admin navigation">
             <span className="admin-sidebar__nav-label">Menu</span>
             <ul className="admin-sidebar__nav-list">
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+              {NAV_ITEMS_BEFORE_PRODUCTS.map(({ to, label, icon: Icon }) => (
                 <li key={to}>
                   <NavLink
                     to={to}
@@ -111,6 +141,107 @@ function AdminLayout() {
                   </NavLink>
                 </li>
               ))}
+
+              <li className="admin-sidebar__nav-group">
+                <button
+                  type="button"
+                  className={`admin-sidebar__group-toggle ${inProductArea ? 'admin-sidebar__group-toggle--within' : ''}`}
+                  aria-expanded={productsNavOpen}
+                  onClick={() => setProductsNavOpen((o) => !o)}
+                >
+                  <span className="admin-sidebar__link-icon">
+                    <Package size={20} strokeWidth={2} />
+                  </span>
+                  <span className="admin-sidebar__link-text">Products</span>
+                  <ChevronDown
+                    size={18}
+                    className={`admin-sidebar__group-chevron ${productsNavOpen ? 'admin-sidebar__group-chevron--open' : ''}`}
+                    aria-hidden
+                  />
+                </button>
+                <div
+                  className={`admin-sidebar__sublinks-wrapper ${productsNavOpen ? 'admin-sidebar__sublinks-wrapper--open' : ''}`}
+                >
+                  <div className="admin-sidebar__sublinks-inner">
+                    <ul className="admin-sidebar__sublinks">
+                      {PRODUCT_SUBLINKS.map(({ to, label, end }) => (
+                        <li key={to}>
+                          <NavLink
+                            to={to}
+                            end={end}
+                            className={({ isActive }) =>
+                              `admin-sidebar__sublink ${isActive ? 'admin-sidebar__sublink--active' : ''}`
+                            }
+                            onClick={() => setSidebarOpen(false)}
+                          >
+                            {label}
+                          </NavLink>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </li>
+
+              {NAV_ITEMS_AFTER_PRODUCTS.map(({ to, label, icon: Icon }) => (
+                <li key={to}>
+                  <NavLink
+                    to={to}
+                    end={to === '/admin/dashboard'}
+                    className={({ isActive }) =>
+                      `admin-sidebar__link ${isActive ? 'admin-sidebar__link--active' : ''}`
+                    }
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    <span className="admin-sidebar__link-icon">
+                      <Icon size={20} strokeWidth={2} />
+                    </span>
+                    <span className="admin-sidebar__link-text">{label}</span>
+                    <ChevronRight size={16} className="admin-sidebar__link-chevron" />
+                  </NavLink>
+                </li>
+              ))}
+
+              <li className="admin-sidebar__nav-group">
+                <button
+                  type="button"
+                  className={`admin-sidebar__group-toggle ${inSettingsArea ? 'admin-sidebar__group-toggle--within' : ''}`}
+                  aria-expanded={settingsNavOpen}
+                  onClick={() => setSettingsNavOpen((o) => !o)}
+                >
+                  <span className="admin-sidebar__link-icon">
+                    <Settings size={20} strokeWidth={2} />
+                  </span>
+                  <span className="admin-sidebar__link-text">Settings</span>
+                  <ChevronDown
+                    size={18}
+                    className={`admin-sidebar__group-chevron ${settingsNavOpen ? 'admin-sidebar__group-chevron--open' : ''}`}
+                    aria-hidden
+                  />
+                </button>
+                <div
+                  className={`admin-sidebar__sublinks-wrapper ${settingsNavOpen ? 'admin-sidebar__sublinks-wrapper--open' : ''}`}
+                >
+                  <div className="admin-sidebar__sublinks-inner">
+                    <ul className="admin-sidebar__sublinks">
+                      {SETTINGS_SUBLINKS.map(({ to, label, end }) => (
+                        <li key={to}>
+                          <NavLink
+                            to={to}
+                            end={Boolean(end)}
+                            className={({ isActive }) =>
+                              `admin-sidebar__sublink ${isActive ? 'admin-sidebar__sublink--active' : ''}`
+                            }
+                            onClick={() => setSidebarOpen(false)}
+                          >
+                            {label}
+                          </NavLink>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </li>
             </ul>
           </nav>
 
@@ -126,9 +257,7 @@ function AdminLayout() {
               <span>View store</span>
             </Link>
             <div className="admin-sidebar__user">
-              <div className="admin-sidebar__user-avatar">
-                {(user?.name || user?.email || 'A').charAt(0).toUpperCase()}
-              </div>
+              <AdminUserAvatar user={user} className="admin-sidebar__user-avatar" />
               <div className="admin-sidebar__user-info">
                 <span className="admin-sidebar__user-name">{user?.name || 'Admin'}</span>
                 <span className="admin-sidebar__user-email">{user?.email}</span>
@@ -175,9 +304,7 @@ function AdminLayout() {
                 aria-haspopup="menu"
                 aria-expanded={userMenuOpen}
               >
-                <span className="admin-topbar__avatar" aria-hidden>
-                  {(user?.name || user?.email || 'A').charAt(0).toUpperCase()}
-                </span>
+                <AdminUserAvatar user={user} className="admin-topbar__avatar" aria-hidden />
                 <span className="admin-topbar__user-name">{user?.name || user?.email || 'Admin'}</span>
                 <ChevronDown size={16} className={`admin-topbar__user-chevron ${userMenuOpen ? 'is-open' : ''}`} />
               </button>
@@ -185,13 +312,13 @@ function AdminLayout() {
               {userMenuOpen && (
                 <div className="admin-topbar__dropdown" role="menu" aria-label="User menu">
                   <Link
-                    to="/profile"
+                    to="/admin/settings/profile"
                     className="admin-topbar__dropdown-item"
                     role="menuitem"
                     onClick={() => setUserMenuOpen(false)}
                   >
                     <User size={16} />
-                    <span>Profile</span>
+                    <span>Profile settings</span>
                   </Link>
                   <button
                     type="button"
@@ -208,7 +335,11 @@ function AdminLayout() {
           </div>
         </header>
 
-        <main className="admin-main">
+        <main
+          className={`admin-main${messagesFullBleed ? ' admin-main--messages-bleed' : ''}${
+            catalogFullBleed ? ' admin-main--catalog-bleed' : ''
+          }`}
+        >
           <Outlet />
         </main>
       </div>

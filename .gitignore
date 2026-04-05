@@ -9,6 +9,12 @@ node_modules/
 .env.*.local
 backend/.env
 frontend/.env.production
+frontend/.env.development.local
+frontend/.env.production.local
+frontend/zippyyy-ships-ui/.env
+frontend/zippyyy-ships-ui/.env.local
+frontend/zippyyy-ships-ui/.env.production
+frontend/zippyyy-ships-ui/.env.production.local
 
 # Firebase / GCP keys (never commit)
 backend/utils/serviceAccount.json

@@ -220,12 +220,8 @@ const createProduct = async (req, res) => {
       ? productData.tags
       : [];
 
-    console.log("📦 Normalized productData:", productData);
-
     const product = new Products(productData);
     await product.save();
-
-    console.log(`✅ Product created: ${product.name} by ${req.user.role}: ${req.user.email}`);
 
     res.status(201).json({
       success: true,

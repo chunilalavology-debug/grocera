@@ -22,6 +22,8 @@ export const QuoteRequestSchema = z.object({
 export const SelectedRateSchema = z.object({
   courier_name: z.string().min(1),
   courier_service_name: z.string().optional(),
+  /** Easyship v2024+ courier service UUID (from rate `courier_service.id`). */
+  courier_service_id: z.string().uuid().optional(),
   shipment_charge_total: z.number().nonnegative(),
   shipment_charge_total_currency: z.string().min(3).max(3),
   easyship_rate_id: z.string().optional(),

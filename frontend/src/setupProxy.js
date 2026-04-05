@@ -57,10 +57,20 @@ function getGroceryProxyTarget() {
  * is taken set PORT=5001 in backend/.env and REACT_APP_API_URL=http://localhost:5001/api
  * in frontend/.env.local (restart npm start).
  */
+function getShipsProxyTarget() {
+  const raw = String(process.env.REACT_APP_SHIPS_API_PROXY || 'http://127.0.0.1:3001').trim();
+  return normalizeLoopbackTarget(raw.replace(/\/+$/, ''));
+}
+
 module.exports = function setupProxy(app) {
   const target = getGroceryProxyTarget();
-  // eslint-disable-next-line no-console
-  console.log('[setupProxy] /api and /uploads →', target);
+  const shipsTarget = getShipsProxyTarget();
+  if (process.env.NODE_ENV === 'development') {
+    // eslint-disable-next-line no-console
+    console.log('[setupProxy] /api and /uploads →', target);
+    // eslint-disable-next-line no-console
+    console.log('[setupProxy] Zippyyy Ships /api/quotes|checkout|shipments|stripe →', shipsTarget);
+  }
 
   const groceryProxy = createProxyMiddleware({
     target,
@@ -82,6 +92,37 @@ module.exports = function setupProxy(app) {
       );
     },
   });
+
+  /**
+   * Embedded zippyyy-ships-app calls the standalone Ships Express API (/api/quotes, etc.).
+   * Those must NOT hit the grocery API (JWT would return 401 on /api/quotes).
+   * Match Vite dev proxy in zippyyy-ships-ui (port 3001 by default).
+   */
+  const shipsProxy = createProxyMiddleware({
+    target: shipsTarget,
+    changeOrigin: true,
+    proxyTimeout: 90_000,
+    onError(err, req, res) {
+      if (res.headersSent) return;
+      const hint =
+        `Zippyyy Ships API not reachable at ${shipsTarget}. Run: cd grocera/backend/zippyyy-ships-server && npm start (needs EASYSHIP_API_KEY), or set REACT_APP_SHIPS_API_PROXY to your ships URL, or rely on grocery quote fallback after rebuilding zippyyy-ships-ui.`;
+      console.error('[setupProxy] ships', err.code || err.message, '→', req.method, req.url);
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          error: 'SHIPS_UPSTREAM_UNREACHABLE',
+          message: hint,
+          code: err.code || 'EPROXY',
+        })
+      );
+    },
+  });
+
+  app.use('/api/quotes', shipsProxy);
+  app.use('/api/checkout', shipsProxy);
+  app.use('/api/shipments', shipsProxy);
+  app.use('/api/stripe', shipsProxy);
+  app.use('/api/easyship', shipsProxy);
 
   app.use('/api', groceryProxy);
   app.use('/uploads', groceryProxy);

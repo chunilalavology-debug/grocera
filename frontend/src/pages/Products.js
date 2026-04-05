@@ -14,6 +14,8 @@ import {
 } from '../utils/featuredCategoriesResponse';
 import ScrollReveal from '../components/ScrollReveal';
 import StarRating from '../components/StarRating';
+import { getProductCardDiscountPercent } from '../utils/productDiscountDisplay';
+import { productCardBadgeFromApi } from '../utils/productCardBadge';
 
 function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -302,7 +304,10 @@ function Products() {
         if (hasValidMin && numPrice < minPriceNum) return false;
         if (hasValidMax && numPrice > maxPriceNum) return false;
       }
-      if (inStockOnly && (p.inStock === false || String(p.inStock).toLowerCase() === 'false')) return false;
+      if (inStockOnly) {
+        if (p.inStock === false || String(p.inStock).toLowerCase() === 'false') return false;
+        if ((Number(p.quantity) || 0) <= 0) return false;
+      }
       return true;
     })
     .sort((a, b) => {
@@ -596,44 +601,26 @@ function Products() {
             {filteredProducts.map((product, index) => {
               const productId = product._id || product.id;
               const price = product.hasDeal ? product.finalPrice : product.price;
-              const dealDiscountPct = product.dealId?.dealType === 'PERCENT' && product.dealId?.discountValue != null
-                ? Number(product.dealId.discountValue)
-                : product.hasDeal && product.originalPrice > 0
-                  ? Math.round((1 - product.finalPrice / product.originalPrice) * 100)
-                  : 0;
-              const originalPrice = product.originalPrice ?? product.compareAtPrice;
-              const computedPct = (originalPrice != null && originalPrice > 0 && price < originalPrice)
-                ? Math.round((1 - price / originalPrice) * 100)
-                : 0;
-              const discountPct = product.discountPercentage != null ? Number(product.discountPercentage) : (dealDiscountPct || computedPct);
-              const displayDiscountPct = Math.max(0, Number(discountPct) || 0);
+              const cardDiscountPct = getProductCardDiscountPercent(product);
               const inStock = product.inStock !== false;
-              const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
-              const isNewlyAdded = (() => {
-                const date = product.createdAt || product.addedAt || product.created_at;
-                if (!date) return false;
-                return new Date(date).getTime() >= Date.now() - FIFTEEN_DAYS_MS;
-              })();
-              const orderCount = Number(product.orderCount ?? product.timesOrdered ?? product.salesCount ?? 0) || 0;
-              const isHot = orderCount > 5;
-              const rightBadge = !inStock ? null : isHot ? 'hot' : isNewlyAdded ? 'new' : 'sale';
+              const badgeInfo = !inStock ? null : productCardBadgeFromApi(product);
               return (
                 <ScrollReveal key={productId}>
                 <div
                   className="group relative bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:border-slate-300/80 transition-all duration-300 flex flex-col overflow-hidden w-full"
                 >
-                  {/* Top-left: same discount % for all products */}
-                  <span
-                    className="product-card__discount-tag absolute top-0 left-0 z-20 text-white text-xs font-bold pl-3 pr-4 py-1.5 min-w-[3rem] text-center rounded-tl-none rounded-bl-none rounded-tr-none rounded-br-xl shadow-sm"
-                    style={{ backgroundColor: '#e9aa42', color: '#fff' }}
-                  >
-                    {displayDiscountPct}%
-                  </span>
-                  {/* Top-right: single badge only – Hot (>5 orders) > New (≤15 days) > Sale (in stock) */}
-                  {rightBadge && (
+                  {cardDiscountPct > 0 && (
+                    <span
+                      className="product-card__discount-tag absolute top-0 left-0 z-20 text-white text-xs font-bold pl-3 pr-4 py-1.5 min-w-[3rem] text-center rounded-tl-none rounded-bl-none rounded-tr-none rounded-br-xl shadow-sm"
+                      style={{ backgroundColor: '#e9aa42', color: '#fff' }}
+                    >
+                      {cardDiscountPct}%
+                    </span>
+                  )}
+                  {badgeInfo && (
                     <div className="absolute top-0 right-0 z-20 pointer-events-none flex flex-col items-end gap-1">
                       <span className="product-card__sale-tag inline-block text-[11px] font-bold uppercase tracking-wide px-4 py-1.5 rounded-tr-xl rounded-br-none rounded-bl-xl rounded-tl-none text-white shadow-sm" style={{ backgroundColor: '#3090cf' }}>
-                        {rightBadge === 'hot' ? 'Hot' : rightBadge === 'new' ? 'New' : 'Sale'}
+                        {badgeInfo.label}
                       </span>
                     </div>
                   )}

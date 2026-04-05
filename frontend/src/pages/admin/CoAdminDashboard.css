@@ -3,8 +3,7 @@
   max-width: 1400px;
   margin: 0 auto;
   min-height: 100vh;
-  color: #333;
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--text-dark, #0f172a);
   animation: fadeIn 0.6s ease-out;
 }
 
@@ -15,18 +14,18 @@
   align-items: stretch;
   margin-bottom: 30px;
   padding: 20px;
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  background: linear-gradient(135deg, #3090cf 0%, #246fa0 100%);
   border-radius: 15px;
   color: white;
-  box-shadow: 0 10px 30px rgba(52, 152, 219, 0.3);
+  box-shadow: 0 8px 24px rgba(48, 144, 207, 0.25);
 }
 
 .dashboard-header h1 {
   margin: 0;
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: 700;
   text-align: center;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  letter-spacing: -0.02em;
 }
 
 .tab-buttons {
@@ -61,19 +60,19 @@
 
 .tab-buttons button.active {
   background: rgba(255, 255, 255, 0.95);
-  color: #3498db;
+  color: #3090cf;
   border-color: #fff;
   box-shadow: 0 4px 15px rgba(255, 255, 255, 0.4);
   font-weight: 700;
 }
 
 .tab-buttons button .badge {
-  background: #e74c3c;
+  background: #0f172a;
   color: #fff;
   padding: 4px 10px;
   border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: bold;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .notifications-container {
@@ -89,11 +88,11 @@
 }
 
 .notification-card {
-  background: rgba(46, 204, 113, 0.95);
+  background: rgba(48, 144, 207, 0.95);
   color: #fff;
   padding: 16px;
   border-radius: 12px;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 25px rgba(15, 23, 42, 0.2);
   backdrop-filter: blur(10px);
   animation: slideIn 0.4s ease-out;
   font-weight: 500;
@@ -112,15 +111,15 @@
 }
 
 .error-message {
-  background: #ffebee;
-  border: 2px solid #e74c3c;
-  color: #c0392b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
   padding: 16px;
   border-radius: 12px;
   margin-bottom: 20px;
   font-weight: 500;
   text-align: center;
-  box-shadow: 0 4px 15px rgba(231, 76, 60, 0.15);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .orders-section,
@@ -134,12 +133,11 @@
 
 .orders-section h2,
 .products-section h2 {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #2c3e50;
-  /* margin: 0 0 20px 0; */
-  /* padding-bottom: 12px; */
-  border-bottom: 3px solid #3498db;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #0f172a;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 0.75rem;
 }
 
 .section-header {
@@ -158,18 +156,19 @@
   padding: 14px 28px;
   border-radius: 12px;
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: 0.875rem;
   font-weight: 600;
-  transition: all 0.3s ease;
-  box-shadow: 0 6px 20px rgba(39, 174, 96, 0.3);
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(48, 144, 207, 0.25);
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
 .btn-add:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 30px rgba(39, 174, 96, 0.4);
+  transform: translateY(-1px);
+  background: #246fa0;
+  box-shadow: 0 4px 12px rgba(48, 144, 207, 0.3);
 }
 
 /* Orders Grid */
@@ -188,9 +187,9 @@
 }
 
 .order-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 12px 30px rgba(52, 152, 219, 0.2);
-  border-color: #3498db;
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
 }
 
 .order-header {
@@ -203,28 +202,23 @@
 }
 
 .order-number {
-  font-weight: bold;
-  color: #3498db;
-  font-size: 1.2rem;
+  font-weight: 600;
+  color: #3090cf;
+  font-size: 1rem;
 }
 
 .status-badge {
   padding: 6px 14px;
   border-radius: 20px;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
 }
 
-.status-badge.pending {
-  background: #fff3cd;
-  color: #f39c12;
-  border: 1px solid #ffeaa7;
-}
-
+.status-badge.pending,
 .status-badge.confirmed {
-  background: #d5f5e3;
-  color: #27ae60;
-  border: 1px solid #a8e6cf;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
 }
 
 .order-info p {
@@ -234,7 +228,7 @@
 }
 
 .order-info p strong {
-  color: #3498db;
+  color: #3090cf;
 }
 
 .products-table .co-table-row div {
@@ -257,10 +251,12 @@
   grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 1.8fr;
   gap: 16px;
   padding: 16px 24px;
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-  color: white;
+  background: #f1f5f9;
+  color: #475569;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   display: none;
 }
 
@@ -275,7 +271,7 @@
 }
 
 .co-table-row:hover {
-  background: #f1f8ff;
+  background: #f8fafc;
 }
 
 .co-table-row:last-child {
@@ -306,28 +302,30 @@
 }
 
 .btn-edit {
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  background: #3090cf;
   color: white;
 }
 
 .btn-edit:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+  background: #246fa0;
 }
 
 .btn-delete {
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-  color: white;
+  background: #ffffff;
+  color: #475569;
+  border: 2px solid #e2e8f0;
 }
 
 .btn-delete:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
 }
 
 .status-badge.in-stock {
-  background: #d5f5e3;
-  color: var(--primary-color);
+  background: #eff6ff;
+  color: #3090cf;
+  border: 1px solid #bfdbfe;
   padding: 9px 8px;
   border-radius: 20px;
   font-size: 0.85rem;
@@ -335,8 +333,9 @@
 }
 
 .status-badge.out-of-stock {
-  background: #ffebee;
-  color: #e74c3c;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 0.85rem;
@@ -379,14 +378,14 @@
   .co-table-row>div::before {
     content: attr(data-label);
     font-weight: 600;
-    color: #3498db;
+    color: #3090cf;
     min-width: 100px;
   }
 
   .co-table-row>.co-category::before {
     content: attr(data-label);
     font-weight: 600;
-    color: #3498db;
+    color: #3090cf;
     min-width: 100px;
     display: inline-block;
   }

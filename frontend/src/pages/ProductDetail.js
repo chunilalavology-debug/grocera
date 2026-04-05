@@ -7,6 +7,8 @@ import toast from 'react-hot-toast';
 import { ChevronLeft, ChevronRight, ShoppingCart, Info, Heart, ZoomIn, Star } from 'lucide-react';
 import { saveRecentlyViewedProduct } from './home/components/RecentlyViewedProducts';
 import StarRating from '../components/StarRating';
+import { getProductCardDiscountPercent } from '../utils/productDiscountDisplay';
+import { productCardBadgeFromApi } from '../utils/productCardBadge';
 const SITE_COLOR = '#3090cf';
 const SITE_COLOR_HOVER = '#2680b8';
 const STAR_GOLD = '#f5c542';
@@ -167,12 +169,19 @@ function ProductDetail() {
     const fetchProduct = async () => {
       try {
         setLoading(true);
-        const response = await api.get(`/user/products/getById?id=${id}`);
-        const data = response.data || response.product || response;
-        setProduct(data);
-      } catch {
-        setProduct(null);
         setError(null);
+        const response = await api.get(`/user/products/getById?id=${id}`);
+        const data = response?.data ?? response?.product ?? response;
+        if (response?.success && data && (data._id || data.id)) {
+          setProduct(data);
+          setError(null);
+        } else {
+          setProduct(null);
+          setError(response?.message || 'Product not found');
+        }
+      } catch (e) {
+        setProduct(null);
+        setError(e?.message || 'Product not found');
       } finally {
         setLoading(false);
       }
@@ -242,7 +251,10 @@ function ProductDetail() {
 
   if (error || !product) return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center bg-[#f8fafc]">
-      <h2 className="text-2xl font-bold text-slate-800">Product Not Found</h2>
+      <h2 className="text-2xl font-bold text-slate-800">
+        {error && /unavailable/i.test(String(error)) ? 'Product unavailable' : 'Product not found'}
+      </h2>
+      {error ? <p className="text-slate-500 mt-2 max-w-md">{error}</p> : null}
       <button onClick={() => navigate('/products')} className="mt-4 px-6 py-2.5 rounded-xl text-white font-semibold transition-colors hover:opacity-90" style={{ backgroundColor: SITE_COLOR }}>Back to Shop</button>
     </div>
   );
@@ -356,8 +368,22 @@ function ProductDetail() {
             </div>
 
             <div className="p-6 lg:p-10 flex flex-col border-t lg:border-t-0 lg:border-l border-slate-100">
-              {product.hasDeal && (
-                <span className="inline-block px-3 py-1 rounded-lg text-xs font-bold text-white mb-3 bg-rose-500">Sale!</span>
+              {(() => {
+                const b = productCardBadgeFromApi(product);
+                if (!b) return null;
+                return (
+                  <span
+                    className="inline-block px-3 py-1 rounded-lg text-xs font-bold text-white mb-2"
+                    style={{ backgroundColor: SITE_COLOR }}
+                  >
+                    {b.label}
+                  </span>
+                );
+              })()}
+              {product.hasDeal && getProductCardDiscountPercent(product) > 0 && (
+                <span className="inline-block px-3 py-1 rounded-lg text-xs font-bold text-white mb-3 bg-rose-500">
+                  {getProductCardDiscountPercent(product)}% off
+                </span>
               )}
               <h1 className="text-2xl sm:text-3xl lg:text-[1.75rem] font-extrabold text-slate-900 leading-tight tracking-tight mb-2">
                 {product.name}
@@ -725,21 +751,9 @@ function ProductDetail() {
                 {relatedProducts.map((p, index) => {
                   const pid = p._id || p.id;
                   const price = p.hasDeal ? p.finalPrice : p.price;
-                  const dealDiscountPct = p.dealId?.dealType === 'PERCENT' && p.dealId?.discountValue != null ? Number(p.dealId.discountValue) : p.hasDeal && p.originalPrice > 0 ? Math.round((1 - p.finalPrice / p.originalPrice) * 100) : 0;
-                  const originalPrice = p.originalPrice ?? p.compareAtPrice;
-                  const computedPct = (originalPrice != null && originalPrice > 0 && price < originalPrice) ? Math.round((1 - price / originalPrice) * 100) : 0;
-                  const discountPct = p.discountPercentage != null ? Number(p.discountPercentage) : (dealDiscountPct || computedPct);
-                  const displayDiscountPct = Math.max(0, Number(discountPct) || 0);
+                  const cardDiscountPct = getProductCardDiscountPercent(p);
                   const inStock = p.inStock !== false;
-                  const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
-                  const isNewlyAdded = (() => {
-                    const date = p.createdAt || p.addedAt || p.created_at;
-                    if (!date) return false;
-                    return new Date(date).getTime() >= Date.now() - FIFTEEN_DAYS_MS;
-                  })();
-                  const orderCount = Number(p.orderCount ?? p.timesOrdered ?? p.salesCount ?? 0) || 0;
-                  const isHot = orderCount > 5;
-                  const rightBadge = !inStock ? null : isHot ? 'hot' : isNewlyAdded ? 'new' : 'sale';
+                  const badgeInfo = !inStock ? null : productCardBadgeFromApi(p);
                   const reviewCount = p.reviews?.length ?? p.reviewCount ?? 0;
                   const avgRating = reviewCount
                     ? (p.reviews || []).reduce((a, r) => a + (Number(r?.rating) || 0), 0) / (p.reviews?.length || 1)
@@ -749,13 +763,15 @@ function ProductDetail() {
                       key={pid}
                       className="group relative bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:border-slate-300/80 transition-all duration-300 flex flex-col overflow-hidden w-full"
                     >
-                      <span className="product-card__discount-tag absolute top-0 left-0 z-20 text-white text-xs font-bold pl-3 pr-4 py-1.5 min-w-[3rem] text-center rounded-tl-none rounded-bl-none rounded-tr-none rounded-br-xl shadow-sm" style={{ backgroundColor: '#e9aa42', color: '#fff' }}>
-                        {displayDiscountPct}%
-                      </span>
-                      {rightBadge && (
+                      {cardDiscountPct > 0 && (
+                        <span className="product-card__discount-tag absolute top-0 left-0 z-20 text-white text-xs font-bold pl-3 pr-4 py-1.5 min-w-[3rem] text-center rounded-tl-none rounded-bl-none rounded-tr-none rounded-br-xl shadow-sm" style={{ backgroundColor: '#e9aa42', color: '#fff' }}>
+                          {cardDiscountPct}%
+                        </span>
+                      )}
+                      {badgeInfo && (
                         <div className="absolute top-0 right-0 z-20 pointer-events-none flex flex-col items-end gap-1">
                           <span className="product-card__sale-tag inline-block text-[11px] font-bold uppercase tracking-wide px-4 py-1.5 rounded-tr-xl rounded-br-none rounded-bl-xl rounded-tl-none text-white shadow-sm" style={{ backgroundColor: SITE_COLOR }}>
-                            {rightBadge === 'hot' ? 'Hot' : rightBadge === 'new' ? 'New' : 'Sale'}
+                            {badgeInfo.label}
                           </span>
                         </div>
                       )}

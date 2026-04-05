@@ -2,37 +2,35 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import api from "../../../services/api";
+import { resolveBrandingAssetUrl } from "../../../utils/brandingAssets";
 
-import slide1 from "../../../assets-copy/home/slide1.png";
-import slide3 from "../../../assets-copy/home/slide3.png";
-import slide4 from "../../../assets-copy/home/slide4.png";
-import slide5 from "../../../assets-copy/home/slide5.png";
-
-const FALLBACK_SLIDES = [
-  { imageUrl: slide1, title: "Everyday Fresh & Clean with Our Products", cardBgColor: "#fef3c7", textColor: "#1e293b", buttonText: "Shop Now", buttonLink: "/products", buttonBgColor: "#3090cf", buttonTextColor: "#ffffff" },
-  { imageUrl: slide3, title: "The best Organic Products Online", cardBgColor: "#e2e8f0", textColor: "#1e293b", buttonText: "Shop Now", buttonLink: "/products", buttonBgColor: "#3090cf", buttonTextColor: "#ffffff" },
-  { imageUrl: slide4, title: "Fresh Groceries Delivered to Your Door", cardBgColor: "#ecfdf5", textColor: "#1e293b", buttonText: "Shop Now", buttonLink: "/products", buttonBgColor: "#3090cf", buttonTextColor: "#ffffff" },
-  { imageUrl: slide5, title: "Quality Ingredients for Every Kitchen", cardBgColor: "#e0f2fe", textColor: "#1e293b", buttonText: "Shop Now", buttonLink: "/products", buttonBgColor: "#3090cf", buttonTextColor: "#ffffff" },
+/** Shown only when the API fails or returns no usable slides (no bundled marketing images). */
+const PLACEHOLDER_SLIDES = [
+  {
+    title: "Configure your hero slides",
+    subtitle: "Open Admin → Home slider to add images, titles, and links.",
+    imageUrl:
+      "data:image/svg+xml," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="520"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#e0f2fe"/><stop offset="100%" style="stop-color:#f0f9ff"/></linearGradient></defs><rect fill="url(#g)" width="800" height="520" rx="24"/><text x="400" y="248" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="20">Homepage slider</text></svg>'
+      ),
+    cardBgColor: "#f8fafc",
+    textColor: "#334155",
+    buttonText: "Admin",
+    buttonLink: "/admin/slider-settings",
+    buttonBgColor: "#3090cf",
+    buttonTextColor: "#ffffff",
+  },
 ];
 
-/** Ensure enough slides that desktop (3-up) can actually show 3 columns when admin only adds 1–2. */
-function augmentSlidesForViewport(slides, fallback, minCount = 3) {
-  const out = slides.map((s) => ({ ...s }));
-  if (out.length >= minCount) return out;
-  const seen = new Set(
-    out.map(
-      (s) =>
-        `${String(s.title || "").trim().toLowerCase()}|${String(s.imageUrl || s.img || "").trim()}`
-    )
-  );
-  for (const f of fallback) {
-    if (out.length >= minCount) break;
-    const key = `${String(f.title || "").trim().toLowerCase()}|${String(f.imageUrl || f.img || "").trim()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ ...f });
-  }
-  return out;
+function readVisibleSlidesFromConfig(config) {
+  const d = Math.max(1, Math.min(4, Number(config?.slidesPerViewDesktop ?? 3)));
+  const t = Math.max(1, Math.min(3, Number(config?.slidesPerViewTablet ?? 2)));
+  const m = Math.max(1, Math.min(2, Number(config?.slidesPerViewMobile ?? 1)));
+  if (typeof window === "undefined") return d;
+  if (window.matchMedia("(min-width: 1024px)").matches) return d;
+  if (window.matchMedia("(min-width: 768px)").matches) return t;
+  return m;
 }
 
 function HomeCustomSlider() {
@@ -44,36 +42,55 @@ function HomeCustomSlider() {
     slidesPerViewDesktop: 3,
     slidesPerViewTablet: 2,
     slidesPerViewMobile: 1,
-    slides: FALLBACK_SLIDES,
+    slides: PLACEHOLDER_SLIDES,
   });
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadSliderSettings = async () => {
       try {
-        /** no-store on API + cache-bust avoids stale JSON after admin slider changes */
         const res = await api.get("/user/home-slider-settings", {
           params: { _: Date.now() },
           headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
         });
+        if (cancelled) return;
         if (res?.success && res?.data && typeof res.data === "object") {
           const nextSlides = Array.isArray(res.data.slides) ? res.data.slides : [];
           const valid = nextSlides.filter(
-            (s) =>
-              s &&
-              String(s.title || "").trim() &&
-              String(s.imageUrl || s.img || "").trim()
+            (s) => s && String(s.title || "").trim() && String(s.imageUrl || s.img || "").trim()
           );
-          /** Ignore admin payload if every slide is missing title/image (prevents blank strip + orphan dots). */
           if (valid.length > 0) {
-            const slides = augmentSlidesForViewport(valid, FALLBACK_SLIDES, 3);
-            setConfig((prev) => ({ ...prev, ...res.data, slides }));
+            setConfig((prev) => ({ ...prev, ...res.data, slides: valid }));
+          } else {
+            setConfig((prev) => ({ ...prev, ...res.data, slides: PLACEHOLDER_SLIDES }));
           }
         }
-      } catch (err) {
-        // Keep fallback slider when API fails.
+      } catch {
+        if (!cancelled) setConfig((prev) => ({ ...prev, slides: PLACEHOLDER_SLIDES }));
       }
     };
+
     loadSliderSettings();
+
+    let t;
+    const schedule = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        void loadSliderSettings();
+      }, 400);
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") schedule();
+    };
+    window.addEventListener("focus", schedule);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      window.removeEventListener("focus", schedule);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []);
 
   return (
@@ -87,28 +104,13 @@ function HomeCustomSlider() {
   );
 }
 
-/**
- * Fixed responsive layout (matches Tailwind `lg` / `md`):
- * - Desktop (≥1024px): 3 cards
- * - Tablet (768–1023px): 2 cards
- * - Mobile (<768px): 1 card
- * Uses matchMedia so column count tracks CSS breakpoints (zoom / scrollbar / subpixel).
- */
-function readVisibleSlides() {
-  if (typeof window === "undefined") return 3;
-  if (window.matchMedia("(min-width: 1024px)").matches) return 3;
-  if (window.matchMedia("(min-width: 768px)").matches) return 2;
-  return 1;
-}
-
 const SliderRenderer = ({ config }) => {
-  const slides = Array.isArray(config?.slides) && config.slides.length > 0 ? config.slides : FALLBACK_SLIDES;
+  const slides = Array.isArray(config?.slides) && config.slides.length > 0 ? config.slides : PLACEHOLDER_SLIDES;
   const [index, setIndex] = useState(0);
-  /** Must match real viewport immediately — starting at 1 broke maxIndex/autoplay until first resize. */
-  const [visibleSlides, setVisibleSlides] = useState(() => readVisibleSlides());
+  const [visibleSlides, setVisibleSlides] = useState(() => readVisibleSlidesFromConfig(config));
 
   useEffect(() => {
-    const sync = () => setVisibleSlides(readVisibleSlides());
+    const sync = () => setVisibleSlides(readVisibleSlidesFromConfig(config));
     const mqLg = window.matchMedia("(min-width: 1024px)");
     const mqMd = window.matchMedia("(min-width: 768px)");
     mqLg.addEventListener("change", sync);
@@ -120,10 +122,9 @@ const SliderRenderer = ({ config }) => {
       mqMd.removeEventListener("change", sync);
       window.removeEventListener("resize", sync);
     };
-  }, []);
+  }, [config]);
 
   const n = slides.length;
-  /** Viewport columns (3 / 2 / 1) — track width always uses full column count so 3-across layout is correct. */
   const columns = visibleSlides;
   const layoutCols = Math.max(columns, 1);
   const maxIndex = Math.max(0, n - columns);
@@ -175,10 +176,6 @@ const SliderRenderer = ({ config }) => {
     else if (dx < -60) goNext();
   };
 
-  /**
-   * Track width / translate use % of the track itself (not % of viewport with broken flex bases).
-   * Outer is 100% wide; inner = (n/layoutCols)*100% of outer; each slide = (100/n)% of inner; move by index*(100/n)% of inner.
-   */
   const innerWidthPct = layoutCols > 0 && n > 0 ? (n * 100) / layoutCols : 100;
   const slideShareOfInnerPct = n > 0 ? 100 / n : 100;
 
@@ -225,7 +222,7 @@ const SliderRenderer = ({ config }) => {
         >
           {slides.map((item, i) => (
             <div
-              key={i}
+              key={item.id || item._id || `slide-${i}`}
               className="box-border flex-shrink-0 px-3 sm:px-4"
               style={{ width: `${slideShareOfInnerPct}%` }}
             >
@@ -235,11 +232,19 @@ const SliderRenderer = ({ config }) => {
               >
                 <div className="flex flex-1 flex-col justify-center p-5 md:p-6 lg:p-8 order-2 md:order-1">
                   <h3
-                    className="font-bold text-base sm:text-lg lg:text-xl leading-tight mb-3 md:mb-4"
+                    className={`font-bold text-base sm:text-lg lg:text-xl leading-tight ${String(item.subtitle || "").trim() ? "mb-1 md:mb-2" : "mb-3 md:mb-4"}`}
                     style={{ color: item.textColor || "#1e293b" }}
                   >
                     {item.title}
                   </h3>
+                  {String(item.subtitle || "").trim() ? (
+                    <p
+                      className="text-sm sm:text-base leading-snug mb-3 md:mb-4 opacity-90 line-clamp-3"
+                      style={{ color: item.textColor || "#1e293b" }}
+                    >
+                      {String(item.subtitle).trim()}
+                    </p>
+                  ) : null}
                   {(item.buttonLink || "").startsWith("http") ? (
                     <a
                       href={item.buttonLink}
@@ -270,7 +275,11 @@ const SliderRenderer = ({ config }) => {
                 </div>
                 <div className="flex-shrink-0 w-full md:w-2/5 lg:w-[45%] order-1 md:order-2 flex items-center justify-center overflow-hidden bg-slate-100/40">
                   <img
-                    src={item.imageUrl || item.img}
+                    src={
+                      resolveBrandingAssetUrl(String(item.imageUrl || item.img || "").trim()) ||
+                      item.imageUrl ||
+                      item.img
+                    }
                     alt=""
                     className="h-32 md:h-full w-full object-cover object-center md:max-h-[220px] lg:max-h-[260px]"
                   />

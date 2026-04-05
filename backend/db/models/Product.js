@@ -16,7 +16,32 @@ const productSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  /** Original / compare-at price (MSRP). If greater than `price`, storefront shows a discount. */
+  comparePrice: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
   salePrice: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  sku: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  badge: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  isDeal: {
+    type: Boolean,
+    default: false
+  },
+  dealPrice: {
     type: Number,
     min: 0,
     default: 0
@@ -76,6 +101,8 @@ const productSchema = new mongoose.Schema({
 
 productSchema.index({ category: 1 })
 productSchema.index({ price: 1 })
+productSchema.index({ isDeal: 1, quantity: 1, inStock: 1 })
+productSchema.index({ sku: 1 }, { partialFilterExpression: { sku: { $gt: '' } } })
 productSchema.index({
   inStock: 1,
   isDeleted: 1,

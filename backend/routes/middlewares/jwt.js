@@ -64,14 +64,23 @@ function isPublicJwtPath(req) {
     `${A}/user/getCategories`,
     `${A}/user/featured-categories`,
     `${A}/user/home-slider-settings`,
+    `${A}/user/site-settings`,
     `${A}/user/referral/discount`,
   ]);
   if (publicUserReads.has(pathname)) return true;
+
+  if (pathname === `${A}/settings` && m === "GET") return true;
 
   if (pathname === `${A}/user/contactForm` && m === "POST") return true;
 
   /** Guest checkout — body must include shipping `address`; logged-in users send addressId + Bearer token */
   if (pathname === `${A}/user/orderPayment` && m === "POST") return true;
+
+  /**
+   * Zippyyy Ships (public iframe / storefront) — quote + checkout can run without login; optional Bearer still attaches req.user.
+   */
+  if (pathname === `${A}/user/shipping/quote` && m === "POST") return true;
+  if (pathname === `${A}/user/shipping/checkout` && m === "POST") return true;
 
   /** Order confirmation page — signed token from checkout (guests have no JWT) */
   if (pathname === `${A}/user/orderByViewToken` && m === "GET") return true;
@@ -85,12 +94,15 @@ function isPublicJwtPath(req) {
 }
 
 /**
- * POST /api/user/orderPayment is public (guest checkout). If a valid Bearer token is sent,
- * attach req.user so logged-in customers still use addressId + referral logic.
+ * Public checkout routes: if a valid Bearer token is sent, attach req.user so logged-in customers
+ * keep account-linked behavior (grocery addressId / shipping saved address path).
  */
 function attachUserFromBearerForOrderPayment(req, res, next) {
   const pathname = pathnameForJwt(req);
-  if (pathname !== `${A}/user/orderPayment` || req.method.toUpperCase() !== "POST") {
+  const m = req.method.toUpperCase();
+  const isOrderPayment = pathname === `${A}/user/orderPayment` && m === "POST";
+  const isShippingCheckout = pathname === `${A}/user/shipping/checkout` && m === "POST";
+  if (!isOrderPayment && !isShippingCheckout) {
     return next();
   }
   const auth = req.headers.authorization;

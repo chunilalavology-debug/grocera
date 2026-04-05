@@ -1,11 +1,14 @@
+const { getCustomerName } = require("../orderEmailUtils");
+
 const OrderDelivered = (order) => {
-    const itemsList = order.items.map(item => `
+    const items = Array.isArray(order.items) ? order.items : [];
+    const itemsList = items.map(item => `
         <tr>
             <td style="padding: 12px 0; border-bottom: 1px dashed #eee;">
                 <table width="100%" border="0" cellspacing="0" cellpadding="0">
                     <tr>
                         <td width="50" valign="top">
-                            <img src="${item.productImage}" alt="${item.productName}" width="45" height="45" style="border-radius: 6px; object-fit: cover;">
+                            ${item.productImage ? `<img src="${item.productImage}" alt="${item.productName}" width="45" height="45" style="border-radius: 6px; object-fit: cover;">` : `<div style="width:45px;height:45px;background:#f3f4f6;border-radius:6px;"></div>`}
                         </td>
                         <td style="padding-left: 12px;">
                             <div style="font-weight: 600; color: #333; font-size: 14px;">${item.productName ?? 'Product'}</div>
@@ -32,7 +35,7 @@ const OrderDelivered = (order) => {
             <tr>
                 <td style="padding: 40px 30px;">
                     <p style="margin: 0 0 25px 0; font-size: 16px; color: #444; line-height: 1.6; text-align: center;">
-                        Hi <strong>${order.userId?.name}</strong>, we hope you're excited! Your order <strong>#${order.orderNumber}</strong> was dropped off today.
+                        Hi <strong>${getCustomerName(order)}</strong>, we hope you're excited! Your order <strong>#${order.orderNumber}</strong> was dropped off today.
                     </p>
 
                     <div style="background-color: #f8f9ff; border: 1px solid #e0e4ff; border-radius: 12px; padding: 25px; text-align: center; margin-bottom: 35px;">

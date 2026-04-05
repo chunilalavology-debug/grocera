@@ -10,7 +10,8 @@
     "test": "nodemon",
     "kill-port": "kill-port $PORT",
     "start": "node app.js",
-    "check-products": "node script/checkDbProducts.js"
+    "check-products": "node script/checkDbProducts.js",
+    "smoke:ships": "node script/smokeZippyShipsApis.mjs"
   },
   "author": "forwork404",
   "license": "ISC",

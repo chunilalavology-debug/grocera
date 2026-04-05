@@ -1,0 +1,317 @@
+/**
+ * Admin dashboard — Inter, 8px-ish rhythm, Shopify-style primary green.
+ * Scoped so the storefront :root theme is unchanged.
+ */
+.admin-layout,
+.admin-design-scope {
+  --admin-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Shopify admin–style green (matches AdminButton primary) */
+  --admin-primary: #008060;
+  --admin-primary-hover: #006e52;
+  --admin-primary-soft: #ecfdf5;
+  --admin-text: #0f172a;
+  --admin-text-muted: #64748b;
+  --admin-border: #e2e8f0;
+  --admin-surface: #ffffff;
+  --admin-canvas: #f1f5f9;
+  --admin-radius: 10px;
+  --admin-space-1: 8px;
+  --admin-space-2: 16px;
+  --admin-space-3: 24px;
+  --admin-space-4: 32px;
+  --admin-text-base: 0.875rem;
+  --admin-text-sm: 0.8125rem;
+  --admin-title-size: 1.25rem;
+  --admin-title-page-size: 1.5rem;
+  --admin-h2-size: 1rem;
+  --admin-h3-size: 0.9375rem;
+  /** Soft card elevation (Shopify-like, not heavy) */
+  --admin-shadow-card: 0 1px 0 rgba(0, 0, 0, 0.04), 0 1px 2px rgba(15, 23, 42, 0.05);
+  --admin-shadow-card-hover: 0 4px 14px rgba(15, 23, 42, 0.07);
+
+  /* Legacy variable names used by admin/*.css files */
+  --primary-color: #008060;
+  --primary-gradient: linear-gradient(135deg, #008060 0%, #006e52 100%);
+  --text-dark: #0f172a;
+  --text-medium: #64748b;
+  --border-color: #e2e8f0;
+  --border-light: #e8eef3;
+  --bg-white: #ffffff;
+  --bg-light: #f8fafc;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+
+  font-family: var(--admin-font);
+  font-size: var(--admin-text-base);
+  line-height: 1.5;
+  color: var(--admin-text);
+}
+
+.admin-main {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.admin-main h1,
+.admin-page-title {
+  font-size: var(--admin-title-size);
+  font-weight: 700;
+  color: var(--admin-text);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 0 0 0.25rem 0;
+}
+
+.admin-main h2 {
+  font-size: var(--admin-h2-size);
+  font-weight: 600;
+  color: var(--admin-text);
+  line-height: 1.3;
+  margin: 0 0 0.75rem 0;
+}
+
+.admin-page-subtitle {
+  font-size: var(--admin-text-base);
+  color: var(--admin-text-muted);
+  margin: 0;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+/* Unified pills / badges (neutral; use with status text only) */
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.admin-badge--primary {
+  background: var(--admin-primary-soft);
+  color: var(--admin-primary);
+  border-color: #a7f3d0;
+}
+
+/* React Quill inside admin */
+.admin-layout .ql-toolbar.ql-snow,
+.admin-design-scope .ql-toolbar.ql-snow {
+  border-color: var(--admin-border);
+  border-radius: var(--admin-radius) var(--admin-radius) 0 0;
+  font-family: var(--admin-font);
+}
+.admin-layout .ql-container.ql-snow,
+.admin-design-scope .ql-container.ql-snow {
+  border-color: var(--admin-border);
+  border-radius: 0 0 var(--admin-radius) var(--admin-radius);
+  font-family: var(--admin-font);
+  min-height: 220px;
+}
+
+/* Buttons — primary = site blue; secondary = white/outline */
+.admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--admin-radius);
+  font-size: var(--admin-text-base);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease;
+  border: 1px solid transparent;
+  text-decoration: none;
+  line-height: 1.25;
+  box-sizing: border-box;
+}
+
+.admin-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-btn--primary {
+  background: var(--admin-primary);
+  color: #fff;
+  border-color: var(--admin-primary);
+  box-shadow: 0 1px 2px rgba(0, 128, 96, 0.18);
+}
+
+.admin-btn--primary:hover:not(:disabled) {
+  background: var(--admin-primary-hover);
+  border-color: var(--admin-primary-hover);
+}
+
+.admin-btn--secondary {
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+}
+
+.admin-btn--secondary:hover:not(:disabled) {
+  background: var(--bg-light);
+  border-color: #cbd5e1;
+}
+
+.admin-btn--soft {
+  background: var(--admin-primary-soft);
+  color: var(--admin-primary);
+  border-color: #a7f3d0;
+}
+
+.admin-btn--soft:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+/* —— Surfaces (match Products page KPI + main card) —— */
+.admin-card-surface {
+  border-radius: var(--admin-radius);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow-card);
+}
+
+.admin-stat-card {
+  display: flex;
+  align-items: center;
+  gap: var(--admin-space-2);
+  padding: var(--admin-space-2);
+  border-radius: var(--admin-radius);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow-card);
+  transition: box-shadow 0.2s ease;
+}
+
+.admin-stat-card:hover {
+  box-shadow: var(--admin-shadow-card-hover);
+}
+
+/* —— Form controls (shared Settings / Email / inline forms) —— */
+/* Admin profile preview (larger than sidebar / topbar avatars) */
+.admin-profile-settings-preview-avatar {
+  width: 72px;
+  height: 72px;
+  font-size: 1.5rem;
+  border-radius: 16px;
+}
+
+.admin-sidebar__user-avatar.admin-user-avatar--has-image img,
+.admin-topbar__avatar.admin-user-avatar--has-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
+.admin-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--admin-text-muted);
+}
+
+.admin-field,
+.admin-textarea {
+  width: 100%;
+  border-radius: var(--admin-radius);
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  padding: 0 12px;
+  font-size: var(--admin-text-base);
+  font-family: inherit;
+  color: var(--admin-text);
+  line-height: 1.25;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.admin-field {
+  height: 40px;
+}
+
+.admin-textarea {
+  min-height: 88px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.admin-field::placeholder,
+.admin-textarea::placeholder {
+  color: #94a3b8;
+}
+
+.admin-field:focus,
+.admin-textarea:focus {
+  outline: none;
+  border-color: var(--admin-primary);
+  box-shadow: 0 0 0 3px rgba(0, 128, 96, 0.15);
+}
+
+.admin-field:disabled,
+.admin-textarea:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.admin-select {
+  height: 40px;
+  width: 100%;
+  border-radius: var(--admin-radius);
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  padding: 0 12px;
+  font-size: var(--admin-text-base);
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--admin-text);
+  cursor: pointer;
+}
+
+.admin-select:focus {
+  outline: none;
+  border-color: var(--admin-primary);
+  box-shadow: 0 0 0 3px rgba(0, 128, 96, 0.15);
+}
+
+/* Page title inside shell (optional alternative to Tailwind) */
+.admin-shell-title {
+  font-size: clamp(1.125rem, 2.5vw, var(--admin-title-page-size));
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--admin-text);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.admin-shell-desc {
+  margin: 8px 0 0;
+  font-size: var(--admin-text-base);
+  color: var(--admin-text-muted);
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+.admin-section-heading {
+  font-size: var(--admin-h2-size);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--admin-text);
+  margin: 0;
+  line-height: 1.3;
+}

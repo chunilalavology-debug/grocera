@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Joi = require("joi");
 const { User } = require("../../db");
+const { normalizeStoredUploadsUrl } = require("../../utils/brandingPublicUrl");
 const Cart = require("../../db/models/Cart");
 const { connectDB } = require("../../lib/db");
 const userSellRateLimiter = require("../middlewares/rateLimit");
@@ -292,22 +293,26 @@ const login = async (req, res) => {
 
 const profile = async (req, res) => {
   try {
-    const getUser = await User.findById(req.user.id).lean()
+    const getUser = await User.findById(req.user.id).lean();
     if (!getUser) {
-      res.status(401).send({
+      return res.status(401).json({
         success: false,
         message: "User Details Not Found!",
-        data: null
-      })
+        data: null,
+      });
     }
-    res.json({
+    const userOut = { ...getUser };
+    if (userOut.profileImageUrl != null && String(userOut.profileImageUrl).trim() !== "") {
+      userOut.profileImageUrl = normalizeStoredUploadsUrl(String(userOut.profileImageUrl).trim());
+    }
+    return res.json({
       success: true,
       message: "Profile fetch successfully!",
-      user: { ...getUser }
+      user: userOut,
     });
   } catch (error) {
-    console.error('Profile fetch error:', error);
-    res.status(500).json({ message: 'Server error fetching profile' });
+    console.error("Profile fetch error:", error);
+    return res.status(500).json({ message: "Server error fetching profile" });
   }
 };
 
@@ -355,7 +360,7 @@ const resetPassword = async (req, res) => {
         code: 'VALIDATION_ERROR'
       });
     }
-    console.log("faild api reset password::: ", error);
+    console.error("reset password error:", error);
 
     return res.status(401).json({
       success: false,

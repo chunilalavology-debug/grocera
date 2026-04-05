@@ -91,7 +91,7 @@ export const usePerformanceMonitor = (componentName) => {
 
     useEffect(() => {
         const renderTime = performance.now() - renderStart.current;
-        if (renderTime > 16) { // Log renders that take longer than 16ms (60fps)
+        if (process.env.NODE_ENV === 'development' && renderTime > 16) {
             console.warn(`Slow render in ${componentName}: ${renderTime.toFixed(2)}ms`);
         }
     });
@@ -102,7 +102,7 @@ export const usePerformanceMonitor = (componentName) => {
             const result = fn(...args);
             const end = performance.now();
 
-            if (end - start > 5) { // Log functions that take longer than 5ms
+            if (process.env.NODE_ENV === 'development' && end - start > 5) {
                 console.warn(`Slow function ${functionName} in ${componentName}: ${(end - start).toFixed(2)}ms`);
             }
 

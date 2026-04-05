@@ -1,5 +1,8 @@
+const { getCustomerName } = require("../orderEmailUtils");
+
 const OrderCancelled = (order) => {
-    const itemsList = order.items.map(item => `
+    const items = Array.isArray(order.items) ? order.items : [];
+    const itemsList = items.map(item => `
         <tr>
             <td style="padding: 12px 0; border-bottom: 1px solid #f0f0f0;">
                 <table width="100%" border="0" cellspacing="0" cellpadding="0">
@@ -28,7 +31,7 @@ const OrderCancelled = (order) => {
                 <td style="background-color: #fff5f5; padding: 40px 20px; text-align: center; border-bottom: 1px solid #ffebeb;">
                     <div style="background-color: #dc3545; color: #ffffff; width: 60px; height: 60px; line-height: 60px; border-radius: 50%; font-size: 30px; margin: 0 auto 15px auto;">✕</div>
                     <h1 style="margin: 0; color: #1a1a1a; font-size: 26px; letter-spacing: -0.5px;">Order Cancelled</h1>
-                    <p style="color: #666; font-size: 16px; margin-top: 8px;">Hi ${order.userId?.name}, your order has been successfully cancelled.</p>
+                    <p style="color: #666; font-size: 16px; margin-top: 8px;">Hi ${getCustomerName(order)}, your order has been successfully cancelled.</p>
                 </td>
             </tr>
 

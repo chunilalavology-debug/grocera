@@ -44,7 +44,7 @@ export default function ProductSalePopup() {
       try {
         const res = await api.get('/user/products', { params: { limit: 50 } });
         const list = res?.data ?? res?.products ?? [];
-        const arr = Array.isArray(list) ? list : [];
+        const arr = Array.isArray(list) ? list.filter((p) => p && p.hasDeal) : [];
         if (mounted && arr.length > 0) setProducts(arr);
       } catch (err) {
         if (mounted) setProducts([]);

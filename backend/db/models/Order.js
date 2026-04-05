@@ -27,10 +27,14 @@ const orderSchema = new mongoose.Schema({
     default: null,
   },
 
+  /** Canonical email for order notifications (guest or overrides). */
+  customerEmail: { type: String, trim: true, lowercase: true, default: '' },
+
   /** Guest checkout: delivery snapshot when userId/addressId are not used */
   guestShipping: {
     name: String,
     phone: String,
+    email: String,
     fullAddress: String,
     city: String,
     state: String,
@@ -73,7 +77,21 @@ const orderSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ['session', 'pending', 'confirmed', 'processing', 'packed', 'shipped', 'on_the_way', 'delivered', 'cancelled', 'refunded'],
+    enum: [
+      'session',
+      'pending',
+      'confirmed',
+      'processing',
+      'on_hold',
+      'packed',
+      'shipped',
+      'on_the_way',
+      'delivered',
+      'completed',
+      'cancelled',
+      'refunded',
+      'failed',
+    ],
     default: 'pending',
   },
 
@@ -160,6 +178,8 @@ const orderSchema = new mongoose.Schema({
 orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ stripePaymentIntentId: 1 }, { sparse: true });
+/** ZippyyyShips / admin filters for label orders */
+orderSchema.index({ isShippingOrder: 1, createdAt: -1 });
 
 orderSchema.index({ userId: 1, status: 1, createdAt: -1 });
 orderSchema.index({ status: 1, paymentStatus: 1 });

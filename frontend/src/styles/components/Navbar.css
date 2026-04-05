@@ -1119,31 +1119,52 @@ button.header-main__action {
     min-width: 0;
   }
 
-  /* Center “Zippyyy Ships” in the middle grid column (tablet & mobile) */
+  /* Center “Zippyyy Ships” — mobile/tablet pill button */
   .header-main__ships-tab {
     justify-self: center;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     text-align: center;
     text-decoration: none;
-    color: var(--header-green);
+    color: #fff;
+    background-color: #e9aa42;
     font-weight: 700;
     font-size: 0.8125rem;
     line-height: 1.2;
-    padding: 0 0.2rem;
-    max-width: 100%;
+    padding: 0.4rem 0.65rem;
+    min-height: 36px;
+    border-radius: 8px;
+    box-sizing: border-box;
+    max-width: min(42vw, 11rem);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.15s ease, filter 0.15s ease;
+  }
+
+  .header-main__ships-tab:hover {
+    color: #fff;
+    background-color: #d89b38;
   }
 
   .header-main__ships-tab:active {
-    opacity: 0.85;
+    color: #fff;
+    filter: brightness(0.95);
+  }
+
+  .header-main__ships-tab:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
   }
 
   .header-main__ships-tab--active {
-    color: var(--header-green-dark);
-    text-decoration: underline;
-    text-underline-offset: 3px;
+    color: #fff;
+    background-color: #cf8f35;
+    text-decoration: none;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
   }
 
   .header-main__actions {
@@ -1248,7 +1269,9 @@ button.header-main__action {
 
   .header-main__ships-tab {
     font-size: 0.78rem;
-    padding: 0 0.15rem;
+    padding: 0.35rem 0.5rem;
+    min-height: 34px;
+    max-width: min(40vw, 10rem);
   }
 
   .header-main__logo-img {
@@ -1331,6 +1354,10 @@ button.header-main__action {
 
   .header-main__ships-tab {
     font-size: 0.72rem;
+    padding: 0.32rem 0.45rem;
+    min-height: 32px;
+    max-width: min(38vw, 9.5rem);
+    border-radius: 7px;
   }
 
   .header-search--mobile {

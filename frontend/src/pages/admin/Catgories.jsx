@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Plus,
   Search,
@@ -7,12 +8,13 @@ import {
   X,
   Tag,
   Loader2,
-  ImageIcon,
   Link2,
-  Upload,
   Package,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  Pencil,
+  RefreshCw,
 } from 'lucide-react';
 import api from '../../services/api';
 import toast, { Toaster } from 'react-hot-toast';
@@ -150,19 +152,8 @@ function ProductRowThumb({ product }) {
 }
 
 const CategoryDashboard = () => {
-  const imageInputRef = useRef(null);
-  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentCategory, setCurrentCategory] = useState({
-    id: null,
-    name: '',
-    status: 'Active',
-    image: '',
-    main: 'indian',
-    sortOrder: 0,
-  });
-  const [isEditing, setIsEditing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [mainFilter, setMainFilter] = useState('all');
@@ -176,7 +167,9 @@ const CategoryDashboard = () => {
   });
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState('');
-  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const masterCheckboxRef = useRef(null);
 
   const [productsModalOpen, setProductsModalOpen] = useState(false);
   const [pmTarget, setPmTarget] = useState(null);
@@ -206,6 +199,7 @@ const CategoryDashboard = () => {
       const res = await api.get('/admin/getCategories', { params });
       const { rows, pagination: pag } = normalizeCategoriesResponse(res);
       setPagination(pag);
+      if (typeof pag.page === 'number' && pag.page >= 1) setPage(pag.page);
       const formatted = rows.map((cat) => {
         const dbMain = cat.main && String(cat.main).trim() ? String(cat.main).toLowerCase() : '';
         const inferred = cat.inferredMain || clientInferMainFromName(cat.name);
@@ -252,35 +246,65 @@ const CategoryDashboard = () => {
     fetchCategories();
   }, [fetchCategories]);
 
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [debouncedSearch, mainFilter, page]);
+
+  const idsOnPage = useMemo(() => categories.map((c) => c.id).filter(Boolean), [categories]);
+  const allOnPageSelected =
+    idsOnPage.length > 0 && idsOnPage.every((cid) => selectedIds.has(cid));
+  const someOnPageSelected = idsOnPage.some((cid) => selectedIds.has(cid));
+
+  useEffect(() => {
+    const el = masterCheckboxRef.current;
+    if (!el) return;
+    el.indeterminate = someOnPageSelected && !allOnPageSelected;
+  }, [someOnPageSelected, allOnPageSelected]);
+
+  const toggleRowSelect = (cid) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cid)) next.delete(cid);
+      else next.add(cid);
+      return next;
+    });
+  };
+
+  const toggleMaster = () => {
+    if (allOnPageSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        idsOnPage.forEach((cid) => next.delete(cid));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        idsOnPage.forEach((cid) => next.add(cid));
+        return next;
+      });
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.size} categor(ies)? Products keep their category text until you move them.`)) return;
+    try {
+      for (const cid of selectedIds) {
+        await api.delete(`/admin/deleteCategory/${cid}`);
+      }
+      toast.success('Categories removed');
+      setSelectedIds(new Set());
+      fetchCategories();
+    } catch (error) {
+      toast.error(error?.message || 'Delete failed');
+    }
+  };
+
   const otherCategoryNames = useMemo(() => {
     if (!pmTarget) return [];
     return categories.filter((c) => c.id !== pmTarget.id).map((c) => c.name);
   }, [categories, pmTarget]);
-
-  const openEditModal = (row, editMode) => {
-    let main = 'indian';
-    if (editMode && row) {
-      const m = row.main;
-      if (m && PARENT_OPTIONS.some((p) => p.value === m)) {
-        main = m;
-      } else if (row.effectiveMain && PARENT_OPTIONS.some((p) => p.value === row.effectiveMain)) {
-        main = row.effectiveMain;
-      } else {
-        const inferred = clientInferMainFromName(row.name);
-        main = inferred || '';
-      }
-    }
-    setCurrentCategory({
-      id: row?.id || null,
-      name: row?.name || '',
-      status: row?.status || 'Active',
-      image: row?.image || '',
-      main,
-      sortOrder: row?.sortOrder ?? 0,
-    });
-    setIsEditing(editMode);
-    setIsModalOpen(true);
-  };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this category? Products keep their category text until you move them.')) return;
@@ -292,35 +316,6 @@ const CategoryDashboard = () => {
       }
     } catch (error) {
       toast.error(error?.message || 'Delete failed');
-    }
-  };
-
-  const handleImageFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingImage(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      if (currentCategory.id) fd.append('categoryId', String(currentCategory.id));
-      const res = await api.post('/admin/category/upload-image', fd);
-      if (res && res.success === false) {
-        toast.error(res.message || 'Upload failed');
-        return;
-      }
-      const url = res?.data?.imageUrl;
-      if (!url || typeof url !== 'string') {
-        toast.error('Upload did not return an image URL. Use JPG, PNG, or WebP under 5MB.');
-        return;
-      }
-      setCurrentCategory((c) => ({ ...c, image: url }));
-      toast.success(res?.message || 'Image saved');
-      if (currentCategory.id) fetchCategories();
-    } catch (err) {
-      toast.error(err?.message || 'Image upload failed');
-    } finally {
-      setUploadingImage(false);
-      e.target.value = '';
     }
   };
 
@@ -336,39 +331,6 @@ const CategoryDashboard = () => {
       toast.error(err?.message || 'Could not update status in database');
     } finally {
       setStatusUpdatingId(null);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!currentCategory.main) {
-      toast.error('Select a parent category (Indian, American, Chinese, or Turkish).');
-      return;
-    }
-    try {
-      setLoading(true);
-      const payload = {
-        name: currentCategory.name.trim(),
-        image: currentCategory.image || '',
-        /** Persist boolean so MongoDB matches the admin “Active / Inactive” choice. */
-        isActive: currentCategory.status === 'Active',
-        main: currentCategory.main,
-        sortOrder: Number(currentCategory.sortOrder) || 0,
-      };
-
-      if (isEditing && currentCategory.id) {
-        await api.put(`/admin/updateCategory/${currentCategory.id}`, payload);
-        toast.success('Updated');
-      } else {
-        await api.post('/admin/createCategory', payload);
-        toast.success('Category created');
-      }
-      setIsModalOpen(false);
-      fetchCategories();
-    } catch (err) {
-      toast.error(err?.message || 'Save failed');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -523,15 +485,13 @@ const CategoryDashboard = () => {
     );
   };
 
+  const firstSelectedId = useMemo(() => [...selectedIds][0], [selectedIds]);
+
   const RowActions = ({ cat, compact }) => (
     <div className={`flex ${compact ? 'flex-wrap' : 'flex-wrap justify-end'} gap-1.5`}>
-      <button
-        type="button"
-        onClick={() => openEditModal(cat, true)}
-        className="admin-categories__action-btn"
-      >
+      <Link to={`/admin/categories/${cat.id}`} className="admin-categories__action-btn">
         <Edit2 size={15} strokeWidth={2} /> Edit
-      </button>
+      </Link>
       <button type="button" onClick={() => openProductsModal(cat)} className="admin-categories__action-btn">
         <Link2 size={15} strokeWidth={2} /> Products
       </button>
@@ -547,7 +507,7 @@ const CategoryDashboard = () => {
   );
 
   return (
-    <div className="admin-categories">
+    <div className="admin-categories admin-design-scope">
       <Toaster position="top-center" />
 
       <header className="admin-categories__hero">
@@ -559,9 +519,9 @@ const CategoryDashboard = () => {
             <h1 className="admin-categories__title">Categories</h1>
           </div>
         </div>
-        <button type="button" onClick={() => openEditModal(null, false)} className="admin-categories__btn-primary">
+        <Link to="/admin/categories/new" className="admin-categories__btn-primary">
           <Plus size={20} strokeWidth={2} /> Add category
-        </button>
+        </Link>
       </header>
 
       <div className="admin-categories__search-wrap">
@@ -605,11 +565,57 @@ const CategoryDashboard = () => {
         </p>
       )}
 
-      <div className="admin-categories__panel admin-categories__table-panel">
+      <div
+        className={`admin-categories__panel admin-categories__table-panel ${selectedIds.size > 0 ? 'ring-2 ring-[var(--admin-primary)]/20' : ''}`}
+      >
+        {selectedIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-slate-200 bg-[#f0f9ff]">
+            <span className="text-sm font-semibold text-slate-800">{selectedIds.size} selected</span>
+            <button
+              type="button"
+              className="admin-categories__action-btn"
+              disabled={!firstSelectedId}
+              onClick={() => firstSelectedId && navigate(`/admin/categories/${firstSelectedId}`)}
+            >
+              <Eye size={15} strokeWidth={2} /> View
+            </button>
+            <button
+              type="button"
+              className="admin-categories__action-btn"
+              disabled={!firstSelectedId}
+              onClick={() => firstSelectedId && navigate(`/admin/categories/${firstSelectedId}`)}
+            >
+              <Pencil size={15} strokeWidth={2} /> Edit
+            </button>
+            <button type="button" className="admin-categories__action-btn admin-categories__action-btn--danger" onClick={bulkDelete}>
+              <Trash2 size={15} strokeWidth={2} /> Delete
+            </button>
+            <button
+              type="button"
+              className="admin-categories__action-btn ml-auto"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Clear
+            </button>
+            <button type="button" className="admin-categories__action-btn" onClick={() => fetchCategories()} title="Refresh">
+              <RefreshCw size={15} strokeWidth={2} />
+            </button>
+          </div>
+        )}
         <div className="admin-categories__table-wrap">
           <table className="admin-categories__table">
             <thead>
               <tr>
+                <th scope="col" className="w-10 text-center">
+                  <input
+                    ref={masterCheckboxRef}
+                    type="checkbox"
+                    className="rounded border-slate-300"
+                    checked={allOnPageSelected && idsOnPage.length > 0}
+                    onChange={toggleMaster}
+                    aria-label="Select all on this page"
+                  />
+                </th>
                 <th scope="col">Image</th>
                 <th scope="col">Name</th>
                 <th scope="col">Parent</th>
@@ -628,7 +634,7 @@ const CategoryDashboard = () => {
             <tbody>
               {listLoading && (
                 <tr>
-                  <td colSpan={7} className="text-center py-14 text-slate-500 text-sm">
+                  <td colSpan={8} className="text-center py-14 text-slate-500 text-sm">
                     <Loader2 className="animate-spin inline align-middle mr-2" size={20} strokeWidth={2} aria-hidden />
                     Loading categories…
                   </td>
@@ -636,7 +642,7 @@ const CategoryDashboard = () => {
               )}
               {!listLoading && listError && (
                 <tr>
-                  <td colSpan={7} className="p-4">
+                  <td colSpan={8} className="p-4">
                     <div className="admin-categories__error-banner" role="alert">
                       <p className="admin-categories__error-banner-text">{listError}</p>
                       <button type="button" className="admin-categories__error-retry" onClick={() => fetchCategories()}>
@@ -648,7 +654,7 @@ const CategoryDashboard = () => {
               )}
               {!listLoading && !listError && categories.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-14 text-slate-500 text-sm">
+                  <td colSpan={8} className="text-center py-14 text-slate-500 text-sm">
                     No categories yet. Use &quot;Add category&quot;.
                   </td>
                 </tr>
@@ -656,18 +662,30 @@ const CategoryDashboard = () => {
               {!listLoading &&
                 !listError &&
                 categories.map((cat) => (
-                <tr key={cat.id}>
+                <tr
+                  key={cat.id}
+                  className={selectedIds.has(cat.id) ? 'bg-[#e8f0fe]' : undefined}
+                >
+                  <td className="text-center">
+                    <input
+                      type="checkbox"
+                      className="rounded border-slate-300"
+                      checked={selectedIds.has(cat.id)}
+                      onChange={() => toggleRowSelect(cat.id)}
+                      aria-label={`Select ${cat.name}`}
+                    />
+                  </td>
                   <td>
                     <CategoryThumbButton
                       image={cat.displayThumbnail || cat.image}
                       ariaLabel={`Edit ${cat.name}`}
-                      onClick={() => openEditModal(cat, true)}
+                      onClick={() => navigate(`/admin/categories/${cat.id}`)}
                     />
                   </td>
                   <td>
-                    <button type="button" className="admin-categories__name-btn" onClick={() => openEditModal(cat, true)}>
+                    <Link to={`/admin/categories/${cat.id}`} className="admin-categories__name-btn">
                       {cat.name}
-                    </button>
+                    </Link>
                   </td>
                   <td>
                     <ParentCell effectiveMain={cat.effectiveMain} mainIsInferred={cat.mainIsInferred} />
@@ -752,138 +770,6 @@ const CategoryDashboard = () => {
             </button>
           </div>
         </nav>
-      )}
-
-      {isModalOpen && (
-        <div className="admin-categories__modal-overlay z-[99999]">
-          <button
-            type="button"
-            className="absolute inset-0 cursor-default border-0 bg-transparent"
-            aria-label="Close"
-            onClick={() => !loading && setIsModalOpen(false)}
-          />
-          <div className="admin-categories__modal z-10">
-            <div className="flex justify-between items-start mb-5">
-              <h2 className="admin-categories__modal-title">{isEditing ? 'Edit category' : 'New category'}</h2>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 min-h-[44px] min-w-[44px] flex items-center justify-center border-0 bg-transparent cursor-pointer"
-              >
-                <X size={22} strokeWidth={2} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="admin-categories__field-label" htmlFor="cat-name">
-                  Category name
-                </label>
-                <input
-                  id="cat-name"
-                  type="text"
-                  required
-                  value={currentCategory.name}
-                  onChange={(e) => setCurrentCategory({ ...currentCategory, name: e.target.value })}
-                  className="admin-categories__input"
-                  placeholder="e.g. Spices & Masalas"
-                />
-              </div>
-
-              <div>
-                <label className="admin-categories__field-label" htmlFor="cat-parent">
-                  Parent category
-                </label>
-                <select
-                  id="cat-parent"
-                  value={currentCategory.main}
-                  onChange={(e) => setCurrentCategory({ ...currentCategory, main: e.target.value })}
-                  className="admin-categories__select"
-                >
-                  {isEditing && currentCategory.main === '' && <option value="">Select parent region…</option>}
-                  {PARENT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="admin-categories__field-label" htmlFor="cat-sort">
-                  Sort order (lower first)
-                </label>
-                <input
-                  id="cat-sort"
-                  type="number"
-                  min={0}
-                  max={99999}
-                  value={currentCategory.sortOrder}
-                  onChange={(e) => setCurrentCategory({ ...currentCategory, sortOrder: e.target.value })}
-                  className="admin-categories__input"
-                />
-              </div>
-
-              <div>
-                <span className="admin-categories__field-label">Image</span>
-                <p className="text-xs text-slate-500 mb-2">JPG, PNG, or WebP — optimized on the server (max 5MB).</p>
-                <div className="admin-categories__upload-zone">
-                  <div className="admin-categories__upload-preview">
-                    {currentCategory.image ? (
-                      <img src={resolveImageUrl(currentCategory.image)} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon className="text-slate-400" size={28} strokeWidth={1.5} />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0 flex flex-col gap-2">
-                    <input
-                      ref={imageInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-                      onChange={handleImageFile}
-                      disabled={uploadingImage}
-                      className="admin-categories__file-input"
-                      id="cat-image-input"
-                    />
-                    <label htmlFor="cat-image-input" className="admin-categories__upload-btn w-fit cursor-pointer">
-                      <Upload size={18} strokeWidth={2} />
-                      {uploadingImage ? 'Uploading…' : 'Choose image'}
-                    </label>
-                    {uploadingImage && (
-                      <p className="text-xs text-slate-500 flex items-center gap-1">
-                        <Loader2 className="animate-spin" size={14} /> Compressing…
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <span className="admin-categories__field-label">Status</span>
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  {['Active', 'Inactive'].map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => setCurrentCategory({ ...currentCategory, status })}
-                      className={`py-3 rounded-xl text-sm font-bold border-2 transition-colors min-h-[48px] sm:min-h-[44px] ${
-                        currentCategory.status === status
-                          ? 'border-[var(--primary-color,#3090cf)] bg-[#f0f9ff] text-[var(--primary-color,#3090cf)]'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                      }`}
-                    >
-                      {status}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button type="submit" disabled={loading} className="admin-categories__submit">
-                {loading ? <Loader2 className="animate-spin inline" size={18} /> : isEditing ? 'Save changes' : 'Create category'}
-              </button>
-            </form>
-          </div>
-        </div>
       )}
 
       {productsModalOpen && pmTarget && (

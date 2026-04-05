@@ -1,0 +1,26 @@
+@base = http://localhost:5000/api
+@adminToken = Bearer YOUR_ADMIN_JWT_HERE
+
+### Public read (storefront — no Authorization)
+GET {{base}}/settings
+
+### Admin update branding only (requires admin role JWT)
+PUT {{base}}/settings
+Content-Type: application/json
+Authorization: {{adminToken}}
+
+{
+  "websiteName": "Zippyyy"
+}
+
+### Clear logo URL (same as PUT /admin/settings with websiteLogoUrl: "")
+PUT {{base}}/settings
+Content-Type: application/json
+Authorization: {{adminToken}}
+
+{
+  "logo": ""
+}
+
+### Upload logo / favicon: POST {{base}}/admin/settings/upload-logo or upload-favicon
+### Multipart form field name: file (use Postman or curl; do not set Content-Type manually).

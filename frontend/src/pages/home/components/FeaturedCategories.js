@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { MAIN_CATEGORIES, SUBCATEGORIES_BY_MAIN } from '../../../config/categories';
+import { MAIN_CATEGORIES } from '../../../config/categories';
 import { getApiBaseUrl } from '../../../config/apiBase';
 import api from '../../../services/api';
 import ScrollReveal from '../../../components/ScrollReveal';
@@ -39,8 +39,12 @@ const BROKEN_IMAGE_FALLBACK =
 
 function categoryRowIsActiveForFeatured(r) {
   if (!r || !r.name) return false;
+  if (r.isDeleted === true || r.isDeleted === 1) return false;
+  if (String(r.isDeleted).toLowerCase() === 'true') return false;
+  if (r.isDisable === true || r.isDisable === 1) return false;
+  if (String(r.isDisable).toLowerCase() === 'true') return false;
   if (r.isActive === false || r.isActive === 0) return false;
-  if (typeof r.isActive === 'string' && ['false', '0', 'no'].includes(String(r.isActive).trim().toLowerCase())) {
+  if (typeof r.isActive === 'string' && ['false', '0', 'no', ''].includes(String(r.isActive).trim().toLowerCase())) {
     return false;
   }
   return true;
@@ -55,58 +59,34 @@ function parseTotalFromProductsResponse(res) {
   return null;
 }
 
-/** Fallback list when featured API is empty — names/order only; counts/images filled from /user/products. */
-function staticItemsForMain(mainId) {
-  const rows = SUBCATEGORIES_BY_MAIN[mainId] || [];
-  return rows.map((s) => ({
-    name: s.name,
-    value: s.value,
-    count: 0,
-    featuredImage: null,
-    _source: 'static',
-  }));
-}
-
 export default function FeaturedCategories() {
   const mains = MAIN_CATEGORIES.filter((m) => m.id !== 'all');
   const [activeMain, setActiveMain] = useState(mains[0]?.id || 'indian');
   const [apiRows, setApiRows] = useState([]);
   const [featuredLoadError, setFeaturedLoadError] = useState('');
   const [featuredCatalogReady, setFeaturedCatalogReady] = useState(false);
+  const [sectionTitle, setSectionTitle] = useState('Featured Categories');
   /** `${main}:${value}` → real thumb URL + SKU count from Mongo via /user/products */
   const [categoryOverlay, setCategoryOverlay] = useState({});
   const scrollRef = useRef(null);
 
-  const staticByMain = useMemo(() => {
-    const o = {};
-    ['indian', 'american', 'chinese', 'turkish'].forEach((id) => {
-      o[id] = staticItemsForMain(id);
-    });
-    return o;
-  }, []);
-
   const baseDisplayList = useMemo(() => {
-    const useApi =
-      featuredCatalogReady &&
-      apiRows.filter((r) => r && r.name && categoryRowIsActiveForFeatured(r)).length > 0 &&
-      !featuredLoadError;
-    if (useApi) {
-      return apiRows
-        .filter((r) => r && r.name && categoryRowIsActiveForFeatured(r))
-        .map((r) => {
-          const n = Number(r.count);
-          const count = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-          return {
-            name: r.name,
-            value: r.value || r.name,
-            count,
-            featuredImage: r.image ? resolveCategoryImageUrl(r.image) : null,
-            _source: 'api',
-          };
-        });
-    }
-    return staticByMain[activeMain] || [];
-  }, [featuredCatalogReady, apiRows, featuredLoadError, activeMain, staticByMain]);
+    if (!featuredCatalogReady || featuredLoadError) return [];
+    return apiRows
+      .filter((r) => r && r.name && categoryRowIsActiveForFeatured(r))
+      .map((r) => {
+        const n = Number(r.count);
+        const count = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+        const cardLabel = (r.displayTitle && String(r.displayTitle).trim()) || r.name;
+        return {
+          cardLabel,
+          value: r.value || r.name,
+          count,
+          featuredImage: r.image ? resolveCategoryImageUrl(r.image) : null,
+          _source: 'api',
+        };
+      });
+  }, [featuredCatalogReady, apiRows, featuredLoadError]);
 
   const rowsToShow = useMemo(() => {
     return baseDisplayList.map((item) => {
@@ -150,6 +130,8 @@ export default function FeaturedCategories() {
             setFeaturedLoadError('api_html');
           } else {
             setApiRows(rows);
+            const t = typeof res.sectionTitle === 'string' ? res.sectionTitle.trim() : '';
+            setSectionTitle(t || 'Featured Categories');
           }
         }
       } catch {
@@ -218,8 +200,14 @@ export default function FeaturedCategories() {
     el.scrollBy({ left: dir === 'left' ? -step : step, behavior: 'smooth' });
   };
 
-  const showLiveHint =
-    featuredCatalogReady && featuredLoadError && rowsToShow.length > 0 && rowsToShow[0]._source === 'static';
+  const errorMessage =
+    featuredLoadError === 'network'
+      ? 'Could not load categories. Check your connection and that the API is running.'
+      : featuredLoadError === 'api_html'
+        ? 'Store API returned an error page. Check REACT_APP_API_URL / proxy configuration.'
+        : typeof featuredLoadError === 'string' && featuredLoadError.length > 0
+          ? featuredLoadError
+          : '';
 
   return (
     <section className="featured-categories featured-categories--v2 bg-[#f4f6f8] pt-10 pb-12 md:pt-14 md:pb-16">
@@ -227,7 +215,7 @@ export default function FeaturedCategories() {
         <div className="featured-categories__header flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-y-3 mb-2">
           <div className="flex flex-col gap-3 min-[480px]:flex-row min-[480px]:flex-wrap min-[480px]:items-center min-[480px]:gap-4">
             <h2 className="featured-categories__title text-[1.35rem] sm:text-2xl md:text-[1.75rem] font-extrabold text-slate-900 tracking-tight m-0">
-              Featured Categories
+              {sectionTitle}
             </h2>
             <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Region">
               {mains.map((main) => (
@@ -268,9 +256,19 @@ export default function FeaturedCategories() {
           </div>
         </div>
 
-        {showLiveHint ? (
-          <p className="text-xs text-slate-500 mb-2" role="status">
-            Showing demo categories — connect the API to load your live catalog.
+        {featuredCatalogReady && featuredLoadError ? (
+          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 mb-3" role="alert">
+            {errorMessage}
+          </p>
+        ) : null}
+
+        {featuredCatalogReady && !featuredLoadError && rowsToShow.length === 0 ? (
+          <p className="text-center text-slate-600 py-10 px-4 rounded-2xl bg-white/80 border border-slate-200/80">
+            No homepage categories for this region yet. Add categories in the admin and assign a parent region, or enable &quot;Show on
+            homepage featured categories&quot; on each category.{' '}
+            <Link to="/admin/categories" className="font-semibold text-[#3090cf] hover:underline">
+              Manage categories
+            </Link>
           </p>
         ) : null}
 
@@ -310,7 +308,7 @@ export default function FeaturedCategories() {
                   </div>
                   <div className="flex flex-1 flex-col items-center justify-center px-3 py-3.5 sm:py-4 text-center border-t border-slate-100/80">
                     <h3 className="featured-categories__card-title font-extrabold text-slate-900 text-[0.9375rem] sm:text-base leading-snug line-clamp-2 group-hover:text-[#3090cf] transition-colors">
-                      {sub.name}
+                      {sub.cardLabel}
                     </h3>
                     <span className="mt-1.5 text-sm font-medium text-slate-500 tabular-nums">
                       {sub.count} {sub.count === 1 ? 'Item' : 'Items'}

@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Joi = require("joi");
-const { Products, Subscription, Voucher, ContactUs, Orders, User, HomeSliderSettings } = require("../../db");
+const { Products, Subscription, Voucher, ContactUs, Orders, User, HomeSliderSettings, AppSettings } = require("../../db");
 const Stripe = require("stripe");
 const { default: sendMail } = require("../../utils/sendEmail");
 const userSellRateLimiter = require("../middlewares/rateLimit");
@@ -25,8 +25,15 @@ const {
 } = require("../../utils/categoryCounts");
 const { isCategoryActiveInDatabase } = require("../../utils/categoryActivity");
 const { getValuesForMain, inferMainForCategoryName } = require("../../utils/storefrontCategoryMeta");
+const {
+  normalizeProductForStorefrontList,
+  applyDealIdToPricing,
+  normalizeBadge,
+} = require("../../utils/storefrontProductPrice");
 const { connectDB } = require("../../lib/db");
 const jwt = require("jsonwebtoken");
+const getPublicSiteSettings = require("../publicSiteSettings");
+const { coerceHomeSliderSlides } = require("../../utils/homeSliderSlides");
 
 function orderViewJwtSecret() {
   const isProd = process.env.NODE_ENV === "production";
@@ -202,15 +209,29 @@ const getProducts = async (req, res) => {
       minPrice,
       maxPrice,
       limit = 12,
-      cursor
+      cursor,
+      hotDealsOnly,
     } = req.query;
 
-    const limitNum = Math.min(parseInt(limit) || 12, 50);
+    const hotDeals =
+      String(hotDealsOnly || "").toLowerCase() === "true" ||
+      req.query.deals === "1";
+
+    const limitParsed = parseInt(limit, 10) || 12;
+    const limitNum = hotDeals
+      ? Math.min(Math.max(limitParsed, 1), 5000)
+      : Math.min(limitParsed, 50);
 
     const filter = {
       inStock: true,
+      quantity: { $gt: 0 },
+      isDisable: { $ne: true },
       ...PRODUCT_NOT_DELETED,
     };
+
+    if (hotDeals) {
+      filter.isDeal = true;
+    }
 
     if (category !== "All") {
       filter.category = category;
@@ -239,8 +260,9 @@ const getProducts = async (req, res) => {
       filter._id = { $lt: new mongoose.Types.ObjectId(cursor) };
     }
 
-    const isFirstPage = !cursor && !search && !minPrice && !maxPrice;
-    const cacheKey = `products:${category}:v1`;
+    const isFirstPage =
+      !cursor && !search && !minPrice && !maxPrice && !hotDeals;
+    const cacheKey = `products:${category}:v3-storefront`;
     /** Without REDIS_URL, node-redis targets localhost:6379; getKey() can block for a long time if Redis is not running. */
     const useRedisCatalogCache = Boolean(
       process.env.REDIS_URL && String(process.env.REDIS_URL).trim()
@@ -279,6 +301,8 @@ const getProducts = async (req, res) => {
         totalCountAll = await Products.countDocuments({
           ...PRODUCT_NOT_DELETED,
           category: String(category).trim(),
+          quantity: { $gt: 0 },
+          inStock: true,
         });
       }
     }
@@ -287,28 +311,14 @@ const getProducts = async (req, res) => {
     const products = await Products.find(filter)
       .sort({ _id: -1 })
       .limit(limitNum)
-      .select("name price salePrice image category inStock quantity unit")
+      .select(
+        "name price comparePrice salePrice dealPrice image category inStock quantity unit badge isDeal tags createdAt"
+      )
       .lean();
 
-    const normalizedProducts = products.map((p) => {
-      const basePrice = Number(p.price || 0);
-      const salePrice = Number(p.salePrice || 0);
-      const hasDiscount = salePrice > 0 && salePrice < basePrice;
-      const finalPrice = hasDiscount ? salePrice : basePrice;
-      const discountPercentage = hasDiscount
-        ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
-        : 0;
-
-      return {
-        ...p,
-        price: finalPrice,
-        salePrice,
-        hasDeal: hasDiscount,
-        originalPrice: hasDiscount ? basePrice : null,
-        finalPrice,
-        discountPercentage,
-      };
-    });
+    const normalizedProducts = products.map((p) =>
+      normalizeProductForStorefrontList(p)
+    );
 
     const response = {
       success: true,
@@ -449,47 +459,45 @@ const getProductById = async (req, res) => {
       });
     }
 
-    const basePrice = Number(product.price || 0);
-    const salePrice = Number(product.salePrice || 0);
+    if (product.isDeleted === true) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
 
-    let originalPrice = basePrice;
-    let finalPrice = (salePrice > 0 && salePrice < originalPrice) ? salePrice : originalPrice;
-    let discountAmount = Math.max(originalPrice - finalPrice, 0);
-    let hasDeal = discountAmount > 0;
+    if (product.isDisable === true) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    const qty = Number(product.quantity || 0);
+    if (qty <= 0 || product.inStock === false) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product is unavailable',
+      });
+    }
 
     const deal = product.dealId;
-
-    if (deal) {
-      // FLAT discount
-      if (deal.dealType === 'FLAT') {
-        const dealDiscount = Number(deal.discountValue) || 0;
-        const dealFinalPrice = Math.max(originalPrice - dealDiscount, 0);
-        if (dealFinalPrice < finalPrice) {
-          finalPrice = dealFinalPrice;
-        }
-      }
-
-      // PERCENT discount
-      if (deal.dealType === 'PERCENT') {
-        const percentDiscount = (originalPrice * Number(deal.discountValue)) / 100;
-        const dealFinalPrice = Math.max(originalPrice - percentDiscount, 0);
-        if (dealFinalPrice < finalPrice) {
-          finalPrice = dealFinalPrice;
-        }
-      }
-
-      discountAmount = Math.max(originalPrice - finalPrice, 0);
-      hasDeal = discountAmount > 0;
-    }
+    const pricing = applyDealIdToPricing(product, deal);
+    const { dealId: _dealPop, ...productRest } = product;
 
     res.json({
       success: true,
       data: {
-        ...product,
-        hasDeal,
-        originalPrice,
-        finalPrice,
-        discountAmount
+        ...productRest,
+        dealId: deal || null,
+        price: pricing.finalPrice,
+        badge: normalizeBadge(product),
+        hasDeal: pricing.hasDeal,
+        originalPrice: pricing.originalPrice,
+        compareAtPrice: pricing.compareAtPrice,
+        finalPrice: pricing.finalPrice,
+        discountAmount: pricing.discountAmount,
+        discountPercentage: pricing.discountPercentage,
       }
     });
   } catch (error) {
@@ -916,6 +924,7 @@ const orderPayment = async (req, res) => {
   const guestAddressSchema = Joi.object({
     name: Joi.string().trim().required(),
     phone: Joi.string().trim().required(),
+    email: Joi.string().trim().email().required(),
     fullAddress: Joi.string().trim().required(),
     city: Joi.string().trim().required(),
     state: Joi.string().trim().allow("", null).optional(),
@@ -955,7 +964,7 @@ const orderPayment = async (req, res) => {
     pin: Joi.when("paymentMethod", {
       is: "otc",
       then: Joi.string()
-        .pattern(/^[0-9]{4}$/)
+        .pattern(/^[0-9]{3,12}$/)
         .required(),
       otherwise: Joi.forbidden()
     }),
@@ -968,6 +977,8 @@ const orderPayment = async (req, res) => {
 
     /** Sent by storefront for display / future use; pricing is recalculated server-side. */
     deliveryType: Joi.string().valid("standard", "express").optional(),
+    /** Required for guests; for signed-in users falls back to account email when omitted. */
+    customerEmail: Joi.string().trim().email().allow("", null).optional(),
     subtotal: Joi.number().optional(),
     deliveryFee: Joi.number().optional(),
     taxAndConvenienceFee: Joi.number().optional(),
@@ -1019,6 +1030,30 @@ const orderPayment = async (req, res) => {
 
     if (!items || !items.length) {
       return res.status(400).json({ success: false, message: "No items provided" });
+    }
+
+    let customerEmail = String(value.customerEmail || "").trim().toLowerCase();
+    if (isGuestCheckout) {
+      const guestEm =
+        guestAddressPayload && String(guestAddressPayload.email || "").trim().toLowerCase();
+      if (guestEm) customerEmail = guestEm;
+      if (!customerEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "Email is required for order confirmation and updates.",
+        });
+      }
+    } else {
+      if (!customerEmail) {
+        const u = await User.findById(userId).select("email").lean();
+        customerEmail = u && u.email ? String(u.email).trim().toLowerCase() : "";
+      }
+      if (!customerEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "Email is required. Update your account email or enter it at checkout.",
+        });
+      }
     }
 
     const productIds = items.map(i => i.product);
@@ -1159,6 +1194,7 @@ const orderPayment = async (req, res) => {
       ? {
           name: guestAddressPayload.name,
           phone: guestAddressPayload.phone,
+          email: customerEmail,
           fullAddress: guestAddressPayload.fullAddress,
           city: guestAddressPayload.city,
           state: guestAddressPayload.state || "",
@@ -1169,6 +1205,7 @@ const orderPayment = async (req, res) => {
 
     const order = await Orders.create({
       userId: userId || null,
+      customerEmail,
       items: orderItems,
       subtotal: dbSubtotal,
       taxAmount: dbTax,
@@ -1208,7 +1245,7 @@ const orderPayment = async (req, res) => {
           }
         ],
 
-        customer_email: req.user?.email || undefined,
+        customer_email: customerEmail || undefined,
 
         metadata: {
           orderId: order._id.toString()
@@ -1243,6 +1280,15 @@ const orderPayment = async (req, res) => {
 
     await order.save();
 
+    setImmediate(() => {
+      try {
+        const { sendNewOrderEmails } = require("../../utils/orderEmails");
+        sendNewOrderEmails(order._id).catch((e) => console.error("OTC sendNewOrderEmails:", e?.message || e));
+      } catch (e) {
+        console.error("OTC sendNewOrderEmails require:", e);
+      }
+    });
+
     return res.status(200).json({
       success: true,
       message: "Order Create Successfully",
@@ -1261,22 +1307,41 @@ const orderPayment = async (req, res) => {
 
 const contactForm = async (req, res) => {
   const validate = Joi.object({
-    name: Joi.string().required(),
-    email: Joi.string().required(),
-    queryType: Joi.string().required(),
-    subject: Joi.string().required(),
-    message: Joi.string().required(),
-  })
+    name: Joi.string().trim().min(1).max(200).required(),
+    email: Joi.string().trim().email().required(),
+    phone: Joi.string().trim().allow('', null).max(40),
+    queryType: Joi.string().trim().allow('', null),
+    subject: Joi.string().trim().min(1).max(300).required(),
+    message: Joi.string().trim().min(1).max(20000).required(),
+  });
   try {
-    await validate.validateAsync(req.body, { abortEarly: true })
-    const { name, email, queryType, subject, message } = req.body;
+    await validate.validateAsync(req.body, { abortEarly: true });
+    const { name, email, queryType, subject, message, phone } = req.body;
+
+    const {
+      resolveContactAutoReplyMessage,
+      buildContactAutoAcknowledgmentHtml,
+      escapeHtml,
+    } = require("../../utils/contactAutoAcknowledgment");
+
+    let replyTplTrim = "";
+    try {
+      const sdoc = await AppSettings.findOne().lean();
+      replyTplTrim =
+        sdoc?.contactAutoReplyMessage != null ? String(sdoc.contactAutoReplyMessage).trim() : "";
+    } catch {
+      /* ignore */
+    }
+    const autoAcknowledgment = resolveContactAutoReplyMessage(replyTplTrim || null, name);
 
     const contact = new ContactUs({
-      name,
-      email,
-      queryType: queryType || '',
-      subject,
-      message
+      name: String(name).trim(),
+      email: String(email).trim().toLowerCase(),
+      phone: phone != null && String(phone).trim() ? String(phone).trim() : '',
+      queryType: queryType != null && String(queryType).trim() ? String(queryType).trim() : 'general',
+      subject: String(subject).trim(),
+      message: String(message).trim(),
+      autoAcknowledgment,
     });
 
     await contact.save();
@@ -1287,41 +1352,68 @@ const contactForm = async (req, res) => {
       contactId: contact._id
     });
 
-    const contactInboxEmail =
-      (process.env.CONTACT_FORM_TO_EMAIL && String(process.env.CONTACT_FORM_TO_EMAIL).trim()) ||
-      "contact@zippyyy.com";
-
     setImmediate(async () => {
       try {
+        let contactInboxEmail =
+          (process.env.CONTACT_FORM_TO_EMAIL && String(process.env.CONTACT_FORM_TO_EMAIL).trim()) ||
+          'contact@zippyyy.com';
+        try {
+          const settings = await AppSettings.findOne().lean();
+          const primary = settings && String(settings.contactFormToEmailPrimary || '').trim();
+          const secondary = settings && String(settings.contactFormToEmailSecondary || '').trim();
+          const parts = [primary, secondary].filter(Boolean);
+          if (parts.length) {
+            contactInboxEmail = parts.join(',');
+          }
+        } catch {
+          /* use env / default */
+        }
+
+        const contactFormAdminHtml = require("../../utils/template/contactFormAdmin");
+        const { renderTemplateKey, buildContactTemplateVars } = require("../../utils/emailTemplateService");
+        const cvars = buildContactTemplateVars({
+          name,
+          email,
+          queryType,
+          subject,
+          message,
+        });
+        let adminSubject = `New contact: ${subject}`;
+        let adminHtml = contactFormAdminHtml({
+          name,
+          email,
+          queryType: queryType || "—",
+          subject,
+          message,
+        });
+        try {
+          const rendered = await renderTemplateKey("contact_form_admin", cvars);
+          if (rendered && rendered.html) {
+            adminSubject = rendered.subject || adminSubject;
+            adminHtml = rendered.html;
+          }
+        } catch (e) {
+          console.error("contact_form_admin template:", e.message);
+        }
         const adminMailOptions = {
           to: contactInboxEmail,
-          subject: `New Contact Form Submission: ${subject}`,
-          html: `
-            <h2>New Contact Form Submission</h2>
-            <p><strong>Name:</strong> ${name}</p>
-            <p><strong>Email:</strong> ${email}</p>
-            <p><strong>Query For:</strong> ${queryType || 'Not provided'}</p>
-            <p><strong>Subject:</strong> ${subject}</p>
-            <p><strong>Message:</strong></p>
-            <p>${message.replace(/\n/g, '<br>')}</p>
-            <hr>
-            <p><em>Submitted on ${new Date().toLocaleString()}</em></p>
-          `
+          subject: adminSubject,
+          html: adminHtml,
         };
 
+        const ackHtml = buildContactAutoAcknowledgmentHtml(name, replyTplTrim || null);
         const userMailOptions = {
           to: email,
-          subject: "Thank you for contacting Zippyy",
+          subject: "Thank you for contacting Zippyyy",
           html: `
-            <h2>Thank you for contacting us!</h2>
-            <p>Dear ${name},</p>
-            <p>We have received your message and will get back to you as soon as possible.</p>
-            <p><strong>Your Message:</strong></p>
-            <p><em>${subject}</em></p>
-            <p>${message.replace(/\n/g, '<br>')}</p>
-            <hr>
-            <p>Best regards,<br>RB's Zippyy Team</p>
-          `
+            <div style="font-family: system-ui, sans-serif; max-width: 560px; line-height: 1.5; color: #1e293b;">
+              ${ackHtml}
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+              <p style="margin: 0 0 8px; font-size: 13px; color: #64748b;"><strong>Your message (for your records)</strong></p>
+              <p style="margin: 0 0 4px;"><em>${escapeHtml(subject)}</em></p>
+              <p style="margin: 0; white-space: pre-wrap;">${escapeHtml(message).replace(/\n/g, "<br>")}</p>
+            </div>
+          `,
         };
 
         await Promise.all([
@@ -1329,7 +1421,6 @@ const contactForm = async (req, res) => {
           sendMail(userMailOptions)
         ]);
 
-        console.log('✅ Contact form emails sent successfully');
       } catch (emailError) {
         console.error('❌ Background email error:', emailError);
       }
@@ -1424,10 +1515,6 @@ const getUserOrders = async (req, res) => {
     });
 
     const totalPages = Math.ceil(totalCount / limit);
-
-    console.log(
-      `📦 Orders fetched | user=${req.user.email} | ${formattedOrders.length}/${totalCount}`
-    );
 
     res.status(200).json({
       success: true,
@@ -1733,6 +1820,8 @@ const deleteAddress = async (req, res) => {
       });
     }
 
+    await Address.deleteOne({ _id: address._id, userId: req.user.id });
+
     return res.status(200).json({
       success: true,
       message: "Address deleted successfully",
@@ -1922,7 +2011,14 @@ const getFeaturedCategories = async (req, res) => {
         }
 
         const agg = await Products.aggregate([
-          { $match: { ...PRODUCT_NOT_DELETED, category: { $exists: true, $nin: [null, ""] } } },
+          {
+            $match: {
+              ...PRODUCT_NOT_DELETED,
+              category: { $exists: true, $nin: [null, ""] },
+              quantity: { $gt: 0 },
+              inStock: true,
+            },
+          },
           { $group: { _id: "$category", count: { $sum: 1 } } },
         ]);
         const seen = new Set();
@@ -1952,6 +2048,7 @@ const getFeaturedCategories = async (req, res) => {
       }
     }
 
+    list = list.filter((c) => c && c.featuredOnHome !== false);
     list = list.slice(0, 32);
 
     const { mapInStock, mapAll } = await buildProductCategoryMaps(Products);
@@ -1972,9 +2069,14 @@ const getFeaturedCategories = async (req, res) => {
       const saved = c.image && String(c.image).trim();
       const nk = normCategoryKey(c.name);
       const fromProduct = firstImgByKey[nk] || null;
+      const displayTitle =
+        c.homeDisplayTitle != null && String(c.homeDisplayTitle).trim()
+          ? String(c.homeDisplayTitle).trim()
+          : c.name;
       return {
         name: c.name,
         value: c.name,
+        displayTitle,
         /** Total non-deleted SKUs in this category (stable; not “in-stock only”). */
         count: all,
         /** In-stock subset (storefront listing uses inStock). */
@@ -2041,8 +2143,17 @@ const getFeaturedCategories = async (req, res) => {
       }
     }
 
+    let sectionTitle = "Featured Categories";
+    try {
+      const appS = await AppSettings.findOne().lean();
+      const t = appS && String(appS.homeFeaturedSectionTitle || "").trim();
+      if (t) sectionTitle = t;
+    } catch (_) {
+      /* ignore */
+    }
+
     setCatalogNoCacheHeaders(res);
-    return res.json({ success: true, data });
+    return res.json({ success: true, sectionTitle, data });
   } catch (err) {
     setCatalogNoCacheHeaders(res);
     return res.status(500).json({
@@ -2073,12 +2184,19 @@ const getHomeSliderSettings = async (req, res) => {
       });
     }
 
-    const slides = (settings.slides || [])
-      .filter((s) => s && s.imageUrl && s.title && s.isActive !== false)
+    const slides = coerceHomeSliderSlides(settings.slides)
+      .filter(
+        (s) =>
+          s &&
+          String(s.imageUrl || "").trim() &&
+          String(s.title || "").trim() &&
+          s.isActive !== false
+      )
       .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
       .map((s, idx) => ({
-        id: `${idx + 1}`,
+        id: s._id != null ? String(s._id) : String(idx + 1),
         title: s.title,
+        subtitle: s.subtitle != null ? String(s.subtitle).trim() : "",
         imageUrl: s.imageUrl,
         buttonText: s.buttonText || "Shop Now",
         buttonLink: s.buttonLink || "/products",
@@ -2279,14 +2397,27 @@ const requestEasyshipRates = async (body) => {
   }
 
   const url = `${getEasyshipBaseUrl()}/${EASYSHIP_API_VERSION}/rates`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${EASYSHIP_API_KEY}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 25_000);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${EASYSHIP_API_KEY}`,
+      },
+      body: JSON.stringify(payload),
+      signal: ac.signal,
+    });
+  } catch (e) {
+    if (e && e.name === "AbortError") {
+      throw new Error("Easyship rates request timed out");
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
 
   const text = await response.text();
   const parsed = text
@@ -2356,24 +2487,36 @@ const parseCityStateFromAddress = (destinationAddress) => {
   return { city: "Destination", state: "Destination" };
 };
 
+/** US ZippyyyShips parcel form — bounded to avoid abuse and Easyship rejects. */
 const shippingFormSchema = Joi.object({
-  length: Joi.number().min(0.1).required(),
-  width: Joi.number().min(0.1).required(),
-  height: Joi.number().min(0.1).required(),
-  weight: Joi.number().min(0.1).required(),
-  destinationZip: Joi.string().trim().required(),
-  destinationAddress: Joi.string().trim().required(),
-  originZip: Joi.string().trim().optional().allow(""),
-  originAddress: Joi.string().trim().optional().allow(""),
+  length: Joi.number().min(0.1).max(200).required(),
+  width: Joi.number().min(0.1).max(200).required(),
+  height: Joi.number().min(0.1).max(200).required(),
+  weight: Joi.number().min(0.1).max(150).required(),
+  destinationZip: Joi.string().trim().min(3).max(16).required(),
+  destinationAddress: Joi.string().trim().min(5).max(500).required(),
+  originZip: Joi.string().trim().max(16).optional().allow(""),
+  originAddress: Joi.string().trim().max(500).optional().allow(""),
   destinationResidential: Joi.boolean().optional(),
   addInsurance: Joi.boolean().optional(),
-  insuranceDeclaredValue: Joi.number().min(0).optional().allow(0),
-});
+  insuranceDeclaredValue: Joi.number().min(0).max(500_000).optional().allow(0),
+  /** Required when there is no Bearer user (guest label checkout). */
+  guestName: Joi.string().trim().max(200).optional().allow(""),
+  guestEmail: Joi.string().trim().email().optional().allow(""),
+  guestPhone: Joi.string().trim().max(40).optional().allow(""),
+  /** Optional ship-to contact; defaults to guest* when omitted. */
+  recipientName: Joi.string().trim().max(200).optional().allow(""),
+  recipientPhone: Joi.string().trim().max(40).optional().allow(""),
+  recipientEmail: Joi.string().trim().max(200).optional().allow(""),
+}).options({ stripUnknown: true, abortEarly: false });
 
 const getShippingQuote = async (req, res) => {
   try {
-    const { error, value } = shippingFormSchema.validate(req.body);
-    if (error) return res.status(400).json({ success: false, message: formatJoiErrors(error) });
+    const { error, value } = shippingFormSchema.validate(req.body ?? {});
+    if (error) {
+      setCatalogNoCacheHeaders(res);
+      return res.status(400).json({ success: false, message: formatJoiErrors(error) });
+    }
 
     let easyshipRate = null;
     try {
@@ -2384,10 +2527,12 @@ const getShippingQuote = async (req, res) => {
 
     const quoteAmount = easyshipRate?.total || computeShippingQuote(value);
     if (!quoteAmount || quoteAmount <= 0) {
+      setCatalogNoCacheHeaders(res);
       return res.status(400).json({ success: false, message: "Invalid shipping inputs" });
     }
 
     const internalOnly = !easyshipRate;
+    setCatalogNoCacheHeaders(res);
     return res.json({
       success: true,
       data: {
@@ -2406,13 +2551,43 @@ const getShippingQuote = async (req, res) => {
       },
     });
   } catch (err) {
+    setCatalogNoCacheHeaders(res);
     return res.status(500).json({ success: false, message: err.message || "Failed to get quote" });
   }
 };
 
+/** Stripe success/cancel URLs must be absolute; prefer browser Origin, else first FRONTEND_URL. */
+function resolveStorefrontOrigin(req) {
+  const origin = String(req.get("origin") || "").trim();
+  if (origin && /^https?:\/\//i.test(origin)) {
+    return origin.replace(/\/+$/, "");
+  }
+  const raw = String(process.env.FRONTEND_URL || "");
+  const first = raw.split(",")[0].trim();
+  if (first && /^https?:\/\//i.test(first)) {
+    return first.replace(/\/+$/, "");
+  }
+  return null;
+}
+
+async function rollbackShippingCheckoutDraft(orderId, temporaryAddressId) {
+  await Promise.all([
+    orderId ? Orders.findByIdAndDelete(orderId) : Promise.resolve(),
+    temporaryAddressId ? Address.findByIdAndDelete(temporaryAddressId) : Promise.resolve(),
+  ]);
+}
+
 const createShippingCheckout = async (req, res) => {
+  let temporaryAddressId = null;
   try {
-    const { error, value } = shippingFormSchema.validate(req.body);
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return res.status(503).json({
+        success: false,
+        message: "Stripe is not configured; shipping checkout is unavailable.",
+      });
+    }
+
+    const { error, value } = shippingFormSchema.validate(req.body ?? {});
     if (error) return res.status(400).json({ success: false, message: formatJoiErrors(error) });
 
     let easyshipRate = null;
@@ -2427,24 +2602,66 @@ const createShippingCheckout = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid shipping inputs" });
     }
 
-    const userId = req.user.id;
-    const dbUser = await User.findById(userId).select("name firstName lastName phone email").lean();
-    if (!dbUser) return res.status(404).json({ success: false, message: "User not found" });
+    const userId = req.user?.id ? String(req.user.id) : null;
+    const isGuest = !userId;
 
     const { city, state } = parseCityStateFromAddress(value.destinationAddress);
     const pincode = String(value.destinationZip).trim();
 
-    const address = await Address.create({
-      userId,
-      name: dbUser.name || `${dbUser.firstName || "Customer"} ${dbUser.lastName || ""}`.trim() || "Customer",
-      phone: dbUser.phone || "0000000000",
-      fullAddress: value.destinationAddress,
-      city,
-      state,
-      pincode,
-      addressType: value.destinationResidential ? "Home" : "Work",
-      isDefault: false,
-    });
+    let customerEmail = "";
+    let addressId = null;
+    let guestShippingDoc = undefined;
+
+    if (isGuest) {
+      const guestName = String(value.guestName || "").trim();
+      const guestPhone = String(value.guestPhone || "").trim();
+      const guestEmail = String(value.guestEmail || "").trim().toLowerCase();
+      if (!guestName || !guestPhone || !guestEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "guestName, guestEmail, and guestPhone are required for guest checkout.",
+        });
+      }
+      customerEmail = guestEmail;
+      const rName = String(value.recipientName || "").trim() || guestName;
+      const rPhone = String(value.recipientPhone || "").trim() || guestPhone;
+      const rEmail =
+        String(value.recipientEmail || "").trim().toLowerCase() || guestEmail;
+      guestShippingDoc = {
+        name: rName,
+        phone: rPhone,
+        email: rEmail,
+        fullAddress: value.destinationAddress,
+        city,
+        state,
+        pincode,
+        addressType: value.destinationResidential ? "Home" : "Work",
+      };
+    } else {
+      const dbUser = await User.findById(userId).select("name firstName lastName phone email").lean();
+      if (!dbUser) return res.status(404).json({ success: false, message: "User not found" });
+
+      const address = await Address.create({
+        userId,
+        name: dbUser.name || `${dbUser.firstName || "Customer"} ${dbUser.lastName || ""}`.trim() || "Customer",
+        phone: dbUser.phone || "0000000000",
+        fullAddress: value.destinationAddress,
+        city,
+        state,
+        pincode,
+        addressType: value.destinationResidential ? "Home" : "Work",
+        isDefault: false,
+      });
+      addressId = address._id;
+      temporaryAddressId = address._id;
+      customerEmail = String(dbUser.email || "").trim().toLowerCase();
+      if (!customerEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "Your account has no email on file. Add an email to your profile or use guest checkout.",
+        });
+      }
+    }
 
     const trackingNumber = `TRK-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
 
@@ -2457,8 +2674,10 @@ const createShippingCheckout = async (req, res) => {
     const notesStr = `ZippyyyShips | ${JSON.stringify(shipMeta)}`.slice(0, 1000);
 
     const order = await Orders.create({
-      userId,
-      addressId: address._id,
+      userId: userId || null,
+      addressId,
+      customerEmail,
+      guestShipping: guestShippingDoc,
       items: [],
       subtotal: 0,
       taxAmount: 0,
@@ -2477,32 +2696,63 @@ const createShippingCheckout = async (req, res) => {
       isShippingOrder: true,
     });
 
-    // Create Stripe Checkout session for shipping payment (label purchase)
-    const origin = req.get("origin") || process.env.FRONTEND_URL || "";
-    const successUrl = `${origin}/order-success?order=${order._id}&shipping=1`;
-    const cancelUrl = `${origin}/zippyyy-ships`;
+    const baseUrl = resolveStorefrontOrigin(req);
+    if (!baseUrl) {
+      await rollbackShippingCheckoutDraft(order._id, temporaryAddressId);
+      return res.status(400).json({
+        success: false,
+        message:
+          "Cannot build checkout URLs: send a valid Origin header or set FRONTEND_URL (e.g. https://yoursite.com) in the API environment.",
+      });
+    }
+
+    const orderViewToken = signOrderViewToken(order._id);
+    const successQuery =
+      isGuest && orderViewToken != null
+        ? `order=${order._id}&shipping=1&t=${encodeURIComponent(orderViewToken)}`
+        : `order=${order._id}&shipping=1`;
+    const successUrl = `${baseUrl}/order-success?${successQuery}`;
+    const cancelUrl = `${baseUrl}/zippyyy-ships`;
 
     const stripeTotalCents = Math.round(quoteAmount * 100);
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: { name: `Shipping Label - ${order.orderNumber}` },
-            unit_amount: stripeTotalCents,
+    if (!Number.isFinite(stripeTotalCents) || stripeTotalCents < 50) {
+      await rollbackShippingCheckoutDraft(order._id, temporaryAddressId);
+      return res.status(400).json({
+        success: false,
+        message: "Quote amount is too small for Stripe checkout (minimum US$0.50).",
+      });
+    }
+
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: { name: `Shipping Label - ${order.orderNumber}` },
+              unit_amount: stripeTotalCents,
+            },
+            quantity: 1,
           },
-          quantity: 1,
+        ],
+        customer_email: customerEmail || undefined,
+        metadata: {
+          orderId: order._id.toString(),
+          isShippingOrder: "true",
         },
-      ],
-      customer_email: dbUser.email,
-      metadata: {
-        orderId: order._id.toString(),
-        isShippingOrder: "true",
-      },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-    });
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      });
+    } catch (stripeErr) {
+      await rollbackShippingCheckoutDraft(order._id, temporaryAddressId);
+      console.error("createShippingCheckout Stripe error:", stripeErr.message);
+      return res.status(502).json({
+        success: false,
+        message: stripeErr.message || "Stripe could not start checkout. Try again later.",
+      });
+    }
 
     order.stripeSessionId = session.id;
     await order.save();
@@ -2548,6 +2798,7 @@ router.get('/getCategories', getCategories);
 router.get('/featured-categories', getFeaturedCategories);
 router.get('/referral/discount', getReferralDiscount);
 router.get('/home-slider-settings', getHomeSliderSettings);
+router.get('/site-settings', getPublicSiteSettings);
 router.post('/shipping/quote', getShippingQuote);
 router.post('/shipping/checkout', createShippingCheckout);
 

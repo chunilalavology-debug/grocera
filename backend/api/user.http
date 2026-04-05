@@ -121,3 +121,45 @@ Content-Type: application/json
    "subject":"",
    "message":""
 }
+
+############
+# Zippyyy Ships — quote (public, no Authorization)
+POST {{url}}/user/shipping/quote
+Content-Type: application/json
+
+{
+  "length": 12,
+  "width": 10,
+  "height": 8,
+  "weight": 5,
+  "destinationZip": "10001",
+  "destinationAddress": "123 Main St, New York, NY",
+  "originZip": "90210",
+  "originAddress": "456 Oak Ave, Los Angeles, CA",
+  "destinationResidential": false,
+  "addInsurance": false,
+  "insuranceDeclaredValue": 50
+}
+
+############
+# Zippyyy Ships — guest checkout (needs Stripe + Origin or FRONTEND_URL)
+POST {{url}}/user/shipping/checkout
+Content-Type: application/json
+
+{
+  "length": 12,
+  "width": 10,
+  "height": 8,
+  "weight": 5,
+  "destinationZip": "10001",
+  "destinationAddress": "123 Main St, New York, NY",
+  "originZip": "90210",
+  "originAddress": "456 Oak Ave, Los Angeles, CA",
+  "destinationResidential": false,
+  "guestName": "Test User",
+  "guestEmail": "test@example.com",
+  "guestPhone": "+15555550100",
+  "recipientName": "Recipient Name",
+  "recipientPhone": "+15555550101",
+  "recipientEmail": "recipient@example.com"
+}

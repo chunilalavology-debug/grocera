@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
+import { useSiteBranding } from '../context/SiteBrandingContext';
 import '../styles/components/Navbar.css';
 import logoRemo from "../assets-copy/navbar/logoRemo.svg";
 import {
@@ -19,6 +20,14 @@ import {
 } from 'lucide-react';
 import Lottie from 'lottie-react';
 import { MAIN_CATEGORIES, SUBCATEGORIES_BY_MAIN } from '../config/categories';
+import api from '../services/api';
+
+function navNormCategoryKey(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
 
 const FIRE_JSON_URL = process.env.PUBLIC_URL + '/fire.json';
 
@@ -46,6 +55,11 @@ function Navbar() {
   const { isAuthenticated, logout, isAdmin, isCoAdmin } = useAuth();
   const { itemCount } = useCart();
   const { wishlistCount, openDrawer: openWishlist } = useWishlist();
+  const { websiteName, websiteLogoSrc } = useSiteBranding();
+
+  /** From GET /user/getCategories (active only). Null = not loaded yet — keep static lists. */
+  const [searchCategoryOptions, setSearchCategoryOptions] = useState(SEARCH_CATEGORIES);
+  const [activeCategoryNameKeys, setActiveCategoryNameKeys] = useState(null);
 
   const handleOpenWishlist = () => {
     openWishlist();
@@ -69,6 +83,35 @@ function Navbar() {
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then(setFireAnimation)
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get('/user/getCategories')
+      .then((res) => {
+        if (cancelled || !res?.success || !Array.isArray(res.data)) return;
+        const keys = new Set(
+          res.data
+            .map((c) => navNormCategoryKey(c?.name || c?.displayTitle || ''))
+            .filter(Boolean),
+        );
+        setActiveCategoryNameKeys(keys);
+        const opts = [
+          { value: '', label: 'All Categories' },
+          ...res.data
+            .filter((c) => c && (c.name || c.displayTitle))
+            .map((c) => ({
+              value: String(c.name || '').trim(),
+              label: String((c.displayTitle && c.displayTitle.trim()) || c.name || '').trim() || String(c.name),
+            })),
+        ];
+        if (opts.length > 1) setSearchCategoryOptions(opts);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -104,10 +147,10 @@ function Navbar() {
   const toggleMobileMenu = () => setIsMobileMenuOpen((prev) => !prev);
 
   const filteredCategories = categoryFilter.trim()
-    ? SEARCH_CATEGORIES.filter((c) =>
+    ? searchCategoryOptions.filter((c) =>
         c.label.toLowerCase().includes(categoryFilter.toLowerCase())
       )
-    : SEARCH_CATEGORIES;
+    : searchCategoryOptions;
 
   const selectCategory = (value) => {
     setSearchCategory(value);
@@ -151,7 +194,11 @@ function Navbar() {
       <div className="header-main">
         <div className={`header-main__inner container${isAdmin ? " header-main__inner--admin-mobile" : ""}`}>
           <Link to="/" className="header-main__logo">
-            <img src={logoRemo} alt="Zippyyy Grocery" className="header-main__logo-img" />
+            <img
+              src={websiteLogoSrc || logoRemo}
+              alt={`${websiteName || 'Zippyyy'} home`}
+              className="header-main__logo-img"
+            />
           </Link>
 
           {!isAdmin && (
@@ -175,7 +222,7 @@ function Navbar() {
                 aria-expanded={isCategoryDropdownOpen}
                 aria-haspopup="listbox"
               >
-                <span>{SEARCH_CATEGORIES.find((c) => c.value === searchCategory)?.label || 'All Categories'}</span>
+                <span>{searchCategoryOptions.find((c) => c.value === searchCategory)?.label || 'All Categories'}</span>
                 <ChevronDown className="header-search__chevron" size={16} />
               </button>
               <div className={`header-search__category-dropdown ${isCategoryDropdownOpen ? 'open' : ''}`}>
@@ -327,7 +374,12 @@ function Navbar() {
                   <div key={main.id} className="header-nav__browse-group">
                     <div className="header-nav__browse-group-title">{main.name}</div>
                     <div className="header-nav__browse-group-list">
-                      {(SUBCATEGORIES_BY_MAIN[main.id] || []).map((sub) => (
+                      {(SUBCATEGORIES_BY_MAIN[main.id] || [])
+                        .filter((sub) => {
+                          if (activeCategoryNameKeys == null) return true;
+                          return activeCategoryNameKeys.has(navNormCategoryKey(sub.value));
+                        })
+                        .map((sub) => (
                         <Link
                           key={sub.value}
                           to={`/products?category=${encodeURIComponent(sub.value)}&main=${main.id}`}

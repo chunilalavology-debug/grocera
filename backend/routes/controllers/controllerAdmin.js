@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Joi = require("joi");
-const { Message, Products, Orders, User, ContactUs, Voucher, HomeSliderSettings } = require("../../db");
+const { Message, Products, Orders, User, ContactUs, Voucher, HomeSliderSettings, AppSettings, EmailTemplate } = require("../../db");
 const { authorize } = require("../middlewares/rbacMiddleware");
 const multer = require("multer");
 const Product = require("../../db/models/Product");
@@ -13,15 +13,22 @@ const Deal = require("../../db/models/deals");
 const Contact = require("../../db/models/Contact");
 const Address = require("../../db/models/Address");
 const { default: sendMail } = require("../../utils/sendEmail");
-const OrderConform = require("../../utils/template/userOrderConform");
-const OrderDelivered = require("../../utils/template/userOrderDeliverd");
-const OrderCancelled = require("../../utils/template/userOrderCancelled");
-const userOrderStatusUpdate = require("../../utils/template/userOrderStatusUpdate");
+const { sendOrderStatusChangeEmail, loadOrderForMail } = require("../../utils/orderEmails");
+const { verifySmtpConfig, sendMailWithOverrides } = require("../../utils/mailService");
+const { VALID_ADMIN_TRANSITION_STATUSES, ORDER_STATUSES } = require("../../utils/orderStatuses");
+const {
+  ensureDefaultTemplates,
+  applyVariables,
+  buildOrderTemplateVars,
+  buildContactTemplateVars,
+  TEMPLATE_DEFAULTS,
+} = require("../../utils/emailTemplateService");
 const Category = require("../../db/models/categories");
 const {
   coerceCategoryIsActiveFromRequest,
 } = require("../../utils/categoryActivity");
 const { finalizeCategoryImageUpload } = require("../../utils/categoryImageUpload");
+const { coerceHomeSliderSlides } = require("../../utils/homeSliderSlides");
 const {
   escapeRegex,
   buildProductCategoryMaps,
@@ -33,11 +40,20 @@ const {
   pickProductImage,
   PRODUCT_NOT_DELETED,
 } = require("../../utils/categoryCounts");
+
+const ALLOWED_PRODUCT_BADGES = new Set(["hot", "sale", "new", "trending", ""]);
+
+/** Stripe and imports typically set `paid`; legacy rows may use `completed`. */
+const PAID_REVENUE_PAYMENT_STATUSES = { $in: ["paid", "completed"] };
 const {
   getValuesForMain,
   inferMainForCategoryName,
 } = require("../../utils/storefrontCategoryMeta");
 const { safeApiMessage } = require("../../utils/safeApiMessage");
+const {
+  resolveContactAutoReplyMessage,
+  DEFAULT_CONTACT_AUTO_REPLY_TEMPLATE,
+} = require("../../utils/contactAutoAcknowledgment");
 const { invalidateProductCatalogCache } = require("../../utils/invalidateProductCatalogCache");
 const { connectDB } = require("../../lib/db");
 const adminAuth = [authorize(['admin'])];
@@ -103,6 +119,32 @@ const upload = multer({
   }
 });
 
+const uploadProductCsv = multer({
+  storage,
+  limits: { fileSize: 35 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    if (fileExt === ".csv") return cb(null, true);
+    cb(new Error("Bulk import requires a .csv file"));
+  },
+});
+
+const uploadProductCsvMulter = (req, res, next) => {
+  uploadProductCsv.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "CSV too large (max 35MB). Split into smaller files if needed.",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Invalid upload",
+    });
+  });
+};
+
 /** Multer errors (type, size) must return JSON or the admin UI shows a generic network message. */
 const uploadCategoryImageMulter = (req, res, next) => {
   upload.single("file")(req, res, (err) => {
@@ -118,6 +160,288 @@ const uploadCategoryImageMulter = (req, res, next) => {
       message: err.message || "Invalid upload",
     });
   });
+};
+
+const uploadBrandingLogo = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    const okExt = [".jpeg", ".jpg", ".png", ".webp", ".svg"].includes(fileExt);
+    const okMime =
+      !file.mimetype ||
+      /^image\//i.test(file.mimetype) ||
+      /svg|jpeg|jpg|png|webp/i.test(file.mimetype);
+    if (okExt && okMime) return cb(null, true);
+    cb(new Error("Logo must be JPG, PNG, WebP, or SVG (max 5MB)."));
+  },
+});
+
+const uploadBrandingFavicon = multer({
+  storage,
+  limits: { fileSize: 512 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    const okExt = [".ico", ".png", ".svg", ".webp", ".jpg", ".jpeg"].includes(fileExt);
+    const okMime =
+      !file.mimetype ||
+      /^image\//i.test(file.mimetype) ||
+      /svg|ico|jpeg|jpg|png|webp|x-icon|vnd\.microsoft\.icon/i.test(file.mimetype);
+    if (okExt && okMime) return cb(null, true);
+    cb(new Error("Favicon must be ICO, PNG, SVG, or WebP (max 512KB)."));
+  },
+});
+
+const uploadBrandingLogoMulter = (req, res, next) => {
+  uploadBrandingLogo.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "Logo file is too large (max 5MB).",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Invalid logo upload",
+    });
+  });
+};
+
+const uploadBrandingFaviconMulter = (req, res, next) => {
+  uploadBrandingFavicon.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "Favicon file is too large (max 512KB).",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Invalid favicon upload",
+    });
+  });
+};
+
+const {
+  uploadsPublicPath,
+  normalizeStoredUploadsUrl,
+} = require("../../utils/brandingPublicUrl");
+
+/**
+ * Public path for a file under /uploads (always `/uploads/...`, no host).
+ * Avoids broken images when the DB had localhost:5000 but the storefront loads from :3000 or another domain.
+ */
+function publicBrandingUrl(_req, filename) {
+  return uploadsPublicPath(filename);
+}
+
+function adminProfilePayload(u) {
+  const doc = u && typeof u.toObject === "function" ? u.toObject() : u;
+  const username =
+    (doc.name && String(doc.name).trim()) ||
+    [doc.firstName, doc.lastName].filter(Boolean).join(" ").trim() ||
+    "";
+  const rawImg = doc.profileImageUrl != null ? String(doc.profileImageUrl).trim() : "";
+  return {
+    id: String(doc._id),
+    email: doc.email || "",
+    username,
+    firstName: doc.firstName || "",
+    lastName: doc.lastName || "",
+    role: doc.role || "",
+    profileImageUrl: normalizeStoredUploadsUrl(rawImg),
+    profileAvatarKey: "",
+  };
+}
+
+const uploadAdminAvatar = multer({
+  storage,
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    const okExt = [".jpeg", ".jpg", ".png", ".webp"].includes(fileExt);
+    const mime = String(file.mimetype || "").toLowerCase();
+    const okMime =
+      !mime ||
+      /^image\/(jpeg|png|webp)/i.test(mime) ||
+      mime === "application/octet-stream" ||
+      /jpe?g|png|webp/i.test(mime);
+    if (okExt && okMime) return cb(null, true);
+    cb(new Error("Avatar must be JPG, PNG, or WebP (max 3MB)."));
+  },
+});
+
+const uploadAdminAvatarMulter = (req, res, next) => {
+  uploadAdminAvatar.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "Image too large (max 3MB).",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Invalid upload",
+    });
+  });
+};
+
+const getAdminProfile = async (req, res) => {
+  try {
+    const u = await User.findById(req.user.id);
+    if (!u) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    return res.json({ success: true, data: adminProfilePayload(u) });
+  } catch (e) {
+    console.error("getAdminProfile", e);
+    return res.status(500).json({
+      success: false,
+      message: safeApiMessage(e),
+    });
+  }
+};
+
+const putAdminProfile = async (req, res) => {
+  const schema = Joi.object({
+    username: Joi.string().trim().min(1).max(120).optional(),
+    removeAvatar: Joi.boolean().optional(),
+  }).or("username", "removeAvatar");
+
+  try {
+    await schema.validateAsync(req.body, { abortEarly: true });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({
+        success: false,
+        message: `Validation error: ${formatJoiErrors(error)}`,
+        code: "VALIDATION_ERROR",
+      });
+    }
+    throw error;
+  }
+
+  const { username, removeAvatar } = req.body;
+
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (username !== undefined) {
+      user.name = String(username).trim();
+    }
+    if (removeAvatar === true) {
+      user.profileImageUrl = "";
+      user.profileAvatarKey = "";
+    }
+
+    await user.save();
+    const fresh = await User.findById(req.user.id);
+    return res.json({
+      success: true,
+      message: "Profile updated",
+      data: adminProfilePayload(fresh || user),
+    });
+  } catch (e) {
+    console.error("putAdminProfile", e);
+    return res.status(500).json({
+      success: false,
+      message: safeApiMessage(e),
+    });
+  }
+};
+
+const putAdminChangePassword = async (req, res) => {
+  const schema = Joi.object({
+    currentPassword: Joi.string().required(),
+    newPassword: Joi.string()
+      .min(8)
+      .max(128)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .required()
+      .messages({
+        "string.pattern.base":
+          "New password must include at least one uppercase letter, one lowercase letter, and one number.",
+      }),
+    confirmPassword: Joi.string().valid(Joi.ref("newPassword")).required().messages({
+      "any.only": "Passwords do not match",
+    }),
+  });
+
+  try {
+    await schema.validateAsync(req.body, { abortEarly: true });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({
+        success: false,
+        message: `Validation error: ${formatJoiErrors(error)}`,
+        code: "VALIDATION_ERROR",
+      });
+    }
+    throw error;
+  }
+
+  const { currentPassword, newPassword } = req.body;
+
+  try {
+    const user = await User.findById(req.user.id).select("+password");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    const ok = await user.comparePassword(currentPassword);
+    if (!ok) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is incorrect.",
+        code: "INVALID_CURRENT_PASSWORD",
+      });
+    }
+    user.password = newPassword;
+    await user.save();
+    return res.json({
+      success: true,
+      message: "Password changed successfully.",
+    });
+  } catch (e) {
+    console.error("putAdminChangePassword", e);
+    return res.status(500).json({
+      success: false,
+      message: safeApiMessage(e),
+    });
+  }
+};
+
+const postAdminProfileUploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    const url = normalizeStoredUploadsUrl(publicBrandingUrl(req, req.file.filename));
+    user.profileImageUrl = url;
+    user.profileAvatarKey = "";
+    await user.save();
+    const fresh = await User.findById(req.user.id);
+    return res.json({
+      success: true,
+      message: "Avatar updated",
+      data: adminProfilePayload(fresh || user),
+    });
+  } catch (e) {
+    console.error("postAdminProfileUploadAvatar", e);
+    return res.status(500).json({
+      success: false,
+      message: safeApiMessage(e),
+    });
+  }
 };
 
 const formatDateTime = (value) => {
@@ -155,7 +479,7 @@ const dashboardStats = async (req, res) => {
     // SALES (day / week / month)
     // =======================
     const salesAgg = await Orders.aggregate([
-      { $match: { paymentStatus: 'completed' } },
+      { $match: { paymentStatus: PAID_REVENUE_PAYMENT_STATUSES } },
       {
         $facet: {
           day: [
@@ -178,7 +502,7 @@ const dashboardStats = async (req, res) => {
     // PROFIT (query based)
     // =======================
     const profitAgg = await Orders.aggregate([
-      { $match: { paymentStatus: 'completed' } },
+      { $match: { paymentStatus: PAID_REVENUE_PAYMENT_STATUSES } },
       { $unwind: '$items' },
       {
         $lookup: {
@@ -226,8 +550,9 @@ const dashboardStats = async (req, res) => {
 
     const totalOrders = await Orders.countDocuments();
 
-    const pendingOrders =
-      ordersByStatus.find(o => ['pending', 'processing'].includes(o._id))?.count || 0;
+    const pendingOrders = ordersByStatus
+      .filter((o) => o._id === "pending" || o._id === "processing")
+      .reduce((sum, o) => sum + (Number(o.count) || 0), 0);
 
     const deliveredOrders =
       ordersByStatus.find(o => o._id === 'delivered')?.count || 0;
@@ -235,13 +560,17 @@ const dashboardStats = async (req, res) => {
     // =======================
     // PRODUCTS STATS
     // =======================
-    const totalProducts = await Products.countDocuments();
-    const lowStockProducts = await Products.countDocuments({ quantity: { $lt: 10 } });
+    const totalProducts = await Products.countDocuments({ ...PRODUCT_NOT_DELETED });
+    const lowStockProducts = await Products.countDocuments({
+      ...PRODUCT_NOT_DELETED,
+      quantity: { $lt: 10 },
+    });
 
     // =======================
     // RESPONSE (FRONTEND READY)
     // =======================
     res.json({
+      success: true,
       sales: {
         day: salesAgg[0].day[0]?.total || 0,
         week: salesAgg[0].week[0]?.total || 0,
@@ -260,47 +589,104 @@ const dashboardStats = async (req, res) => {
       products: {
         total: totalProducts,
         lowStock: lowStockProducts,
-      }
+      },
     });
 
   } catch (error) {
     console.error('Dashboard error:', error);
-    res.status(500).json({ message: 'Dashboard fetch failed' });
+    res.status(500).json({ success: false, message: 'Dashboard fetch failed' });
   }
+};
+
+/**
+ * Same filter semantics as admin orders list (status, search, date range).
+ * @param {{ status?: string, searchRaw?: string, dateFrom?: string, dateTo?: string }} q
+ */
+const buildAdminOrdersListFilter = (q) => {
+  const status = q.status || 'all';
+  const searchRaw = q.searchRaw != null ? String(q.searchRaw).trim() : '';
+  const dateFrom = q.dateFrom != null ? String(q.dateFrom).trim() : '';
+  const dateTo = q.dateTo != null ? String(q.dateTo).trim() : '';
+
+  const conditions = [];
+
+  if (status === 'all') {
+    conditions.push({ status: { $ne: 'session' } });
+  } else {
+    conditions.push({ status });
+  }
+
+  if (dateFrom || dateTo) {
+    const range = {};
+    if (dateFrom) {
+      const d = new Date(dateFrom);
+      if (!Number.isNaN(d.getTime())) range.$gte = d;
+    }
+    if (dateTo) {
+      const d = new Date(dateTo);
+      if (!Number.isNaN(d.getTime())) {
+        d.setHours(23, 59, 59, 999);
+        range.$lte = d;
+      }
+    }
+    if (Object.keys(range).length) {
+      conditions.push({ createdAt: range });
+    }
+  }
+
+  if (searchRaw) {
+    const esc = escapeRegex(searchRaw);
+    const rx = new RegExp(esc, 'i');
+    const or = [
+      { orderNumber: rx },
+      { customerEmail: rx },
+      { 'guestShipping.name': rx },
+      { 'guestShipping.email': rx },
+      { 'guestShipping.fullAddress': rx },
+      { 'guestShipping.phone': rx },
+      { 'items.productName': rx },
+    ];
+    if (mongoose.Types.ObjectId.isValid(searchRaw)) {
+      try {
+        or.push({ _id: new mongoose.Types.ObjectId(searchRaw) });
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    conditions.push({ $or: or });
+  }
+
+  return conditions.length === 1 ? conditions[0] : { $and: conditions };
 };
 
 const getOrders = async (req, res) => {
   try {
     const status = req.query.status || 'all';
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const searchRaw = req.query.search != null ? String(req.query.search).trim() : '';
+    const dateFrom = req.query.dateFrom != null ? String(req.query.dateFrom).trim() : '';
+    const dateTo = req.query.dateTo != null ? String(req.query.dateTo).trim() : '';
+
+    let page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+
+    const filter = buildAdminOrdersListFilter({ status, searchRaw, dateFrom, dateTo });
+
+    const totalCount = await Orders.countDocuments(filter);
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+    page = Math.min(page, totalPages);
     const skip = (page - 1) * limit;
 
-    // Filter
-    const filter = {};
-    if (status === 'all') {
-      filter.status = { $ne: "session" };
-    } else {
-      filter.status = status;
-    }
-
-    const [orders, totalCount] = await Promise.all([
-      Orders.find(filter)
-        .populate('items.product', 'name image')
-        .populate('addressId', 'name phone fullAddress city state pincode addressType')
-        .populate('userId', 'name email')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .select(
-          'orderNumber paymentMethod paymentCards status paymentStatus subtotal taxAmount shippingAmount totalAmount remainingAmount requestedPaymentAmount requestedPaymentAt items createdAt estimatedDelivery deliveredAt addressId userId'
-        )
-        .lean(),
-
-      Orders.countDocuments(filter)
-    ]);
-
-    const totalPages = Math.ceil(totalCount / limit);
+    const orders = await Orders.find(filter)
+      .populate('items.product', 'name image')
+      .populate('addressId', 'name phone fullAddress city state pincode addressType')
+      .populate('userId', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .select(
+        'orderNumber customerEmail paymentMethod paymentCards status paymentStatus subtotal taxAmount shippingAmount totalAmount remainingAmount requestedPaymentAmount requestedPaymentAt items createdAt estimatedDelivery deliveredAt addressId userId guestShipping'
+      )
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -316,10 +702,10 @@ const getOrders = async (req, res) => {
         },
         filter: {
           status,
+          search: searchRaw || undefined,
         },
       },
     });
-
   } catch (error) {
     console.error('Get user orders error:', error);
     res.status(500).json({
@@ -329,10 +715,49 @@ const getOrders = async (req, res) => {
   }
 };
 
+const getAdminOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid order id' });
+    }
+    const order = await Orders.findById(id)
+      .populate('items.product', 'name image category')
+      .populate('addressId', 'name phone fullAddress city state pincode addressType')
+      .populate('userId', 'name email firstName lastName phone role isActive isDeleted')
+      .lean();
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    res.status(200).json({ success: true, data: order });
+  } catch (error) {
+    console.error('getAdminOrderById error:', error);
+    res.status(500).json({ success: false, message: 'Unable to fetch order' });
+  }
+};
+
 const exportOrdersCsv = async (req, res) => {
   try {
     const status = req.query.status || "all";
-    const filter = status === "all" ? { status: { $ne: "session" } } : { status };
+    const searchRaw = req.query.search != null ? String(req.query.search).trim() : "";
+    const dateFrom = req.query.dateFrom != null ? String(req.query.dateFrom).trim() : "";
+    const dateTo = req.query.dateTo != null ? String(req.query.dateTo).trim() : "";
+    const exportSummary =
+      String(req.query.summary || "").trim() === "1" ||
+      String(req.query.format || "").toLowerCase() === "summary";
+    if (dateFrom && dateTo) {
+      const a = new Date(dateFrom);
+      const b = new Date(dateTo);
+      if (!Number.isNaN(a.getTime()) && !Number.isNaN(b.getTime()) && a > b) {
+        return res.status(400).json({
+          success: false,
+          message: "Export failed: start date must be on or before end date.",
+        });
+      }
+    }
+    const filter = buildAdminOrdersListFilter({ status, searchRaw, dateFrom, dateTo });
 
     const orders = await Orders.find(filter)
       .populate('items.product', 'name image category')
@@ -345,6 +770,48 @@ const exportOrdersCsv = async (req, res) => {
       const str = value == null ? "" : String(value);
       return `"${str.replace(/"/g, '""')}"`;
     };
+
+    if (exportSummary) {
+      const sumHeaders = [
+        "orderId",
+        "orderNumber",
+        "customerName",
+        "customerEmail",
+        "date",
+        "status",
+        "totalAmount",
+      ];
+      const sumRows = orders.map((order) => {
+        const customerName =
+          order.userId?.name ||
+          order.addressId?.name ||
+          order.guestShipping?.name ||
+          "";
+        const customerEmail =
+          order.customerEmail ||
+          order.userId?.email ||
+          order.guestShipping?.email ||
+          "";
+        return [
+          order._id || "",
+          order.orderNumber || "",
+          customerName,
+          customerEmail,
+          order.createdAt ? new Date(order.createdAt).toISOString() : "",
+          order.status || "",
+          Number(order.totalAmount || 0),
+        ]
+          .map(escapeCsv)
+          .join(",");
+      });
+      const sumCsv = [sumHeaders.join(","), ...sumRows].join("\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="orders-summary-${Date.now()}.csv"`
+      );
+      return res.status(200).send(sumCsv);
+    }
 
     const headers = [
       "orderId",
@@ -525,7 +992,15 @@ const importOrdersCsv = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "CSV file is required",
+        message: "Upload a spreadsheet file",
+      });
+    }
+
+    const importExt = path.extname(req.file.originalname || "").toLowerCase();
+    if (![".csv", ".xlsx", ".xls"].includes(importExt)) {
+      return res.status(400).json({
+        success: false,
+        message: "Upload a .csv, .xls, or .xlsx file",
       });
     }
 
@@ -536,11 +1011,11 @@ const importOrdersCsv = async (req, res) => {
     if (!rows.length) {
       return res.status(400).json({
         success: false,
-        message: "CSV is empty",
+        message: "File has no data rows",
       });
     }
 
-    const validStatuses = ['session', 'pending', 'confirmed', 'processing', 'packed', 'shipped', 'on_the_way', 'delivered', 'cancelled', 'refunded'];
+    const validStatuses = ORDER_STATUSES.filter((s) => s !== "session");
     const validPaymentStatuses = ['pending', 'paid', 'completed', 'failed', 'refunded', 'partial_refund', 'partial'];
     const validPaymentMethods = ['stripe', 'otc', 'card', 'cash_on_delivery'];
 
@@ -687,6 +1162,7 @@ const importOrdersCsv = async (req, res) => {
 
     const successRows = [];
     const failedRows = [];
+    const seenOrderNumbers = new Set();
 
     for (let i = 0; i < rows.length; i++) {
       const rowNum = i + 2;
@@ -695,6 +1171,10 @@ const importOrdersCsv = async (req, res) => {
       try {
         const orderNumber = String(row.orderNumber || "").trim();
         if (!orderNumber) throw new Error("orderNumber is required");
+        if (seenOrderNumbers.has(orderNumber)) {
+          throw new Error(`Duplicate orderNumber in file: ${orderNumber}`);
+        }
+        seenOrderNumbers.add(orderNumber);
 
         const userSnapshot = safeParseJson(row.userSnapshotJson, {});
         const addressSnapshot = safeParseJson(row.addressSnapshotJson, {});
@@ -866,23 +1346,20 @@ const cancelPaymentRequest = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, trackingNumber, carrier } = req.body;
-    const validStatuses = ['pending', 'confirmed', 'processing', 'packed', 'shipped', 'on_the_way', 'delivered', 'cancelled'];
 
-    if (!validStatuses.includes(status)) {
+    if (!VALID_ADMIN_TRANSITION_STATUSES.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
     }
 
     const order = await Orders.findById(req.params.id)
       .populate('userId', 'name email')
-      .populate('addressId', 'name fullAddress city state pincode phone');
+      .populate('addressId', 'name fullAddress city state pincode phone')
+      .populate('items.product', 'name image');
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
     order.status = status;
-    if (status === 'confirmed') {
-      order.paymentStatus = 'paid'
-    }
     if (typeof trackingNumber === 'string') {
       order.trackingNumber = trackingNumber.trim();
     }
@@ -897,40 +1374,11 @@ const updateOrderStatus = async (req, res) => {
       order
     });
 
+    const orderIdForMail = order._id;
     setImmediate(() => {
-      (async () => {
-        try {
-          const subjectMap = {
-            pending: `Zippyyy Order Pending – #${order.orderNumber}`,
-            confirmed: `Zippyyy Order Confirmed – #${order.orderNumber}`,
-            processing: `Zippyyy Order Processed – #${order.orderNumber}`,
-            packed: `Zippyyy Order Packed – #${order.orderNumber}`,
-            shipped: `Zippyyy Order Shipped – #${order.orderNumber}`,
-            on_the_way: `Zippyyy Order On The Way – #${order.orderNumber}`,
-            delivered: `Zippyyy Order Delivered – #${order.orderNumber}`,
-            cancelled: `Zippyyy Order Cancelled – #${order.orderNumber}`,
-          };
-          const subject = subjectMap[status];
-          if (!subject) return;
-
-          // Keep legacy rich templates for delivered/cancelled/confirmed, and use a generic
-          // status template for all remaining states.
-          let htmlTemplate = userOrderStatusUpdate(order, status);
-          if (status === 'confirmed') htmlTemplate = OrderConform(order);
-          if (status === 'delivered') htmlTemplate = OrderDelivered(order);
-          if (status === 'cancelled') htmlTemplate = OrderCancelled(order);
-
-          const userMailOptions = {
-            to: order?.userId?.email,
-            subject,
-            html: htmlTemplate
-          };
-
-          await sendMail(userMailOptions);
-        } catch (err) {
-          console.error("User mail error:", err);
-        }
-      })();
+      loadOrderForMail(orderIdForMail)
+        .then((fresh) => sendOrderStatusChangeEmail(fresh || order, status))
+        .catch((err) => console.error('Order status email error:', err?.message || err));
     });
 
   } catch (error) {
@@ -941,32 +1389,75 @@ const updateOrderStatus = async (req, res) => {
 
 const getAllUsers = async (req, res) => {
   try {
-    const { page = 1, limit = 20, role } = req.query;
-    const query = {
-      $or: [
-        { isDeleted: false },
-        { isDeleted: { $exists: false } }
-      ]
-    };
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const { role, search, status } = req.query;
+
+    const and = [
+      {
+        $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+      },
+    ];
 
     if (role && role !== 'all') {
-      query.role = role;
+      if (role === 'admin') {
+        and.push({ role: { $in: ['admin', 'co-admin', 'moderator'] } });
+      } else if (role === 'customer') {
+        and.push({ role: 'customer' });
+      } else if (['co-admin', 'moderator'].includes(role)) {
+        and.push({ role });
+      }
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const searchTrim = typeof search === 'string' ? search.trim() : '';
+    if (searchTrim) {
+      const esc = searchTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      and.push({
+        $or: [
+          { name: { $regex: esc, $options: 'i' } },
+          { email: { $regex: esc, $options: 'i' } },
+          { firstName: { $regex: esc, $options: 'i' } },
+          { lastName: { $regex: esc, $options: 'i' } },
+        ],
+      });
+    }
 
-    const users = await User.find(query, '-password')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    const baseAnd = [...and];
 
-    const total = await User.countDocuments(query);
+    if (status === 'active') {
+      and.push({ isActive: true });
+    } else if (status === 'inactive') {
+      and.push({ isActive: false });
+    }
+
+    const listQuery = { $and: and };
+    const statsQuery = {
+      $and: [
+        ...baseAnd,
+        { role: { $in: ['admin', 'co-admin', 'moderator'] } },
+      ],
+    };
+
+    const skip = (page - 1) * limit;
+
+    const [users, total, activeUsers, inactiveUsers, adminUsers] = await Promise.all([
+      User.find(listQuery, '-password').sort({ createdAt: -1 }).skip(skip).limit(limit),
+      User.countDocuments(listQuery),
+      User.countDocuments({ $and: [...baseAnd, { isActive: true }] }),
+      User.countDocuments({ $and: [...baseAnd, { isActive: false }] }),
+      User.countDocuments(statsQuery),
+    ]);
 
     res.json({
       users,
-      totalPages: Math.ceil(total / parseInt(limit)),
-      currentPage: parseInt(page),
-      totalUsers: total
+      totalPages: Math.ceil(total / limit) || 1,
+      currentPage: page,
+      totalUsers: total,
+      stats: {
+        activeUsers,
+        inactiveUsers,
+        adminUsers,
+      },
     });
   } catch (error) {
     console.error('Admin users fetch error:', error);
@@ -1174,7 +1665,7 @@ const getProductAnalytics = async (req, res) => {
   try {
     const topProducts = await Orders.aggregate([
       { $unwind: '$items' },
-      { $match: { paymentStatus: 'completed' } },
+      { $match: { paymentStatus: PAID_REVENUE_PAYMENT_STATUSES } },
       {
         $group: {
           _id: '$items.product',
@@ -1227,36 +1718,95 @@ const getProductAnalytics = async (req, res) => {
 
 const getAllMessages = async (req, res) => {
   try {
-    const { page = 1, limit = 20, status: statusRaw, priority } = req.query;
+    const {
+      page: pageRaw = 1,
+      limit: limitRaw = 20,
+      status: statusRaw,
+      priority,
+      search: searchRaw,
+      folder: folderRaw,
+      dateFrom: dateFromRaw,
+      dateTo: dateToRaw,
+      sortOrder: sortOrderRaw,
+    } = req.query;
+
+    const page = Math.max(1, parseInt(pageRaw, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(limitRaw, 10) || 20));
     const query = {};
 
+    const folder = String(folderRaw || 'inbox').toLowerCase();
+    if (folder === 'trash') {
+      query.inTrash = true;
+    } else {
+      query.inTrash = { $ne: true };
+    }
+
     let status = statusRaw;
-    if (status && status !== 'all') {
+    if (folder !== 'trash' && status && status !== 'all') {
       if (status === 'replied') status = 'responded';
       if (status === 'resolved') status = 'closed';
       query.status = status;
     }
 
-    if (priority && priority !== 'all') {
+    if (folder !== 'trash' && priority && priority !== 'all') {
       query.priority = priority;
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const dateFrom = dateFromRaw && String(dateFromRaw).trim();
+    const dateTo = dateToRaw && String(dateToRaw).trim();
+    if (dateFrom || dateTo) {
+      query.createdAt = {};
+      if (dateFrom) {
+        const d = new Date(dateFrom);
+        if (!Number.isNaN(d.getTime())) query.createdAt.$gte = d;
+      }
+      if (dateTo) {
+        const d = new Date(dateTo);
+        if (!Number.isNaN(d.getTime())) {
+          d.setHours(23, 59, 59, 999);
+          query.createdAt.$lte = d;
+        }
+      }
+      if (query.createdAt && Object.keys(query.createdAt).length === 0) {
+        delete query.createdAt;
+      }
+    }
 
-    const messages = await ContactUs.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    const searchTrim = searchRaw && String(searchRaw).trim();
+    if (searchTrim) {
+      const escaped = searchTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = new RegExp(escaped, 'i');
+      query.$or = [
+        { name: rx },
+        { email: rx },
+        { phone: rx },
+        { subject: rx },
+        { message: rx },
+        { queryType: rx },
+      ];
+    }
+
+    const sortDir = String(sortOrderRaw || 'desc').toLowerCase() === 'asc' ? 1 : -1;
 
     const total = await ContactUs.countDocuments(query);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    let effectivePage = Math.min(page, totalPages);
+
+    const skip = (effectivePage - 1) * limit;
+
+    const messages = await ContactUs.find(query)
+      .sort({ createdAt: sortDir })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
     res.json({
       success: true,
-      message: "Success",
+      message: 'Success',
       data: messages,
-      totalPages: Math.ceil(total / parseInt(limit)),
-      currentPage: parseInt(page),
-      totalMessages: total
+      totalPages,
+      currentPage: effectivePage,
+      totalMessages: total,
     });
   } catch (error) {
     console.error('Admin messages fetch error:', error);
@@ -1267,15 +1817,26 @@ const getAllMessages = async (req, res) => {
 const createMessage = async (req, res) => {
   try {
     const { firstName, lastName, email, subject, message, inquiryType } = req.body;
+    const nameFromParts = [firstName, lastName].filter(Boolean).map((s) => String(s).trim()).filter(Boolean).join(' ').trim();
+    const displayName = nameFromParts || String(email || '').trim() || 'Unknown';
+
+    let replyTpl = '';
+    try {
+      const s = await AppSettings.findOne().lean();
+      replyTpl = s && s.contactAutoReplyMessage != null ? String(s.contactAutoReplyMessage).trim() : '';
+    } catch {
+      /* ignore */
+    }
+    const autoAcknowledgment = resolveContactAutoReplyMessage(replyTpl || null, displayName);
 
     const newMessage = new ContactUs({
-      firstName,
-      lastName,
-      email,
-      subject,
-      message,
-      inquiryType,
-      status: 'unread'
+      name: displayName,
+      email: String(email || '').trim().toLowerCase(),
+      subject: String(subject || '').trim(),
+      message: String(message || '').trim(),
+      queryType: inquiryType != null && String(inquiryType).trim() ? String(inquiryType).trim() : 'general',
+      status: 'new',
+      autoAcknowledgment,
     });
 
     await newMessage.save();
@@ -1305,6 +1866,10 @@ const replyToMessage = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Message not found' });
     }
 
+    if (message.inTrash) {
+      return res.status(400).json({ success: false, message: 'Restore this message from Trash before replying.' });
+    }
+
     if (message.status === 'responded') {
       return res.status(400).json({ success: false, message: 'You are alredy send reply!' });
     }
@@ -1321,22 +1886,23 @@ const replyToMessage = async (req, res) => {
 
     setImmediate(async () => {
 
+      const displayName = (message.name && String(message.name).trim()) || message.email || 'Customer';
       const userMailOptions = {
         to: message.email,
         subject: "Thank you for contacting Zippyy",
         html: `<h2>Response to your query</h2>
-<p>Dear ${message.name},</p>
+<p>Dear ${displayName},</p>
 <p>Thank you for reaching out to us. Here is the response to your message:</p>
 <br>
 <div style="background-color: #f4f4f4; padding: 15px; border-radius: 8px;">
     <p><strong>Your original message:</strong></p>
     <p><em>${message.subject}</em></p>
-    <p>${message.message.replace(/\n/g, '<br>')}}</p>
+    <p>${message.message.replace(/\n/g, '<br>')}</p>
 </div>
 <br>
 <div style="border-left: 4px solid #4f46e5; padding-left: 15px;">
     <p><strong>Admin Response:</strong></p>
-    <p>${replyMessage.replace(/\n/g, '<br>')}}</p>
+    <p>${replyMessage.replace(/\n/g, '<br>')}</p>
 </div>
 <br>
 <p>Best regards,<br> Zippyy Team</p>`
@@ -1361,16 +1927,19 @@ const replyToMessage = async (req, res) => {
 
 const getMessageStats = async (req, res) => {
   try {
-    const totalMessages = await ContactUs.countDocuments();
+    const notTrash = { inTrash: { $ne: true } };
+    const totalMessages = await ContactUs.countDocuments(notTrash);
+    const trash = await ContactUs.countDocuments({ inTrash: true });
     const byStatus = await ContactUs.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } }
+      { $match: notTrash },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
     ]);
 
     const statusCounts = {
       unread: 0,
       read: 0,
       replied: 0,
-      resolved: 0
+      resolved: 0,
     };
 
     byStatus.forEach((stat) => {
@@ -1384,12 +1953,483 @@ const getMessageStats = async (req, res) => {
       success: true,
       stats: {
         total: totalMessages,
-        ...statusCounts
-      }
+        trash,
+        ...statusCounts,
+      },
     });
   } catch (error) {
     console.error('Message stats error:', error);
     res.status(500).json({ success: false, message: 'Server error fetching message statistics' });
+  }
+};
+
+const getMessageById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid message id' });
+    }
+    const message = await ContactUs.findById(id);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Message not found' });
+    }
+    if (message.status === 'new') {
+      message.status = 'read';
+      await message.save();
+    }
+    res.json({ success: true, data: message });
+  } catch (error) {
+    console.error('getMessageById error:', error);
+    res.status(500).json({ success: false, message: 'Server error loading message' });
+  }
+};
+
+const deleteMessagesMany = async (req, res) => {
+  const schema = Joi.object({
+    ids: Joi.array().items(Joi.string().hex().length(24)).min(1).required(),
+  });
+  try {
+    const { ids } = await schema.validateAsync(req.body, { abortEarly: true });
+    const result = await ContactUs.updateMany(
+      { _id: { $in: ids }, inTrash: { $ne: true } },
+      { $set: { inTrash: true, trashedAt: new Date() } }
+    );
+    res.json({
+      success: true,
+      movedCount: result.modifiedCount,
+      deletedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: 'Invalid or empty ids array' });
+    }
+    console.error('deleteMessagesMany error:', error);
+    res.status(500).json({ success: false, message: 'Server error moving messages to trash' });
+  }
+};
+
+const restoreMessagesMany = async (req, res) => {
+  const schema = Joi.object({
+    ids: Joi.array().items(Joi.string().hex().length(24)).min(1).required(),
+  });
+  try {
+    const { ids } = await schema.validateAsync(req.body, { abortEarly: true });
+    const result = await ContactUs.updateMany(
+      { _id: { $in: ids }, inTrash: true },
+      { $set: { inTrash: false }, $unset: { trashedAt: '' } }
+    );
+    res.json({ success: true, restoredCount: result.modifiedCount });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: 'Invalid or empty ids array' });
+    }
+    console.error('restoreMessagesMany error:', error);
+    res.status(500).json({ success: false, message: 'Server error restoring messages' });
+  }
+};
+
+const permanentDeleteMessagesMany = async (req, res) => {
+  const schema = Joi.object({
+    ids: Joi.array().items(Joi.string().hex().length(24)).min(1).required(),
+  });
+  try {
+    const { ids } = await schema.validateAsync(req.body, { abortEarly: true });
+    const result = await ContactUs.deleteMany({ _id: { $in: ids }, inTrash: true });
+    res.json({ success: true, deletedCount: result.deletedCount });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: 'Invalid or empty ids array' });
+    }
+    console.error('permanentDeleteMessagesMany error:', error);
+    res.status(500).json({ success: false, message: 'Server error permanently deleting messages' });
+  }
+};
+
+/** Soft-delete one message (move to trash). Same behaviour as POST /messages/delete-many with one id. */
+const deleteMessageById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid message id' });
+    }
+    const result = await ContactUs.updateOne(
+      { _id: id, inTrash: { $ne: true } },
+      { $set: { inTrash: true, trashedAt: new Date() } }
+    );
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found or already in Trash',
+      });
+    }
+    res.json({ success: true, movedCount: result.modifiedCount, deletedCount: result.modifiedCount });
+  } catch (error) {
+    console.error('deleteMessageById error:', error);
+    res.status(500).json({ success: false, message: 'Server error deleting message' });
+  }
+};
+
+const settingsResponse = (doc) => {
+  const contactAutoReplyRaw =
+    doc.contactAutoReplyMessage != null ? String(doc.contactAutoReplyMessage) : '';
+  const contactAutoReplyTrim = contactAutoReplyRaw.trim();
+  return {
+  websiteName:
+    doc.websiteName != null && String(doc.websiteName).trim() !== ''
+      ? String(doc.websiteName).trim()
+      : 'Zippyyy',
+  websiteLogoUrl: normalizeStoredUploadsUrl(
+    doc.websiteLogoUrl ? String(doc.websiteLogoUrl).trim() : '',
+  ),
+  websiteFaviconUrl: normalizeStoredUploadsUrl(
+    doc.websiteFaviconUrl ? String(doc.websiteFaviconUrl).trim() : '',
+  ),
+  adminMail: doc.adminMail || '',
+  contactFormToEmailPrimary: doc.contactFormToEmailPrimary || '',
+  contactFormToEmailSecondary: doc.contactFormToEmailSecondary || '',
+  homeFeaturedSectionTitle: doc.homeFeaturedSectionTitle || 'Featured Categories',
+  contactAutoReplyMessage: contactAutoReplyRaw,
+  contactAutoReplyPreview: resolveContactAutoReplyMessage(
+    contactAutoReplyTrim ? contactAutoReplyTrim : null,
+    'Alex',
+  ),
+  contactAutoReplyDefaultTemplate: DEFAULT_CONTACT_AUTO_REPLY_TEMPLATE,
+  smtpHost: doc.smtpHost || '',
+  smtpPort: doc.smtpPort ?? 587,
+  smtpEncryption: doc.smtpEncryption || 'tls',
+  smtpUser: doc.smtpUser || '',
+  smtpPassSet: Boolean(doc.smtpPass && String(doc.smtpPass).length > 0),
+  smtpFromEmail: doc.smtpFromEmail || '',
+  smtpFromName: doc.smtpFromName || 'Zippyyy',
+};
+};
+
+const getAdminSettings = async (req, res) => {
+  try {
+    let doc = await AppSettings.findOne();
+    if (!doc) {
+      doc = await AppSettings.create({});
+    }
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0, s-maxage=0",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+    res.json({
+      success: true,
+      data: settingsResponse(doc),
+    });
+  } catch (error) {
+    console.error('getAdminSettings error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load settings' });
+  }
+};
+
+const putAdminSettings = async (req, res) => {
+  const schema = Joi.object({
+    websiteName: Joi.string().trim().max(120).allow('').optional(),
+    websiteLogoUrl: Joi.string().trim().max(2048).allow('', null).optional(),
+    websiteFaviconUrl: Joi.string().trim().max(2048).allow('', null).optional(),
+    adminMail: Joi.string().allow('').max(320).optional(),
+    contactFormToEmailPrimary: Joi.string().allow('').max(320).optional(),
+    contactFormToEmailSecondary: Joi.string().allow('').max(320).optional(),
+    homeFeaturedSectionTitle: Joi.string().trim().max(120).allow('').optional(),
+    contactAutoReplyMessage: Joi.string().allow('').max(8000).optional(),
+    smtpHost: Joi.string().allow('').max(255).optional(),
+    smtpPort: Joi.number().integer().min(1).max(65535).optional(),
+    smtpEncryption: Joi.string().valid('tls', 'ssl', 'none').optional(),
+    smtpUser: Joi.string().allow('').max(320).optional(),
+    smtpPass: Joi.string().allow('').optional(),
+    smtpFromEmail: Joi.string().allow('').max(320).optional(),
+    smtpFromName: Joi.string().allow('').max(120).optional(),
+  });
+  try {
+    const raw = req.body || {};
+    const body = await schema.validateAsync(raw, { abortEarly: true });
+    const $set = {};
+    const has = (k) => Object.prototype.hasOwnProperty.call(raw, k);
+
+    if (has('websiteName')) {
+      $set.websiteName = String(body.websiteName ?? '').trim() || 'Zippyyy';
+    }
+    if (has('websiteLogoUrl')) {
+      $set.websiteLogoUrl = normalizeStoredUploadsUrl(
+        body.websiteLogoUrl == null ? '' : String(body.websiteLogoUrl).trim(),
+      );
+    }
+    if (has('websiteFaviconUrl')) {
+      $set.websiteFaviconUrl = normalizeStoredUploadsUrl(
+        body.websiteFaviconUrl == null ? '' : String(body.websiteFaviconUrl).trim(),
+      );
+    }
+    if (has('adminMail')) $set.adminMail = String(body.adminMail ?? '').trim();
+    if (has('contactFormToEmailPrimary')) {
+      $set.contactFormToEmailPrimary = String(body.contactFormToEmailPrimary ?? '').trim();
+    }
+    if (has('contactFormToEmailSecondary')) {
+      $set.contactFormToEmailSecondary = String(body.contactFormToEmailSecondary ?? '').trim();
+    }
+    if (has('homeFeaturedSectionTitle')) {
+      $set.homeFeaturedSectionTitle = String(body.homeFeaturedSectionTitle ?? '').trim() || 'Featured Categories';
+    }
+    if (has('contactAutoReplyMessage')) {
+      $set.contactAutoReplyMessage = String(body.contactAutoReplyMessage ?? '').trim();
+    }
+    if (has('smtpHost')) $set.smtpHost = String(body.smtpHost ?? '').trim();
+    if (has('smtpPort')) $set.smtpPort = body.smtpPort;
+    if (has('smtpEncryption')) $set.smtpEncryption = body.smtpEncryption;
+    if (has('smtpUser')) $set.smtpUser = String(body.smtpUser ?? '').trim();
+    if (has('smtpFromEmail')) $set.smtpFromEmail = String(body.smtpFromEmail ?? '').trim();
+    if (has('smtpFromName')) $set.smtpFromName = String(body.smtpFromName ?? '').trim();
+    if (has('smtpPass') && String(body.smtpPass ?? '').length > 0) {
+      $set.smtpPass = String(body.smtpPass);
+    }
+
+    if (Object.keys($set).length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    const doc = await AppSettings.findOneAndUpdate({}, { $set }, { new: true, upsert: true, setDefaultsOnInsert: true });
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      Pragma: "no-cache",
+    });
+    res.json({
+      success: true,
+      data: settingsResponse(doc),
+    });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    console.error('putAdminSettings error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save settings' });
+  }
+};
+
+const postAdminSettingsUploadLogo = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    const url = publicBrandingUrl(req, req.file.filename);
+    const doc = await AppSettings.findOneAndUpdate(
+      {},
+      { $set: { websiteLogoUrl: url } },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      Pragma: "no-cache",
+    });
+    res.json({ success: true, data: settingsResponse(doc) });
+  } catch (error) {
+    console.error('postAdminSettingsUploadLogo error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save logo' });
+  }
+};
+
+const postAdminSettingsUploadFavicon = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    const url = publicBrandingUrl(req, req.file.filename);
+    const doc = await AppSettings.findOneAndUpdate(
+      {},
+      { $set: { websiteFaviconUrl: url } },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      Pragma: "no-cache",
+    });
+    res.json({ success: true, data: settingsResponse(doc) });
+  } catch (error) {
+    console.error('postAdminSettingsUploadFavicon error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save favicon' });
+  }
+};
+
+const smtpOverrideSchema = Joi.object({
+  smtpHost: Joi.string().allow('').optional(),
+  smtpPort: Joi.number().integer().min(1).max(65535).optional(),
+  smtpEncryption: Joi.string().valid('tls', 'ssl', 'none').optional(),
+  smtpUser: Joi.string().allow('').optional(),
+  smtpPass: Joi.string().allow('').optional(),
+  smtpFromEmail: Joi.string().allow('').optional(),
+  smtpFromName: Joi.string().allow('').optional(),
+});
+
+const postSmtpVerify = async (req, res) => {
+  try {
+    const body = await smtpOverrideSchema.validateAsync(req.body || {}, { abortEarly: true });
+    await verifySmtpConfig(body);
+    return res.json({ success: true, message: 'SMTP connection verified successfully.' });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'SMTP verification failed',
+    });
+  }
+};
+
+const postSmtpTestEmail = async (req, res) => {
+  const schema = Joi.object({
+    to: Joi.string().email().required(),
+    smtpHost: Joi.string().allow('').optional(),
+    smtpPort: Joi.number().integer().min(1).max(65535).optional(),
+    smtpEncryption: Joi.string().valid('tls', 'ssl', 'none').optional(),
+    smtpUser: Joi.string().allow('').optional(),
+    smtpPass: Joi.string().allow('').optional(),
+    smtpFromEmail: Joi.string().allow('').optional(),
+    smtpFromName: Joi.string().allow('').optional(),
+  });
+  try {
+    const body = await schema.validateAsync(req.body || {}, { abortEarly: true });
+    const { to, ...overrides } = body;
+    await verifySmtpConfig(overrides);
+    await sendMailWithOverrides(overrides, {
+      to,
+      subject: 'Test email — Zippyyy Admin',
+      html: `
+        <div style="font-family:system-ui,sans-serif;padding:24px;">
+          <h2 style="margin:0 0 12px;">SMTP test</h2>
+          <p style="color:#444;">If you received this message, your outgoing mail settings are working.</p>
+          <p style="color:#888;font-size:12px;">${new Date().toISOString()}</p>
+        </div>`,
+    });
+    return res.json({ success: true, message: `Test email sent to ${to}` });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to send test email',
+    });
+  }
+};
+
+const getEmailTemplatesAdmin = async (req, res) => {
+  try {
+    await ensureDefaultTemplates();
+    const data = await EmailTemplate.find().sort({ key: 1 }).lean();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("getEmailTemplatesAdmin", error);
+    return res.status(500).json({ success: false, message: "Failed to load email templates" });
+  }
+};
+
+const putEmailTemplateByKey = async (req, res) => {
+  const schema = Joi.object({
+    subject: Joi.string().allow("").max(998).required(),
+    bodyHtml: Joi.string().allow("").required(),
+    isActive: Joi.boolean().optional(),
+  });
+  try {
+    const body = await schema.validateAsync(req.body || {}, { abortEarly: true });
+    const { key } = req.params;
+    const allowed = TEMPLATE_DEFAULTS.map((t) => t.key);
+    if (!allowed.includes(key)) {
+      return res.status(400).json({ success: false, message: "Unknown template key" });
+    }
+    await ensureDefaultTemplates();
+    const doc = await EmailTemplate.findOneAndUpdate(
+      { key },
+      {
+        $set: {
+          subject: body.subject,
+          bodyHtml: body.bodyHtml,
+          ...(typeof body.isActive === "boolean" ? { isActive: body.isActive } : {}),
+        },
+      },
+      { new: true, lean: true }
+    );
+    if (!doc) {
+      return res.status(404).json({ success: false, message: "Template not found" });
+    }
+    return res.json({ success: true, data: doc });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    console.error("putEmailTemplateByKey", error);
+    return res.status(500).json({ success: false, message: "Failed to save template" });
+  }
+};
+
+const postEmailTemplatePreview = async (req, res) => {
+  const schema = Joi.object({
+    key: Joi.string().required(),
+    subject: Joi.string().allow("").required(),
+    bodyHtml: Joi.string().allow("").required(),
+  });
+  try {
+    const body = await schema.validateAsync(req.body || {}, { abortEarly: true });
+    let vars;
+    if (body.key === "contact_form_admin") {
+      vars = buildContactTemplateVars({
+        name: "Jane Doe",
+        email: "jane@example.com",
+        queryType: "Support",
+        subject: "Sample subject",
+        message: "This is a sample message.\nSecond line.",
+      });
+    } else {
+      let sampleOrder = await Orders.findOne({ status: { $ne: "session" } })
+        .populate("userId", "email name")
+        .populate("items.product", "name image")
+        .populate("addressId", "name phone fullAddress city state pincode")
+        .sort({ createdAt: -1 })
+        .lean();
+      if (!sampleOrder) {
+        sampleOrder = {
+          _id: "507f1f77bcf86cd799439011",
+          orderNumber: "ORD-SAMPLE",
+          status: "processing",
+          totalAmount: 49.99,
+          trackingNumber: "1Z999AA10123456784",
+          carrier: "UPS",
+          items: [
+            {
+              productName: "Sample product",
+              quantity: 2,
+              price: 12.5,
+              product: { name: "Sample product" },
+            },
+          ],
+          addressId: {
+            name: "Alex Customer",
+            fullAddress: "123 Main St",
+            city: "Chicago",
+            state: "IL",
+            pincode: "60601",
+            phone: "+1 555-0100",
+          },
+          userId: { name: "Alex Customer", email: "alex@example.com" },
+          customerEmail: "alex@example.com",
+        };
+      }
+      vars = buildOrderTemplateVars(sampleOrder, { status: sampleOrder.status || "processing" });
+    }
+    return res.json({
+      success: true,
+      data: {
+        subject: applyVariables(body.subject, vars),
+        html: applyVariables(body.bodyHtml, vars),
+      },
+    });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    console.error("postEmailTemplatePreview", error);
+    return res.status(500).json({ success: false, message: "Preview failed" });
   }
 };
 
@@ -1398,9 +2438,15 @@ const createProduct = async (req, res) => {
     name: Joi.string().trim().min(2).required(),
     description: Joi.string().trim().required(),
     price: Joi.number().min(0).required(),
+    comparePrice: Joi.number().min(0).optional(),
     salePrice: Joi.number().min(0).optional(),
     category: Joi.string().trim().required(),
     image: Joi.string().allow("").optional(),
+    sku: Joi.string().trim().allow("").optional(),
+    badge: Joi.string().trim().allow("").optional(),
+    isDeal: Joi.boolean().optional(),
+    dealPrice: Joi.number().min(0).optional(),
+    isDisable: Joi.boolean().optional(),
     adminPrice: Joi.number().min(0).optional(),
     cost: Joi.number().min(0).optional().default(0),
     quantity: Joi.number().min(0).optional().default(0),
@@ -1424,7 +2470,17 @@ const createProduct = async (req, res) => {
     productData.price = Number(productData.price);
     productData.cost = Number(productData.cost || 0);
     productData.salePrice = Number(productData.salePrice || 0);
-
+    productData.comparePrice = Number(productData.comparePrice || 0);
+    productData.dealPrice = Number(productData.dealPrice || 0);
+    productData.isDeal = Boolean(productData.isDeal);
+    productData.isDisable = Boolean(productData.isDisable);
+    productData.sku = String(productData.sku || "").trim();
+    if (productData.badge !== undefined) {
+      productData.badge = String(productData.badge || "")
+        .trim()
+        .toLowerCase();
+      if (!ALLOWED_PRODUCT_BADGES.has(productData.badge)) productData.badge = "";
+    }
 
     const quantity =
       Number(productData.quantity ??
@@ -1442,12 +2498,8 @@ const createProduct = async (req, res) => {
       ? productData.tags
       : [];
 
-    console.log("📦 Normalized productData:", productData);
-
     const product = new Products(productData);
     await product.save();
-
-    console.log(`✅ Product created: ${product.name} by ${req.user.role}: ${req.user.email}`);
 
     res.status(201).json({
       success: true,
@@ -1488,9 +2540,15 @@ const updateProduct = async (req, res) => {
     name: Joi.string().trim().min(2).optional(),
     description: Joi.string().trim().optional(),
     price: Joi.number().min(0).optional(),
+    comparePrice: Joi.number().min(0).optional(),
     salePrice: Joi.number().min(0).optional(),
     category: Joi.string().trim().optional(),
     image: Joi.string().allow("").optional(),
+    sku: Joi.string().trim().allow("").optional(),
+    badge: Joi.string().trim().allow("").optional(),
+    isDeal: Joi.boolean().optional(),
+    dealPrice: Joi.number().min(0).optional(),
+    isDisable: Joi.boolean().optional(),
     adminPrice: Joi.number().min(0).optional(),
     cost: Joi.number().min(0).optional(),
     quantity: Joi.number().min(0).optional(),
@@ -1510,7 +2568,20 @@ const updateProduct = async (req, res) => {
   try {
     await updateProductSchema.validateAsync(req.body, { abortEarly: true });
     const { id } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
+    if (updates.badge !== undefined) {
+      updates.badge = String(updates.badge || "")
+        .trim()
+        .toLowerCase();
+      if (!ALLOWED_PRODUCT_BADGES.has(updates.badge)) updates.badge = "";
+    }
+    if (updates.sku !== undefined) updates.sku = String(updates.sku || "").trim();
+    if (updates.isDeal !== undefined) updates.isDeal = Boolean(updates.isDeal);
+    if (updates.isDisable !== undefined) updates.isDisable = Boolean(updates.isDisable);
+    if (updates.comparePrice !== undefined)
+      updates.comparePrice = Number(updates.comparePrice || 0);
+    if (updates.dealPrice !== undefined)
+      updates.dealPrice = Number(updates.dealPrice || 0);
 
     const product = await Products.findByIdAndUpdate(
       { _id: id, isDeleted: false },
@@ -1603,29 +2674,37 @@ const getAdminProducts = async (req, res) => {
     page: Joi.number().integer().min(1).optional(),
     limit: Joi.number().integer().min(1).max(500).optional(),
     search: Joi.string().max(100).allow(null, ""),
-    category: Joi.string().max(160).allow(null, "")
+    category: Joi.string().max(160).allow(null, ""),
+    stock: Joi.string().valid("", "all", "in", "out").optional(),
   }).unknown(true);
   try {
     await connectDB();
     await validation.validateAsync(req.query, { abortEarly: true });
-    let { page = 1, limit = 20, search = '', category } = req.query;
+    let { page = 1, limit = 20, search = '', category, stock = "all" } = req.query;
 
-    page = parseInt(page);
-    limit = parseInt(limit);
-
-    const skip = (page - 1) * limit;
+    page = parseInt(page, 10);
+    limit = parseInt(limit, 10);
 
     /** Match storefront / catalog: include docs where isDeleted is missing (legacy imports). */
     let query = {
       ...PRODUCT_NOT_DELETED,
     };
 
+    const stockKey = String(stock || "all").toLowerCase();
+    if (stockKey === "in") {
+      query.inStock = true;
+    } else if (stockKey === "out") {
+      query.inStock = false;
+    }
+
     if (search) {
+      const esc = escapeRegex(String(search).trim());
+      const rx = new RegExp(esc, 'i');
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { category: { $regex: search, $options: 'i' } },
-        { tags: { $elemMatch: { $regex: search, $options: 'i' } } }
+        { name: rx },
+        { description: rx },
+        { category: rx },
+        { tags: rx },
       ];
     }
 
@@ -1636,14 +2715,18 @@ const getAdminProducts = async (req, res) => {
       };
     }
 
-    const [products, total, inStockCount, outOfStockCount, valueAgg] = await Promise.all([
+    const total = await Products.countDocuments(query);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const effectivePage = Math.min(Math.max(1, page), totalPages);
+    const skip = (effectivePage - 1) * limit;
+
+    const [products, inStockCount, outOfStockCount, valueAgg] = await Promise.all([
       Products.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
 
-      Products.countDocuments(query),
       Products.countDocuments({ ...query, inStock: true }),
       Products.countDocuments({ ...query, inStock: false }),
       Products.aggregate([
@@ -1669,8 +2752,8 @@ const getAdminProducts = async (req, res) => {
       data: products,
       pagination: {
         total,
-        totalPages: Math.ceil(total / limit),
-        currentPage: page,
+        totalPages,
+        currentPage: effectivePage,
         limit,
       },
       stats: {
@@ -1693,6 +2776,40 @@ const getAdminProducts = async (req, res) => {
       success: false,
       message: 'Server error fetching products',
       error: error.message
+    });
+  }
+};
+
+const getAdminProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id || !String(id).match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product ID format",
+      });
+    }
+    const product = await Products.findOne({
+      _id: id,
+      ...PRODUCT_NOT_DELETED,
+    }).lean();
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: product,
+    });
+  } catch (error) {
+    console.error("getAdminProductById error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching product",
     });
   }
 };
@@ -2015,7 +3132,7 @@ const getDeals = async (req, res) => {
     }
 
     const list = await Deal.find(filter)
-      .populate("productId", "name price")
+      .populate("productId", "name price image")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(size)
@@ -2276,6 +3393,8 @@ const createCategory = async (req, res) => {
     isActive: Joi.alternatives()
       .try(Joi.boolean(), Joi.string().trim().lowercase().valid("true", "false", "1", "0"))
       .optional(),
+    featuredOnHome: Joi.boolean().optional(),
+    homeDisplayTitle: Joi.string().trim().max(80).allow("", null).optional(),
   });
   try {
     const { error, value } = categorySchema.validate(req.body);
@@ -2304,12 +3423,18 @@ const createCategory = async (req, res) => {
         ? coerceCategoryIsActiveFromRequest(value.isActive, true)
         : true;
 
+    const featuredOnHome = value.featuredOnHome !== false;
+    const homeDisplayTitle =
+      value.homeDisplayTitle != null ? String(value.homeDisplayTitle).trim() : "";
+
     const category = await Category.create({
       name: value.name,
       image: value.image ?? "",
       main: value.main,
       sortOrder: value.sortOrder ?? 0,
       isActive: nextActive,
+      featuredOnHome,
+      homeDisplayTitle,
       updatedAt: Date.now(),
     });
 
@@ -2336,9 +3461,8 @@ const getCategories = async (req, res) => {
       limit = 100
     } = req.query;
 
-    const pageNumber = parseInt(page, 10) || 1;
-    const limitNumber = Math.min(parseInt(limit, 10) || 100, 200);
-    const skip = (pageNumber - 1) * limitNumber;
+    let pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 200);
 
     const searchTrim = String(search || "").trim();
     const filter = {
@@ -2363,6 +3487,9 @@ const getCategories = async (req, res) => {
     }
 
     const total = await Category.countDocuments(filter);
+    const totalPages = Math.max(1, Math.ceil(total / limitNumber) || 1);
+    pageNumber = Math.min(pageNumber, totalPages);
+    const skip = (pageNumber - 1) * limitNumber;
 
     const categories = await Category.find(filter)
       .sort({ sortOrder: 1, name: 1 })
@@ -2474,7 +3601,7 @@ const getCategories = async (req, res) => {
         total,
         page: pageNumber,
         limit: limitNumber,
-        totalPages: Math.ceil(total / limitNumber) || 1
+        totalPages,
       }
     });
 
@@ -2519,6 +3646,8 @@ const updateCategory = async (req, res) => {
       .optional(),
     main: Joi.string().valid(...categoryMainValues).required(),
     sortOrder: Joi.number().integer().min(0).max(99999).optional(),
+    featuredOnHome: Joi.boolean().optional(),
+    homeDisplayTitle: Joi.string().trim().max(80).allow("", null).optional(),
   });
   try {
     const { error, value } = categorySchema.validate(req.body);
@@ -2563,18 +3692,24 @@ const updateCategory = async (req, res) => {
         ? coerceCategoryIsActiveFromRequest(value.isActive, true)
         : coerceCategoryIsActiveFromRequest(prev.isActive, true);
 
+    const $set = {
+      name: value.name,
+      image: value.image ?? "",
+      main: value.main,
+      sortOrder: value.sortOrder ?? 0,
+      isActive: nextIsActive,
+      updatedAt: Date.now(),
+    };
+    if (value.featuredOnHome !== undefined) {
+      $set.featuredOnHome = Boolean(value.featuredOnHome);
+    }
+    if (value.homeDisplayTitle !== undefined) {
+      $set.homeDisplayTitle = String(value.homeDisplayTitle).trim();
+    }
+
     const updated = await Category.findByIdAndUpdate(
       req.params.id,
-      {
-        $set: {
-          name: value.name,
-          image: value.image ?? "",
-          main: value.main,
-          sortOrder: value.sortOrder ?? 0,
-          isActive: nextIsActive,
-          updatedAt: Date.now(),
-        },
-      },
+      { $set },
       { new: true, runValidators: true }
     );
 
@@ -2829,6 +3964,32 @@ const bulkMoveProductsToCategory = async (req, res) => {
   }
 };
 
+const homeSliderSlideJoi = Joi.object({
+  _id: Joi.string().hex().length(24).optional(),
+  title: Joi.string().trim().max(120).allow("").default(""),
+  subtitle: Joi.string().trim().max(220).allow("").optional().default(""),
+  imageUrl: Joi.string().trim().max(2048).allow("").default(""),
+  buttonText: Joi.string().trim().max(40).allow("").default("Shop Now"),
+  buttonLink: Joi.string().trim().max(1024).allow("").default("/products"),
+  cardBgColor: Joi.string()
+    .trim()
+    .pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
+    .default("#f8fafc"),
+  textColor: Joi.string()
+    .trim()
+    .pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
+    .default("#1e293b"),
+  buttonBgColor: Joi.string()
+    .trim()
+    .pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
+    .default("#3090cf"),
+  buttonTextColor: Joi.string()
+    .trim()
+    .pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
+    .default("#ffffff"),
+  isActive: Joi.boolean().default(true),
+});
+
 const homeSliderSettingsSchema = Joi.object({
   sectionBgColor: Joi.string().trim().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).required(),
   autoPlay: Joi.boolean().required(),
@@ -2837,33 +3998,28 @@ const homeSliderSettingsSchema = Joi.object({
   slidesPerViewDesktop: Joi.number().integer().min(1).max(4).required(),
   slidesPerViewTablet: Joi.number().integer().min(1).max(3).required(),
   slidesPerViewMobile: Joi.number().integer().min(1).max(2).required(),
-  slides: Joi.array()
-    .items(
-      Joi.object({
-        title: Joi.string().trim().max(120).required(),
-        imageUrl: Joi.string().trim().uri().max(2048).required(),
-        buttonText: Joi.string().trim().max(40).allow("").default("Shop Now"),
-        buttonLink: Joi.string().trim().max(1024).allow("").default("/products"),
-        cardBgColor: Joi.string().trim().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).required(),
-        textColor: Joi.string().trim().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).required(),
-        buttonBgColor: Joi.string().trim().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).required(),
-        buttonTextColor: Joi.string().trim().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).required(),
-        isActive: Joi.boolean().required(),
-      })
-    )
-    .min(1)
-    .max(12)
-    .required(),
+  slides: Joi.array().items(homeSliderSlideJoi).min(0).max(24).required(),
 });
 
+function setSliderAdminNoCacheHeaders(res) {
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0",
+    Pragma: "no-cache",
+    Expires: "0",
+  });
+}
+
+/** Admin + PUT response: every slide in DB, sorted (including drafts missing title/image). */
 const normalizeSliderSettings = (settingsDoc) => {
   if (!settingsDoc) return null;
-  const slides = (settingsDoc.slides || [])
-    .filter((s) => s && s.imageUrl && s.title)
+  const slides = coerceHomeSliderSlides(settingsDoc.slides)
+    .filter((s) => s && typeof s === "object")
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
     .map((s, idx) => ({
-      title: s.title,
-      imageUrl: s.imageUrl,
+      _id: s._id != null ? String(s._id) : undefined,
+      title: s.title != null ? String(s.title) : "",
+      subtitle: s.subtitle != null ? String(s.subtitle).trim() : "",
+      imageUrl: s.imageUrl != null ? String(s.imageUrl).trim() : "",
       buttonText: s.buttonText || "Shop Now",
       buttonLink: s.buttonLink || "/products",
       cardBgColor: s.cardBgColor || "#f8fafc",
@@ -2871,7 +4027,7 @@ const normalizeSliderSettings = (settingsDoc) => {
       buttonBgColor: s.buttonBgColor || "#3090cf",
       buttonTextColor: s.buttonTextColor || "#ffffff",
       isActive: s.isActive !== false,
-      sortOrder: Number(s.sortOrder || idx),
+      sortOrder: Number(s.sortOrder ?? idx),
     }));
 
   return {
@@ -2904,6 +4060,7 @@ const getHomeSliderSettingsAdmin = async (req, res) => {
       settings = settings.toObject();
     }
 
+    setSliderAdminNoCacheHeaders(res);
     return res.json({
       success: true,
       data: normalizeSliderSettings(settings),
@@ -2926,10 +4083,25 @@ const updateHomeSliderSettingsAdmin = async (req, res) => {
       });
     }
 
-    const slides = value.slides.map((slide, index) => ({
-      ...slide,
-      sortOrder: index,
-    }));
+    const slides = value.slides.map((slide, index) => {
+      const row = {
+        title: slide.title || "",
+        subtitle: slide.subtitle || "",
+        imageUrl: slide.imageUrl || "",
+        buttonText: slide.buttonText || "Shop Now",
+        buttonLink: slide.buttonLink || "/products",
+        cardBgColor: slide.cardBgColor || "#f8fafc",
+        textColor: slide.textColor || "#1e293b",
+        buttonBgColor: slide.buttonBgColor || "#3090cf",
+        buttonTextColor: slide.buttonTextColor || "#ffffff",
+        isActive: slide.isActive !== false,
+        sortOrder: index,
+      };
+      if (slide._id && mongoose.Types.ObjectId.isValid(String(slide._id))) {
+        row._id = new mongoose.Types.ObjectId(String(slide._id));
+      }
+      return row;
+    });
 
     const payload = {
       sectionBgColor: value.sectionBgColor,
@@ -2970,14 +4142,14 @@ const uploadHomeSliderImage = async (req, res) => {
       });
     }
 
-    const imageUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+    const imageUrl = publicBrandingUrl(req, req.file.filename);
 
     return res.json({
       success: true,
       message: "Image uploaded successfully",
       data: {
         imageUrl,
-        fileName: req.file.originalname,
+        fileName: req.file.originalname || req.file.filename,
       },
     });
   } catch (err) {
@@ -2991,6 +4163,29 @@ const uploadHomeSliderImage = async (req, res) => {
 // =========================
 // Products CSV Export/Import
 // =========================
+const PRODUCT_CSV_SAMPLE =
+  "\uFEFFtitle,description,price,comparePrice,category,stock,sku,imageUrl,status,badge,deal,dealPrice,tags\n" +
+  '"Organic Basmati Rice 5 lb","Aromatic long-grain rice ideal for daily meals.",12.99,,Dry Goods,120,BAS-RICE-5LB,"https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400",active,new,false,,"pantry,staples,rice"\n' +
+  '"Mediterranean Extra Virgin Olive Oil 1L","Cold-pressed olive oil for cooking and dressings.",18.99,24.99,American Sauces,45,OIL-EVO-1L,"https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400",active,sale,false,,"oil,cooking"\n' +
+  '"Small-Batch Coffee Beans 12 oz","Single-origin medium roast whole bean.",14.99,19.99,American Breakfast,80,COF-DEAL-12,"https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400",active,hot,true,9.99,"coffee,beverages"';
+
+const downloadProductsCsvSample = async (req, res) => {
+  try {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="grocera-products-sample.csv"'
+    );
+    return res.status(200).send(PRODUCT_CSV_SAMPLE);
+  } catch (e) {
+    console.error("downloadProductsCsvSample", e);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to build sample CSV",
+    });
+  }
+};
+
 const exportProductsCsv = async (req, res) => {
   try {
     const products = await Products.find({ ...PRODUCT_NOT_DELETED })
@@ -3003,20 +4198,25 @@ const exportProductsCsv = async (req, res) => {
     };
 
     const headers = [
-      "_id",
-      "name",
+      "title",
       "description",
       "price",
+      "comparePrice",
       "salePrice",
       "category",
-      "image",
-      "inStock",
-      "quantity",
+      "stock",
+      "sku",
+      "imageUrl",
+      "status",
+      "badge",
+      "deal",
+      "dealPrice",
+      "tags",
+      "_id",
+      "dealId",
       "cost",
       "unit",
       "discount",
-      "dealId",
-      "tagsJson",
       "nutritionInfoJson",
       "adminPrice",
       "isDisable",
@@ -3026,31 +4226,40 @@ const exportProductsCsv = async (req, res) => {
     ];
 
     const rows = products.map((p) => {
-      const tagsJson = JSON.stringify(Array.isArray(p.tags) ? p.tags : []);
+      const tagsJoined = Array.isArray(p.tags) ? p.tags.join(",") : "";
       const nutritionInfoJson = JSON.stringify(p.nutritionInfo || {});
+      const isDraft = Boolean(p.isDisable);
+      const status = isDraft ? "draft" : "active";
 
       return [
-        p._id,
         p.name,
         p.description,
         Number(p.price || 0),
+        Number(p.comparePrice || 0),
         Number(p.salePrice || 0),
         p.category,
-        p.image || "",
-        Boolean(p.inStock),
         Number(p.quantity || 0),
+        p.sku || "",
+        p.image || "",
+        status,
+        p.badge || "",
+        Boolean(p.isDeal),
+        Number(p.dealPrice || 0),
+        tagsJoined,
+        p._id,
+        p.dealId || "",
         Number(p.cost || 0),
         p.unit || "piece",
         Number(p.discount || 0),
-        p.dealId || "",
-        tagsJson,
         nutritionInfoJson,
-        p.adminPrice || "",
+        p.adminPrice ?? "",
         Boolean(p.isDisable),
         Boolean(p.isDeleted),
-        p.createdAt ? new Date(p.createdAt).toISOString() : (p.date || ""),
-        p.updatedAt ? new Date(p.updatedAt).toISOString() : (p.updatedAt || ""),
-      ].map(escapeCsv).join(",");
+        p.createdAt ? new Date(p.createdAt).toISOString() : p.date || "",
+        p.updatedAt ? new Date(p.updatedAt).toISOString() : p.updatedAt || "",
+      ]
+        .map(escapeCsv)
+        .join(",");
     });
 
     const csv = [headers.join(","), ...rows].join("\n");
@@ -3070,25 +4279,81 @@ const exportProductsCsv = async (req, res) => {
   }
 };
 
-const importProductsCsv = async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: "CSV file is required",
-      });
-    }
+function normalizeCsvHeaderKey(k) {
+  return String(k || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
 
+function normalizeCsvRow(row) {
+  const out = {};
+  for (const [k, v] of Object.entries(row || {})) {
+    out[normalizeCsvHeaderKey(k)] = v;
+  }
+  return out;
+}
+
+function csvPick(r, ...candidates) {
+  for (const c of candidates) {
+    const key = normalizeCsvHeaderKey(c);
+    const v = r[key];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return "";
+}
+
+function csvParseBool(v) {
+  const s = String(v ?? "")
+    .trim()
+    .toLowerCase();
+  return s === "true" || s === "1" || s === "yes" || s === "y";
+}
+
+function csvParseTags(r) {
+  const tagsJson = csvPick(r, "tagsjson", "tags_json");
+  if (tagsJson) {
+    try {
+      const parsed = JSON.parse(String(tagsJson));
+      if (Array.isArray(parsed)) return parsed.map((t) => String(t).trim()).filter(Boolean);
+    } catch (_) {
+      /* fall through */
+    }
+  }
+  const raw = csvPick(r, "tags", "tagscsv", "tags_list");
+  if (!raw) return [];
+  return String(raw)
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+const importProductsCsv = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: "CSV file is required",
+    });
+  }
+
+  try {
     const workbook = XLSX.readFile(req.file.path);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
-    if (!rows.length) {
+    if (!rawRows.length) {
       return res.status(400).json({
         success: false,
         message: "CSV is empty",
       });
     }
+
+    const isObjectId = (id) => /^[a-fA-F0-9]{24}$/.test(String(id || ""));
+
+    const successRows = [];
+    const failedRows = [];
+    const bulkOps = [];
+    const BATCH = 500;
 
     const safeParseJson = (value, fallback) => {
       try {
@@ -3099,50 +4364,72 @@ const importProductsCsv = async (req, res) => {
       }
     };
 
-    const isObjectId = (id) => /^[a-fA-F0-9]{24}$/.test(String(id || ""));
-
-    const successRows = [];
-    const failedRows = [];
-
-    for (let i = 0; i < rows.length; i++) {
+    for (let i = 0; i < rawRows.length; i++) {
       const rowNum = i + 2;
-      const row = rows[i] || {};
+      const row = normalizeCsvRow(rawRows[i] || {});
       try {
-        const _id = String(row._id || "").trim();
-        const name = String(row.name || "").trim();
-        const description = String(row.description || "").trim();
-        const category = String(row.category || "").trim();
+        const _id = String(csvPick(row, "_id", "id") || "").trim();
+        const name = String(csvPick(row, "title", "name") || "").trim();
+        const description = String(csvPick(row, "description") || "").trim();
+        const category = String(csvPick(row, "category") || "").trim();
 
-        if (!name) throw new Error("name is required");
+        if (!name) throw new Error("title/name is required");
         if (!category) throw new Error("category is required");
         if (!description) throw new Error("description is required");
 
-        const price = Number(row.price || 0);
-        const salePrice = Number(row.salePrice || 0);
-        const image = String(row.image || "").trim();
-        const quantity = Number(row.quantity || 0);
-        const cost = Number(row.cost || 0);
-        const unit = String(row.unit || "piece").trim() || "piece";
-        const discount = Number(row.discount || 0);
-        const adminPrice = row.adminPrice === "" ? undefined : Number(row.adminPrice || 0);
+        const price = Number(csvPick(row, "price") || 0);
+        if (!Number.isFinite(price) || price < 0) throw new Error("invalid price");
 
-        const inStockRaw = String(row.inStock || "").trim().toLowerCase();
+        const comparePrice = Number(csvPick(row, "compareprice", "compare_at_price") || 0);
+        const salePrice = Number(csvPick(row, "saleprice", "sale_price") || 0);
+        const image = String(
+          csvPick(row, "imageurl", "image_url", "image") || ""
+        ).trim();
+        const quantity = Number(csvPick(row, "stock", "quantity", "qty") || 0);
+        const cost = Number(csvPick(row, "cost") || 0);
+        const unit = String(csvPick(row, "unit") || "piece").trim() || "piece";
+        const discount = Number(csvPick(row, "discount") || 0);
+        const adminPriceRaw = csvPick(row, "adminprice", "admin_price");
+        const adminPrice =
+          adminPriceRaw === "" || adminPriceRaw == null
+            ? undefined
+            : Number(adminPriceRaw || 0);
+
+        const sku = String(csvPick(row, "sku") || "").trim();
+
+        const statusRaw = String(csvPick(row, "status") || "active")
+          .trim()
+          .toLowerCase();
+        const isDisable =
+          statusRaw === "draft" || statusRaw === "disabled" || statusRaw === "hidden";
+
+        let badge = String(csvPick(row, "badge") || "")
+          .trim()
+          .toLowerCase();
+        if (!ALLOWED_PRODUCT_BADGES.has(badge)) badge = "";
+
+        const isDeal = csvParseBool(csvPick(row, "deal", "isdeal", "is_deal"));
+        let dealPrice = Number(csvPick(row, "dealprice", "deal_price") || 0);
+        if (!isDeal) dealPrice = 0;
+        if (!Number.isFinite(dealPrice) || dealPrice < 0) dealPrice = 0;
+
+        const inStockRaw = String(csvPick(row, "instock", "in_stock") || "")
+          .trim()
+          .toLowerCase();
         const inStock =
-          inStockRaw === "true" ? true : inStockRaw === "false" ? false : quantity > 0;
+          inStockRaw === "true"
+            ? true
+            : inStockRaw === "false"
+              ? false
+              : quantity > 0;
 
-        const dealId = String(row.dealId || "").trim();
-        const normalizedDealId = dealId && isObjectId(dealId) ? dealId : undefined;
+        const dealId = String(csvPick(row, "dealid", "deal_id") || "").trim();
+        const normalizedDealId =
+          dealId && isObjectId(dealId) ? dealId : undefined;
 
-        const tagsJson = safeParseJson(row.tagsJson, null);
-        const tagsRaw = row.tags || row.tagsCsv || row.tags_list;
-        const tags =
-          Array.isArray(tagsJson)
-            ? tagsJson
-            : typeof tagsRaw === "string" && tagsRaw
-              ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
-              : [];
+        const tags = csvParseTags(row);
 
-        const nutritionInfoJson = safeParseJson(row.nutritionInfoJson, null);
+        const nutritionInfoJson = safeParseJson(csvPick(row, "nutritioninfojson", "nutrition_info_json"), null);
         const nutritionInfo =
           nutritionInfoJson && typeof nutritionInfoJson === "object"
             ? nutritionInfoJson
@@ -3154,16 +4441,18 @@ const importProductsCsv = async (req, res) => {
                 fiber: row.fiber ? Number(row.fiber) : undefined,
               };
 
-        const isDisableRaw = String(row.isDisable || "").trim().toLowerCase();
-        const isDisable = isDisableRaw === "true" ? true : isDisableRaw === "false" ? false : false;
-
         const updateDoc = {
           name,
           description,
-          price: price >= 0 ? price : 0,
-          salePrice: salePrice >= 0 ? salePrice : 0,
+          price,
+          comparePrice: Number.isFinite(comparePrice) && comparePrice >= 0 ? comparePrice : 0,
+          salePrice: Number.isFinite(salePrice) && salePrice >= 0 ? salePrice : 0,
           category,
           image,
+          sku,
+          badge,
+          isDeal,
+          dealPrice,
           inStock,
           quantity: quantity >= 0 ? quantity : 0,
           cost: cost >= 0 ? cost : 0,
@@ -3177,24 +4466,37 @@ const importProductsCsv = async (req, res) => {
           isDeleted: false,
         };
 
+        let filter;
         if (_id && isObjectId(_id)) {
-          await Products.updateOne(
-            { _id: new mongoose.Types.ObjectId(_id) },
-            { $set: updateDoc, $setOnInsert: { _id: new mongoose.Types.ObjectId(_id) } },
-            { upsert: true }
-          );
+          filter = { _id: new mongoose.Types.ObjectId(_id) };
+        } else if (sku) {
+          filter = { sku };
         } else {
-          await Products.updateOne(
-            { name, category },
-            { $set: updateDoc },
-            { upsert: true }
-          );
+          filter = { name, category };
         }
 
+        bulkOps.push({
+          updateOne: {
+            filter,
+            update: {
+              $set: updateDoc,
+              $setOnInsert: { createdAt: Date.now() },
+            },
+            upsert: true,
+          },
+        });
         successRows.push(rowNum);
       } catch (err) {
-        failedRows.push({ row: rowNum, error: err.message });
+        failedRows.push({ row: rowNum, error: err.message || String(err) });
       }
+    }
+
+    let batches = 0;
+    for (let i = 0; i < bulkOps.length; i += BATCH) {
+      const slice = bulkOps.slice(i, i + BATCH);
+      if (!slice.length) continue;
+      batches += 1;
+      await Products.bulkWrite(slice, { ordered: false });
     }
 
     return res.status(200).json({
@@ -3202,7 +4504,9 @@ const importProductsCsv = async (req, res) => {
       message: "Products CSV import completed",
       importedCount: successRows.length,
       failedCount: failedRows.length,
-      failedRows,
+      failedRows: failedRows.slice(0, 200),
+      failedRowsTruncated: failedRows.length > 200,
+      batches,
     });
   } catch (error) {
     console.error("Import products CSV error:", error);
@@ -3210,10 +4514,28 @@ const importProductsCsv = async (req, res) => {
       success: false,
       message: "Failed to import products CSV",
     });
+  } finally {
+    if (req.file?.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {
+        /* ignore */
+      }
+    }
   }
 };
 
 
+
+router.get('/profile', adminAuth, getAdminProfile);
+router.put('/profile', adminAuth, putAdminProfile);
+router.put('/change-password', adminAuth, putAdminChangePassword);
+router.post(
+  '/profile/upload-avatar',
+  adminAuth,
+  uploadAdminAvatarMulter,
+  postAdminProfileUploadAvatar,
+);
 
 router.get('/dashboard', adminAuth, dashboardStats);
 
@@ -3226,7 +4548,9 @@ router.post('/products', adminAuth, createProduct);
 router.put('/products/:id', adminAuth, updateProduct);
 router.get('/products', adminAuth, getAdminProducts);
 router.get('/products/export-csv', adminAuth, exportProductsCsv);
-router.post('/products/import-csv', adminAuth, upload.single('file'), importProductsCsv);
+router.get('/products/csv-sample', adminAuth, downloadProductsCsvSample);
+router.get('/products/:id', adminAuth, getAdminProductById);
+router.post('/products/import-csv', adminAuth, uploadProductCsvMulter, importProductsCsv);
 router.delete('/products/:id', adminAuth, deleteProduct);
 router.get('/analytics/products', adminAuth, getProductAnalytics);
 router.post('/uploadBulkExcelProducts', adminAuth, upload.single('file'), uploadBulkExcelProducts);
@@ -3234,10 +4558,37 @@ router.post('/uploadBulkExcelProducts', adminAuth, upload.single('file'), upload
 router.post('/messages', adminAuth, createMessage);
 router.get('/messages', adminAuth, getAllMessages);
 router.post('/messages/reply', adminAuth, replyToMessage);
+router.post('/messages/delete-many', adminAuth, deleteMessagesMany);
+router.post('/messages/restore-many', adminAuth, restoreMessagesMany);
+router.post('/messages/permanent-delete-many', adminAuth, permanentDeleteMessagesMany);
 router.get('/messages/stats', adminAuth, getMessageStats);
+router.delete('/messages/:id', adminAuth, deleteMessageById);
+router.get('/messages/:id', adminAuth, getMessageById);
+
+router.get('/settings', adminAuth, getAdminSettings);
+router.put('/settings', adminAuth, putAdminSettings);
+router.post(
+  '/settings/upload-logo',
+  adminAuth,
+  uploadBrandingLogoMulter,
+  postAdminSettingsUploadLogo,
+);
+router.post(
+  '/settings/upload-favicon',
+  adminAuth,
+  uploadBrandingFaviconMulter,
+  postAdminSettingsUploadFavicon,
+);
+router.post('/settings/smtp/verify', adminAuth, postSmtpVerify);
+router.post('/settings/smtp/test', adminAuth, postSmtpTestEmail);
+
+router.get('/email-templates', adminAuth, getEmailTemplatesAdmin);
+router.put('/email-templates/:key', adminAuth, putEmailTemplateByKey);
+router.post('/email-templates/preview', adminAuth, postEmailTemplatePreview);
 
 router.get('/orders', adminAuth, getOrders);
 router.get('/orders/export-csv', adminAuth, exportOrdersCsv);
+router.get('/orders/:id', adminAuth, getAdminOrderById);
 router.post('/orders/import-csv', adminAuth, upload.single('file'), importOrdersCsv);
 router.patch('/orders/:id/cancel-payment-request', adminAuth, cancelPaymentRequest);
 router.patch('/orders/:id/status', adminAuth, updateOrderStatus);

@@ -16,6 +16,7 @@ import {
   Clock,
   Gift,
   Zap,
+  MessageCircle,
 } from 'lucide-react';
 import api from '../services/api';
 import '../styles/pages/AdminDashboardOverview.css';
@@ -30,9 +31,32 @@ function AdminDashboard() {
   });
   const [selectedPeriod, setSelectedPeriod] = useState('day');
   const [loading, setLoading] = useState(true);
+  const [contactAutoReplyPreview, setContactAutoReplyPreview] = useState('');
+  const [contactAutoReplyLoading, setContactAutoReplyLoading] = useState(true);
 
   useEffect(() => {
     if (isAdmin) fetchDashboardData();
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setContactAutoReplyLoading(true);
+        const res = await api.get('/admin/settings');
+        if (!cancelled && res?.success && res.data?.contactAutoReplyPreview != null) {
+          setContactAutoReplyPreview(String(res.data.contactAutoReplyPreview));
+        }
+      } catch {
+        if (!cancelled) setContactAutoReplyPreview('');
+      } finally {
+        if (!cancelled) setContactAutoReplyLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [isAdmin]);
 
   if (!isAdmin) return <Navigate to="/" replace />;
@@ -40,75 +64,30 @@ function AdminDashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const API_URL = process.env.REACT_APP_API_URL || 'https://zippyyy.com/api';
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setLoading(false);
-        return;
+      const dash = await api.get('/admin/dashboard');
+      if (dash?.sales && dash?.orders && dash?.profits && dash?.products) {
+        setStats({
+          sales: {
+            day: Number(dash.sales.day) || 0,
+            week: Number(dash.sales.week) || 0,
+            month: Number(dash.sales.month) || 0,
+          },
+          orders: {
+            pending: Number(dash.orders.pending) || 0,
+            delivered: Number(dash.orders.delivered) || 0,
+            total: Number(dash.orders.total) || 0,
+          },
+          profits: {
+            day: Number(dash.profits.day) || 0,
+            week: Number(dash.profits.week) || 0,
+            month: Number(dash.profits.month) || 0,
+          },
+          products: {
+            total: Number(dash.products.total) || 0,
+            lowStock: Number(dash.products.lowStock) || 0,
+          },
+        });
       }
-
-      await api.get(`/admin/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const ordersResponse = await fetch(`${API_URL}/admin/orders?limit=1000`, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
-      let allOrders = [];
-      if (ordersResponse.ok) {
-        const ordersData = await ordersResponse.json();
-        allOrders = ordersData.orders || [];
-      }
-
-      const now = new Date();
-      const periods = {
-        day: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-        week: new Date(new Date().setDate(now.getDate() - 7)),
-        month: new Date(new Date().setMonth(now.getMonth() - 1)),
-      };
-
-      const calculate = (startDate) => {
-        const filtered = allOrders.filter(
-          (o) => new Date(o.createdAt) >= startDate && o.paymentStatus === 'completed'
-        );
-        const sales = filtered.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-        const profit = filtered.reduce(
-          (sum, o) =>
-            sum +
-            (o.items?.reduce(
-              (isum, i) =>
-                isum +
-                ((i.price || 0) - (i.product?.cost || 0)) * (i.quantity || 0),
-              0
-            ) || 0),
-          0
-        );
-        return { sales, profit };
-      };
-
-      const dayData = calculate(periods.day);
-      const weekData = calculate(periods.week);
-      const monthData = calculate(periods.month);
-
-      const productsResponse = await fetch(`${API_URL}/admin/products`, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
-      let prodStats = { total: 0, low: 0 };
-      if (productsResponse.ok) {
-        const pData = await productsResponse.json();
-        const items = pData.products || pData.data || [];
-        prodStats = { total: items.length, low: items.filter((p) => (p.quantity || 0) < 10).length };
-      }
-
-      setStats({
-        sales: { day: dayData.sales, week: weekData.sales, month: monthData.sales },
-        orders: {
-          pending: allOrders.filter((o) => ['pending', 'processing'].includes(o.status)).length,
-          delivered: allOrders.filter((o) => o.status === 'delivered').length,
-          total: allOrders.length,
-        },
-        profits: { day: dayData.profit, week: weekData.profit, month: monthData.profit },
-        products: { total: prodStats.total, lowStock: prodStats.low },
-      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -118,7 +97,7 @@ function AdminDashboard() {
 
   if (loading)
     return (
-      <div className="admin-overview-loading">
+      <div className="admin-design-scope admin-overview-loading">
         <div className="admin-overview-spinner" aria-hidden />
         <p className="admin-overview-loading-text">Loading overview…</p>
       </div>
@@ -127,7 +106,7 @@ function AdminDashboard() {
   const periodLabel = { day: 'Today', week: 'Last 7 days', month: 'Last 30 days' }[selectedPeriod];
 
   return (
-    <div className="admin-overview">
+    <div className="admin-design-scope admin-overview">
       <header className="admin-overview__header">
         <div className="admin-overview__header-top">
           <div>
@@ -203,82 +182,121 @@ function AdminDashboard() {
         </div>
       </section>
 
-      <div className="admin-overview__grid">
-        <section className="admin-overview__actions">
-          <h2 className="admin-overview__section-title">Quick actions</h2>
-          <div className="admin-overview-actions">
-            <ActionLink to="/admin/products" icon={PlusCircle} label="Products" desc="Add and manage products" />
-            <ActionLink to="/admin/orders" icon={ClipboardList} label="Orders" desc="View and fulfill orders" />
-            <ActionLink to="/admin/users" icon={Users} label="Users" desc="Manage customer accounts" />
-            <ActionLink to="/admin/categories" icon={Tag} label="Categories" desc="Organize catalog" />
-            <ActionLink to="/admin/voucher" icon={Gift} label="Vouchers" desc="Discount codes" />
-            <ActionLink to="/admin/deals" icon={Zap} label="Deals" desc="Hot deals and promotions" />
-          </div>
-        </section>
-
-        <aside className="admin-overview__sidebar">
-          <div className="admin-overview-card">
-            <h2 className="admin-overview__section-title">Order summary</h2>
-            <div className="admin-overview-summary">
-              <div className="admin-overview-summary__row">
-                <span className="admin-overview-summary__label">
-                  <PackageCheck size={16} /> Delivered
-                </span>
-                <span className="admin-overview-summary__value">{stats.orders.delivered}</span>
-              </div>
-              <div
-                className="admin-overview-summary__bar admin-overview-summary__bar--success"
-                style={{
-                  width: `${stats.orders.total ? (stats.orders.delivered / stats.orders.total) * 100 : 0}%`,
-                }}
-              />
-              <div className="admin-overview-summary__row">
-                <span className="admin-overview-summary__label">
-                  <Clock size={16} /> Pending
-                </span>
-                <span className="admin-overview-summary__value">{stats.orders.pending}</span>
-              </div>
-              <div
-                className="admin-overview-summary__bar admin-overview-summary__bar--warning"
-                style={{
-                  width: `${stats.orders.total ? (stats.orders.pending / stats.orders.total) * 100 : 0}%`,
-                }}
-              />
-            </div>
-
-            {stats.products.lowStock > 0 && (
-              <div className="admin-overview-alert">
-                <AlertTriangle size={20} className="admin-overview-alert__icon" />
-                <div>
-                  <p className="admin-overview-alert__title">Low stock</p>
-                  <p className="admin-overview-alert__text">
-                    {stats.products.lowStock} product{stats.products.lowStock !== 1 ? 's' : ''} need restocking.
-                  </p>
-                  <Link to="/admin/products" className="admin-overview-alert__link">
-                    Manage products <ChevronRight size={14} />
-                  </Link>
+      <section className="admin-overview__grid" style={{ marginTop: '2rem' }}>
+        <div>
+          <section className="admin-overview-auto-reply" aria-label="Automatic contact reply">
+            <div className="admin-overview-auto-reply__inner">
+              <div className="admin-overview-auto-reply__head">
+                <div className="admin-overview-auto-reply__title-row">
+                  <span className="admin-overview-auto-reply__icon" aria-hidden>
+                    <MessageCircle size={20} strokeWidth={2} />
+                  </span>
+                  <h2 className="admin-overview-auto-reply__title">Contact auto-reply</h2>
                 </div>
+                <p className="admin-overview-auto-reply__desc">
+                  Preview of the message customers see after submitting the contact form (from General / Notifications settings).
+                </p>
+                <Link to="/admin/settings/general" className="admin-overview-auto-reply__edit">
+                  Edit in settings
+                  <ChevronRight size={16} />
+                </Link>
               </div>
-            )}
-          </div>
-        </aside>
-      </div>
-    </div>
-  );
-}
+              {contactAutoReplyLoading ? (
+                <p className="admin-overview-auto-reply__loading">Loading preview…</p>
+              ) : (
+                <div className="admin-overview-auto-reply__body">
+                  {contactAutoReplyPreview || 'No auto-reply template configured yet.'}
+                </div>
+              )}
+            </div>
+          </section>
 
-function ActionLink({ to, icon: Icon, label, desc }) {
-  return (
-    <Link to={to} className="admin-overview-action">
-      <div className="admin-overview-action__icon">
-        <Icon size={20} strokeWidth={2} />
-      </div>
-      <div className="admin-overview-action__text">
-        <span className="admin-overview-action__label">{label}</span>
-        <span className="admin-overview-action__desc">{desc}</span>
-      </div>
-      <ChevronRight size={18} className="admin-overview-action__chevron" />
-    </Link>
+          <section className="admin-overview__actions" aria-label="Quick actions">
+            <h2 className="admin-overview__section-title">Store management</h2>
+            <div className="admin-overview-actions">
+              {[
+                { to: '/admin/products/new', icon: PlusCircle, label: 'Add product', desc: 'Create a new catalog item' },
+                { to: '/admin/orders', icon: ClipboardList, label: 'Orders', desc: 'Review and update fulfillment' },
+                { to: '/admin/messages', icon: MessageCircle, label: 'Messages', desc: 'Customer inbox' },
+                { to: '/admin/users', icon: Users, label: 'Users', desc: 'Accounts and roles' },
+                { to: '/admin/categories', icon: Tag, label: 'Categories', desc: 'Organize your catalog' },
+                { to: '/admin/voucher', icon: Gift, label: 'Vouchers', desc: 'Discount codes' },
+                { to: '/admin/deals', icon: Zap, label: 'Deals', desc: 'Promotional pricing' },
+                { to: '/admin/slider-settings', icon: PackageCheck, label: 'Home slider', desc: 'Hero slides' },
+                { to: '/admin/settings', icon: Clock, label: 'Settings', desc: 'Storefront & notifications' },
+              ].map(({ to, icon: Icon, label, desc }) => (
+                <Link key={to} to={to} className="admin-overview-action">
+                  <span className="admin-overview-action__icon">
+                    <Icon size={22} strokeWidth={2} />
+                  </span>
+                  <span className="admin-overview-action__text">
+                    <span className="admin-overview-action__label">{label}</span>
+                    <span className="admin-overview-action__desc">{desc}</span>
+                  </span>
+                  <ChevronRight size={18} className="admin-overview-action__chevron" aria-hidden />
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <div className="admin-overview-alert" role="note">
+            <AlertTriangle size={20} className="admin-overview-alert__icon" aria-hidden />
+            <div>
+              <p className="admin-overview-alert__title">Metrics note</p>
+              <p className="admin-overview-alert__text">
+                Revenue and profit include orders with payment status <strong>paid</strong> or <strong>completed</strong>.
+                Product totals exclude deleted SKUs; low stock is quantity under 10.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <aside className="admin-overview-card" aria-label="At a glance">
+          <h2 className="admin-overview__section-title" style={{ marginTop: 0 }}>
+            At a glance
+          </h2>
+          <div className="admin-overview-summary">
+            <div className="admin-overview-summary__row">
+              <span className="admin-overview-summary__label">
+                <Package size={16} strokeWidth={2} aria-hidden />
+                Pending orders
+              </span>
+              <span className="admin-overview-summary__value">{stats.orders.pending}</span>
+            </div>
+            <div
+              className="admin-overview-summary__bar admin-overview-summary__bar--warning"
+              style={{
+                width: `${Math.min(100, stats.orders.total ? (stats.orders.pending / stats.orders.total) * 100 : 0)}%`,
+              }}
+            />
+            <div className="admin-overview-summary__row">
+              <span className="admin-overview-summary__label">
+                <PackageCheck size={16} strokeWidth={2} aria-hidden />
+                Delivered
+              </span>
+              <span className="admin-overview-summary__value">{stats.orders.delivered}</span>
+            </div>
+            <div
+              className="admin-overview-summary__bar admin-overview-summary__bar--success"
+              style={{
+                width: `${Math.min(100, stats.orders.total ? (stats.orders.delivered / stats.orders.total) * 100 : 0)}%`,
+              }}
+            />
+            <div className="admin-overview-summary__row">
+              <span className="admin-overview-summary__label">
+                <ShoppingCart size={16} strokeWidth={2} aria-hidden />
+                Low stock SKUs
+              </span>
+              <span className="admin-overview-summary__value">{stats.products.lowStock}</span>
+            </div>
+          </div>
+          <Link to="/admin/orders" className="admin-overview-alert__link" style={{ marginTop: '1rem' }}>
+            Open orders
+            <ChevronRight size={14} />
+          </Link>
+        </aside>
+      </section>
+    </div>
   );
 }
 

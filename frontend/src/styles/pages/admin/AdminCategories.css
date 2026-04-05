@@ -1,7 +1,7 @@
 /* Categories admin — aligned with AdminLayout (Inter) + AdminProducts patterns */
 
 .admin-categories {
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 1rem 1rem 2rem;
   font-family: "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -24,8 +24,8 @@
   padding: 1.25rem 1.5rem;
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  border-radius: 10px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 1px 2px rgba(15, 23, 42, 0.05);
   margin-bottom: 1.25rem;
 }
 
@@ -51,11 +51,11 @@
   justify-content: center;
   width: 48px;
   height: 48px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #3090cf 0%, #2563a8 100%);
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--admin-primary, #008060) 0%, var(--admin-primary-hover, #006e52) 100%);
   color: #fff;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(48, 144, 207, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 128, 96, 0.22);
 }
 
 .admin-categories__title {
@@ -94,8 +94,8 @@
 }
 
 .admin-categories__btn-primary:hover {
-  background: #2680b8;
-  box-shadow: 0 6px 18px rgba(48, 144, 207, 0.4);
+  background: var(--admin-primary-hover, #006e52);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07);
 }
 
 .admin-categories__btn-primary:active {
@@ -147,15 +147,15 @@
 }
 
 .admin-categories__main-tab--active {
-  border-color: var(--primary-color, #3090cf);
-  background: var(--primary-color, #3090cf);
+  border-color: var(--admin-primary, #008060);
+  background: var(--admin-primary, #008060);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(48, 144, 207, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 128, 96, 0.2);
 }
 
 .admin-categories__main-tab--active:hover {
-  background: #2680b8;
-  border-color: #2680b8;
+  background: var(--admin-primary-hover, #006e52);
+  border-color: var(--admin-primary-hover, #006e52);
   color: #fff;
 }
 
@@ -302,6 +302,15 @@
   color: var(--primary-color, #3090cf);
 }
 
+a.admin-categories__name-btn {
+  text-decoration: none;
+  display: inline-block;
+}
+
+a.admin-categories__btn-primary {
+  text-decoration: none;
+}
+
 .admin-categories__parent-pill {
   display: inline-flex;
   align-items: center;
@@ -332,8 +341,8 @@
 }
 
 .admin-categories__count-btn:hover {
-  background: rgba(48, 144, 207, 0.1);
-  color: #2680b8;
+  background: rgba(0, 128, 96, 0.08);
+  color: var(--admin-primary-hover, #006e52);
 }
 
 .admin-categories__action-btn {
@@ -349,6 +358,10 @@
   color: #475569;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+a.admin-categories__action-btn {
+  text-decoration: none;
 }
 
 .admin-categories__action-btn:hover {

@@ -8,6 +8,8 @@ const Product = require('./models/Product');
 const subscription = require('./models/subscription');
 const Voucher = require('./models/voucher');
 const HomeSliderSettings = require('./models/HomeSliderSettings');
+const AppSettings = require('./models/AppSettings');
+const EmailTemplate = require('./models/EmailTemplate');
 
 const mongoUri = (process.env.MONGO_URI || process.env.DB_STRING || "").trim();
 if (mongoUri) {
@@ -36,5 +38,7 @@ module.exports = {
     Products: Product,
     Subscription: subscription,
     Voucher,
-    HomeSliderSettings
+    HomeSliderSettings,
+    AppSettings,
+    EmailTemplate
 };

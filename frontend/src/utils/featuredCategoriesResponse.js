@@ -25,8 +25,10 @@ export function featuredRowsToSubOptions(rows) {
   return rows
     .filter((r) => r && r.name)
     .filter((r) => {
+      if (r.isDeleted === true || r.isDeleted === 1) return false;
+      if (r.isDisable === true || r.isDisable === 1) return false;
       if (r.isActive === false || r.isActive === 0) return false;
-      if (typeof r.isActive === 'string' && ['false', '0', 'no'].includes(String(r.isActive).trim().toLowerCase())) {
+      if (typeof r.isActive === 'string' && ['false', '0', 'no', ''].includes(String(r.isActive).trim().toLowerCase())) {
         return false;
       }
       return true;

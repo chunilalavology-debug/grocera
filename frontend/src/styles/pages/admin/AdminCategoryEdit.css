@@ -1,0 +1,126 @@
+.admin-cat-edit {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 1rem 3rem;
+}
+
+.admin-cat-edit__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-cat-edit__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--admin-primary, #008060);
+  text-decoration: none;
+}
+
+.admin-cat-edit__back:hover {
+  text-decoration: underline;
+}
+
+.admin-cat-edit__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  flex: 1;
+}
+
+.admin-cat-edit__card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.admin-cat-edit__label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 0.35rem;
+}
+
+.admin-cat-edit__input,
+.admin-cat-edit__select {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  margin-bottom: 1rem;
+}
+
+.admin-cat-edit__input:focus,
+.admin-cat-edit__select:focus {
+  outline: none;
+  border-color: var(--admin-primary, #008060);
+  box-shadow: 0 0 0 3px rgba(0, 128, 96, 0.15);
+}
+
+.admin-cat-edit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.admin-cat-edit__btn {
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  text-decoration: none;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+}
+
+.admin-cat-edit__btn--primary {
+  background: var(--admin-primary, #008060);
+  border-color: var(--admin-primary, #008060);
+  color: #fff;
+}
+
+.admin-cat-edit__btn--primary:hover:not(:disabled) {
+  background: var(--admin-primary-hover, #006e52);
+  border-color: var(--admin-primary-hover, #006e52);
+}
+
+.admin-cat-edit__btn--danger {
+  color: #b91c1c;
+  border-color: #fecaca;
+  margin-right: auto;
+}
+
+.admin-cat-edit__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-cat-edit__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  gap: 0.75rem;
+  color: #64748b;
+}

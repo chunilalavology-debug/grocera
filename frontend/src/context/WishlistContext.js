@@ -21,7 +21,9 @@ export function WishlistProvider({ children }) {
     try {
       localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(items));
     } catch (e) {
-      console.warn('Wishlist save failed', e);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Wishlist save failed', e);
+      }
     }
   }, [items]);
 

@@ -1,293 +1,951 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import { flushSync } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import toast, { Toaster } from 'react-hot-toast';
+import {
+  Search,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ListFilter,
+  ChevronDown,
+  Trash2,
+  MoreVertical,
+  RotateCcw,
+  Eye,
+} from 'lucide-react';
+import { useSearch } from '../../hooks/usePerformance';
+import './AdminMessages.css';
+
+const PAGE_SIZE = 25;
+
+function formatListDate(dateString) {
+  if (!dateString) return '—';
+  const dt = new Date(dateString);
+  if (Number.isNaN(dt.getTime())) return '—';
+  return dt.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function snippetFromMessage(text, max = 80) {
+  if (!text) return '—';
+  const oneLine = String(text).replace(/\s+/g, ' ').trim();
+  if (oneLine.length <= max) return oneLine;
+  return `${oneLine.slice(0, max - 1)}…`;
+}
+
+const TABS = [
+  { id: 'all', label: 'All', filter: 'all', folder: 'inbox', countKey: 'total' },
+  { id: 'new', label: 'New', filter: 'new', folder: 'inbox', countKey: 'unread' },
+  { id: 'replied', label: 'Replied', filter: 'replied', folder: 'inbox', countKey: 'replied' },
+  { id: 'resolved', label: 'Resolved', filter: 'resolved', folder: 'inbox', countKey: 'resolved' },
+  { id: 'trash', label: 'Trash', filter: 'all', folder: 'trash', countKey: 'trash' },
+];
+
+function toYmd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 export default function AdminMessages() {
+  const navigate = useNavigate();
+  const { searchTerm, debouncedSearchTerm, handleSearchChange, setSearchTerm } = useSearch('', 200);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMessage, setSelectedMessage] = useState(null);
-  const [replyText, setReplyText] = useState('');
+  const [folder, setFolder] = useState('inbox');
+  const [activeTab, setActiveTab] = useState('all');
   const [stats, setStats] = useState({});
 
-  const [currentPage, setCurrentPage] = useState(1);
+  const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const loadMessages = useCallback(async (page) => {
-    try {
-      setLoading(true);
-      const response = await api.get(`/admin/messages?page=${page}&limit=10&status=${filter}`);
-      if (response.success) {
-        setMessages(response.data || []);
-        setTotalPages(response.totalPages || 1);
-        setCurrentPage(response.currentPage || 1);
-      }
-    } catch {
-      /* inbox load failed — UI shows empty state */
-    } finally {
-      setLoading(false);
+  const [datePreset, setDatePreset] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [selectMenuOpen, setSelectMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [rowBusyId, setRowBusyId] = useState(null);
+  const [searchKick, setSearchKick] = useState(0);
+  const pendingImmediateSearchRef = useRef(null);
+
+  const selectWrapRef = useRef(null);
+  const moreWrapRef = useRef(null);
+  const masterCheckboxRef = useRef(null);
+  const prevFilterKeyRef = useRef(null);
+
+  const filterKey = useMemo(
+    () =>
+      JSON.stringify({
+        q: debouncedSearchTerm.trim(),
+        filter,
+        folder,
+        dateFrom,
+        dateTo,
+        sortOrder,
+        searchKick,
+      }),
+    [debouncedSearchTerm, filter, folder, dateFrom, dateTo, sortOrder, searchKick]
+  );
+
+  useLayoutEffect(() => {
+    if (prevFilterKeyRef.current === null) {
+      prevFilterKeyRef.current = filterKey;
+      return;
     }
-  }, [filter]);
+    if (prevFilterKeyRef.current !== filterKey) {
+      prevFilterKeyRef.current = filterKey;
+      flushSync(() => setPage(1));
+    }
+  }, [filterKey]);
 
   const loadStats = useCallback(async () => {
     try {
-      const response = await api.get(`/admin/messages/stats`);
-      if (response.success) {
+      const response = await api.get('/admin/messages/stats');
+      if (response?.success) {
         setStats(response.stats || {});
       }
     } catch {
-      /* stats optional */
+      /* optional */
     }
   }, []);
 
   useEffect(() => {
-    loadMessages(currentPage);
-    loadStats();
-  }, [currentPage, loadMessages, loadStats]);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        let q = debouncedSearchTerm.trim();
+        const immediate = pendingImmediateSearchRef.current;
+        if (immediate != null) {
+          pendingImmediateSearchRef.current = null;
+          q = String(immediate).trim();
+        }
+        const params = new URLSearchParams({
+          page: String(page),
+          limit: String(PAGE_SIZE),
+          status: folder === 'trash' ? 'all' : filter,
+          folder,
+          sortOrder,
+        });
+        if (q) params.set('search', q);
+        if (dateFrom) params.set('dateFrom', dateFrom);
+        if (dateTo) params.set('dateTo', dateTo);
 
-  const handleReply = async () => {
-    if (!replyText.trim()) {
-      toast.error("Reply message cannot be empty");
-      return;
-    }
+        const response = await api.get(`/admin/messages?${params.toString()}`);
+        if (cancelled) return;
 
-    const loadingToast = toast.loading("Sending reply...");
-
-    try {
-      const response = await api.post('/admin/messages/reply', {
-        id: selectedMessage._id,
-        replyMessage: replyText
-      });
-
-      if (response.success) {
-        toast.dismiss(loadingToast);
-        toast.success("Reply sent successfully");
-
-        setMessages(prev =>
-          prev.map(msg =>
-            msg._id === selectedMessage._id
-              ? { ...msg, status: 'responded' }
-              : msg
-          )
-        );
-
-        setSelectedMessage(null);
-        setReplyText('');
-        loadStats();
+        if (response && response.success) {
+          setMessages(Array.isArray(response.data) ? response.data : []);
+          setTotalPages(Math.max(1, response.totalPages || 1));
+          setTotalCount(response.totalMessages ?? response.total ?? 0);
+          if (typeof response.currentPage === 'number' && response.currentPage !== page) {
+            setPage(response.currentPage);
+          }
+        } else {
+          setMessages([]);
+          if (response?.message) toast.error(String(response.message));
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setMessages([]);
+          toast.error(e?.message || 'Could not load messages');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (error) {
-      console.error("Reply error:", error);
-      toast.dismiss(loadingToast);
-      toast.error(error.message || "Failed to send reply");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [page, filterKey, debouncedSearchTerm, filter, folder, dateFrom, dateTo, sortOrder]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page, filterKey]);
+
+  const buildParams = useCallback(
+    (forPage) => {
+      const params = new URLSearchParams({
+        page: String(forPage),
+        limit: String(PAGE_SIZE),
+        status: folder === 'trash' ? 'all' : filter,
+        folder,
+        sortOrder,
+      });
+      const qt = debouncedSearchTerm.trim();
+      if (qt) params.set('search', qt);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      return params;
+    },
+    [debouncedSearchTerm, filter, folder, dateFrom, dateTo, sortOrder]
+  );
+
+  const refresh = useCallback(async () => {
+    await loadStats();
+    setLoading(true);
+    try {
+      const response = await api.get(`/admin/messages?${buildParams(page).toString()}`);
+      if (response?.success) {
+        setMessages(Array.isArray(response.data) ? response.data : []);
+        setTotalPages(Math.max(1, response.totalPages || 1));
+        setTotalCount(response.totalMessages ?? response.total ?? 0);
+        if (typeof response.currentPage === 'number') setPage(response.currentPage);
+      }
+    } catch (e) {
+      toast.error(e?.message || 'Refresh failed');
+    } finally {
+      setLoading(false);
     }
+  }, [buildParams, page, loadStats]);
+
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (selectWrapRef.current && !selectWrapRef.current.contains(e.target)) setSelectMenuOpen(false);
+      if (moreWrapRef.current && !moreWrapRef.current.contains(e.target)) setMoreMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const pageIds = messages.map((m) => String(m._id));
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+  const somePageSelected = pageIds.some((id) => selectedIds.has(id));
+
+  useEffect(() => {
+    const el = masterCheckboxRef.current;
+    if (el) el.indeterminate = somePageSelected && !allPageSelected;
+  }, [somePageSelected, allPageSelected]);
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const selectByFilter = (mode) => {
+    const next = new Set();
+    for (const m of messages) {
+      const id = String(m._id);
+      const unread = m.status === 'new';
+      if (mode === 'all') next.add(id);
+      else if (mode === 'read' && !unread) next.add(id);
+      else if (mode === 'unread' && unread) next.add(id);
+    }
+    setSelectedIds(next);
+    setSelectMenuOpen(false);
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  const toggleMasterCheckbox = () => {
+    if (allPageSelected) clearSelection();
+    else setSelectedIds(new Set(pageIds));
+  };
+
+  const toggleSelectOne = (id, e) => {
+    e.stopPropagation();
+    const sid = String(id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sid)) next.delete(sid);
+      else next.add(sid);
+      return next;
     });
   };
 
-  const getStatusClass = (status) => {
-    const base = "px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ";
-    switch (status) {
-      case 'new': return base + "bg-blue-100 text-blue-800";
-      case 'read': return base + "bg-purple-100 text-purple-800";
-      case 'responded': return base + "bg-green-100 text-green-800";
-      default: return base + "bg-gray-100 text-gray-800";
+  const afterMutation = useCallback(async () => {
+    setSelectedIds(new Set());
+    await loadStats();
+    try {
+      const response = await api.get(`/admin/messages?${buildParams(page).toString()}`);
+      if (response?.success) {
+        setMessages(Array.isArray(response.data) ? response.data : []);
+        setTotalPages(Math.max(1, response.totalPages || 1));
+        setTotalCount(response.totalMessages ?? response.total ?? 0);
+        if (typeof response.currentPage === 'number') setPage(response.currentPage);
+      }
+    } catch {
+      /* ignore; list effect will retry on next navigation */
+    }
+  }, [buildParams, page, loadStats]);
+
+  const moveToTrashSelected = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    if (!window.confirm(`Move ${ids.length} message(s) to Trash? You can restore them later.`)) return;
+    setDeleting(true);
+    try {
+      const res = await api.post('/admin/messages/delete-many', { ids });
+      if (res?.success) {
+        const n = res.movedCount ?? res.deletedCount ?? ids.length;
+        toast.success(`Moved ${n} message(s) to Trash`);
+        await afterMutation();
+      } else if (res?.message) toast.error(String(res.message));
+    } catch (e) {
+      toast.error(e?.message || 'Could not move to Trash');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  if (loading) {
+  const restoreSelected = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    setRestoring(true);
+    try {
+      const res = await api.post('/admin/messages/restore-many', { ids });
+      if (res?.success) {
+        toast.success(`Restored ${res.restoredCount ?? ids.length} message(s)`);
+        await afterMutation();
+      } else if (res?.message) toast.error(String(res.message));
+    } catch (e) {
+      toast.error(e?.message || 'Restore failed');
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const permanentDeleteSelected = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    if (!window.confirm(`Permanently delete ${ids.length} message(s)? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const res = await api.post('/admin/messages/permanent-delete-many', { ids });
+      if (res?.success) {
+        toast.success(`Permanently deleted ${res.deletedCount ?? ids.length} message(s)`);
+        await afterMutation();
+      } else if (res?.message) toast.error(String(res.message));
+    } catch (e) {
+      toast.error(e?.message || 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const moveOneToTrash = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm('Move this message to Trash?')) return;
+    setRowBusyId(String(id));
+    try {
+      const res = await api.delete(`/admin/messages/${encodeURIComponent(String(id))}`);
+      if (res?.success) {
+        toast.success('Moved to Trash');
+        await afterMutation();
+      } else if (res?.message) toast.error(String(res.message));
+    } catch (err) {
+      toast.error(err?.message || 'Could not delete');
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
+  const restoreOne = async (id, e) => {
+    e.stopPropagation();
+    setRowBusyId(String(id));
+    try {
+      const res = await api.post('/admin/messages/restore-many', { ids: [String(id)] });
+      if (res?.success) {
+        toast.success('Restored');
+        await afterMutation();
+      } else if (res?.message) toast.error(String(res.message));
+    } catch (err) {
+      toast.error(err?.message || 'Restore failed');
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
+  const deleteOneForever = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm('Permanently delete this message?')) return;
+    setRowBusyId(String(id));
+    try {
+      const res = await api.post('/admin/messages/permanent-delete-many', { ids: [String(id)] });
+      if (res?.success) {
+        toast.success('Deleted permanently');
+        await afterMutation();
+      } else if (res?.message) toast.error(String(res.message));
+    } catch (err) {
+      toast.error(err?.message || 'Delete failed');
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
+  const openRow = (msg) => {
+    const id = msg?._id != null ? String(msg._id) : '';
+    if (!id) {
+      toast.error('Invalid message id');
+      return;
+    }
+    navigate(`/admin/messages/${id}`);
+  };
+
+  const setTab = (tab) => {
+    setActiveTab(tab.id);
+    setFilter(tab.filter);
+    setFolder(tab.folder || 'inbox');
+    clearSelection();
+    setSelectMenuOpen(false);
+  };
+
+  const onSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      pendingImmediateSearchRef.current = searchTerm;
+      setSearchKick((k) => k + 1);
+    }
+  };
+
+  const applyDatePreset = (preset) => {
+    setDatePreset(preset);
+    const now = new Date();
+    if (preset === 'all') {
+      setDateFrom('');
+      setDateTo('');
+    } else if (preset === '7d') {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 7);
+      setDateFrom(toYmd(start));
+      setDateTo(toYmd(now));
+    } else if (preset === '30d') {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 30);
+      setDateFrom(toYmd(start));
+      setDateTo(toYmd(now));
+    }
+  };
+
+  const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = totalCount === 0 ? 0 : Math.min((page - 1) * PAGE_SIZE + messages.length, totalCount);
+
+  const tabCount = (key) => {
+    const n = stats[key];
+    return typeof n === 'number' ? n : 0;
+  };
+
+  const searchBar = (
+    <div className="admin-msg-inbox__search-row">
+      <div className="admin-msg-inbox__search-wrap">
+        <Search size={22} className="admin-msg-inbox__search-icon" aria-hidden />
+        <input
+          type="search"
+          className="admin-msg-inbox__search-input"
+          placeholder="Search name, email, or message…"
+          value={searchTerm}
+          onChange={handleSearchChange}
+          onKeyDown={onSearchKeyDown}
+          aria-label="Search messages"
+          disabled={loading && messages.length === 0}
+          enterKeyHint="search"
+        />
+        <span
+          className="admin-msg-inbox__filter-icon"
+          title="Searches name, email, phone, subject, and message body (server-side)."
+        >
+          <ListFilter size={20} />
+        </span>
+      </div>
+    </div>
+  );
+
+  const toolbarFilters = (
+    <div className="admin-msg-table__filters">
+      <label className="admin-msg-table__filter">
+        <span className="admin-msg-table__filter-label">Date range</span>
+        <select
+          className="admin-msg-table__select"
+          value={datePreset}
+          onChange={(e) => applyDatePreset(e.target.value)}
+          aria-label="Date preset"
+        >
+          <option value="all">All time</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      {datePreset === 'custom' ? (
+        <>
+          <label className="admin-msg-table__filter">
+            <span className="admin-msg-table__filter-label">From</span>
+            <input
+              type="date"
+              className="admin-msg-table__date"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setDatePreset('custom');
+              }}
+            />
+          </label>
+          <label className="admin-msg-table__filter">
+            <span className="admin-msg-table__filter-label">To</span>
+            <input
+              type="date"
+              className="admin-msg-table__date"
+              value={dateTo}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setDatePreset('custom');
+              }}
+            />
+          </label>
+        </>
+      ) : null}
+      <label className="admin-msg-table__filter">
+        <span className="admin-msg-table__filter-label">Order</span>
+        <select
+          className="admin-msg-table__select"
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value)}
+          aria-label="Sort by date"
+        >
+          <option value="desc">Newest first</option>
+          <option value="asc">Oldest first</option>
+        </select>
+      </label>
+    </div>
+  );
+
+  if (loading && messages.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 text-gray-600 font-medium">Loading inbox...</p>
+      <div className="admin-msg-inbox admin-design-scope font-sans">
+        <Toaster position="top-right" />
+        {searchBar}
+        <div className="admin-msg-inbox__tabs" role="tablist">
+          {TABS.map((tab) => (
+            <button key={tab.id} type="button" role="tab" className="admin-msg-inbox__tab" disabled>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="admin-msg-inbox__loading">
+          <div className="admin-msg-inbox__spinner" />
+          <p>Loading messages…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen font-sans">
-      <Toaster />
-      <div className="max-w-7xl mx-auto mb-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <span>📩</span> Customer Messages
-            </h1>
-            <p className="text-gray-500 text-sm">Manage and respond to user queries</p>
+    <div className="admin-msg-inbox admin-design-scope font-sans">
+      <Toaster position="top-right" />
+      {searchBar}
+
+      <div className="admin-msg-inbox__tabs" role="tablist">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            className={`admin-msg-inbox__tab ${activeTab === tab.id ? 'admin-msg-inbox__tab--active' : ''}`}
+            onClick={() => setTab(tab)}
+          >
+            {tab.label}
+            {tab.countKey ? <span className="admin-msg-inbox__tab-count">{tabCount(tab.countKey)}</span> : null}
+          </button>
+        ))}
+      </div>
+
+      {toolbarFilters}
+
+      <div className="admin-msg-inbox__toolbar admin-msg-table__toolbar">
+        <div className="admin-msg-inbox__toolbar-left">
+          <div className="admin-msg-inbox__select-cluster" ref={selectWrapRef}>
+            <input
+              ref={masterCheckboxRef}
+              type="checkbox"
+              className="admin-msg-inbox__checkbox"
+              checked={allPageSelected}
+              onChange={toggleMasterCheckbox}
+              aria-label="Select all on this page"
+            />
+            <button
+              type="button"
+              className="admin-msg-inbox__select-arrow"
+              aria-expanded={selectMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Selection options"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectMenuOpen((o) => !o);
+                setMoreMenuOpen(false);
+              }}
+            >
+              <ChevronDown size={18} />
+            </button>
+            {selectMenuOpen ? (
+              <ul className="admin-msg-inbox__select-menu" role="menu">
+                <li>
+                  <button type="button" role="menuitem" onClick={() => selectByFilter('all')}>
+                    All
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      clearSelection();
+                      setSelectMenuOpen(false);
+                    }}
+                  >
+                    None
+                  </button>
+                </li>
+                <li>
+                  <button type="button" role="menuitem" onClick={() => selectByFilter('read')}>
+                    Read
+                  </button>
+                </li>
+                <li>
+                  <button type="button" role="menuitem" onClick={() => selectByFilter('unread')}>
+                    Unread
+                  </button>
+                </li>
+              </ul>
+            ) : null}
           </div>
 
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            <StatCard label="Total" value={stats.total || 0} color="text-gray-700" />
-            <StatCard label="New" value={stats.unread || 0} color="text-blue-600" />
-            <StatCard label="Resolved" value={stats.resolved || 0} color="text-green-600" />
+          <button
+            type="button"
+            className="admin-msg-inbox__toolbar-btn"
+            title="Refresh"
+            disabled={loading}
+            aria-label="Refresh"
+            onClick={() => {
+              void refresh();
+            }}
+          >
+            <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+          </button>
+
+          {selectedIds.size > 0 && folder === 'inbox' ? (
+            <button
+              type="button"
+              className="admin-msg-inbox__toolbar-btn admin-msg-inbox__toolbar-btn--delete"
+              title="Move to Trash"
+              disabled={deleting}
+              aria-label={`Move ${selectedIds.size} selected to Trash`}
+              onClick={() => void moveToTrashSelected()}
+            >
+              <Trash2 size={20} />
+            </button>
+          ) : null}
+          {selectedIds.size > 0 && folder === 'trash' ? (
+            <>
+              <button
+                type="button"
+                className="admin-msg-inbox__toolbar-btn"
+                title="Restore"
+                disabled={restoring}
+                aria-label={`Restore ${selectedIds.size} selected`}
+                onClick={() => void restoreSelected()}
+              >
+                <RotateCcw size={20} />
+              </button>
+              <button
+                type="button"
+                className="admin-msg-inbox__toolbar-btn admin-msg-inbox__toolbar-btn--delete"
+                title="Delete forever"
+                disabled={deleting}
+                aria-label={`Permanently delete ${selectedIds.size} selected`}
+                onClick={() => void permanentDeleteSelected()}
+              >
+                <Trash2 size={20} />
+              </button>
+            </>
+          ) : null}
+
+          <div className="admin-msg-inbox__more-wrap" ref={moreWrapRef}>
+            <button
+              type="button"
+              className="admin-msg-inbox__toolbar-btn"
+              aria-label="More"
+              onClick={() => {
+                setMoreMenuOpen((o) => !o);
+                setSelectMenuOpen(false);
+              }}
+            >
+              <MoreVertical size={20} />
+            </button>
+            {moreMenuOpen ? (
+              <ul className="admin-msg-inbox__select-menu admin-msg-inbox__select-menu--narrow" role="menu">
+                <li>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      void refresh();
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    Refresh list
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      clearSelection();
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    Clear selection
+                  </button>
+                </li>
+              </ul>
+            ) : null}
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto mb-6 flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg">🔍</span>
-          <input
-            type="text"
-            placeholder="Search messages..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <select
-          className="bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-          value={filter}
-          onChange={(e) => {
-            setFilter(e.target.value);
-            setCurrentPage(1);
-          }}
-        >
-          <option value="all">All Status</option>
-          <option value="new">New</option>
-          <option value="replied">Replied</option>
-          <option value="resolved">Resolved</option>
-        </select>
-      </div>
-
-      {/* Messages Grid */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="admin-msg-table__wrap">
         {messages.length === 0 ? (
-          <div className="col-span-full py-20 text-center bg-white rounded-2xl border border-dashed border-gray-300">
-            <p className="text-gray-500">No messages found matching your criteria.</p>
+          <div className="admin-msg-inbox__empty admin-msg-table__empty">
+            <p>{debouncedSearchTerm.trim() ? 'No messages match your search or filters.' : 'No messages in this view.'}</p>
+            {debouncedSearchTerm.trim() ? (
+              <button type="button" className="admin-msg-inbox__link-btn" onClick={() => setSearchTerm('')}>
+                Clear search
+              </button>
+            ) : null}
           </div>
         ) : (
-          messages.map((msg) => (
-            <div key={msg._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow p-5 flex flex-col justify-between">
-              <div>
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-sm">
-                      {msg.name?.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 leading-none">{msg.name}</h3>
-                      <p className="text-xs text-gray-500 mt-1">{msg.email}</p>
-                    </div>
-                  </div>
-                  <span className={getStatusClass(msg.status)}>{msg.status}</span>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded">
-                      {msg.queryType}
-                    </span>
-                    <span className="text-xs text-gray-400">•</span>
-                    <span className="text-xs text-gray-400">{formatDate(msg.createdAt)}</span>
-                  </div>
-                  <h4 className="font-bold text-gray-800 text-sm">Sub: {msg.subject}</h4>
-                  <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">
-                    {msg.message}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-gray-50 flex items-center justify-between gap-4">
-                <button
-                  onClick={() => {
-                    setSelectedMessage(msg);
-                    setReplyText(msg.response || '');
-                  }}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold py-2 px-5 rounded-lg transition-colors shadow-sm"
-                >
-                  View & Reply
-                </button>
-              </div>
-            </div>
-          ))
+          <table className="admin-msg-table admin-msg-table--desktop">
+            <thead>
+              <tr>
+                <th className="admin-msg-table__th-check" scope="col" aria-label="Select" />
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Phone</th>
+                <th scope="col">Message</th>
+                <th scope="col">Date</th>
+                <th scope="col" className="admin-msg-table__th-actions">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {messages.map((msg) => {
+                const id = String(msg._id);
+                const busy = rowBusyId === id;
+                const selected = selectedIds.has(id);
+                return (
+                  <tr
+                    key={id}
+                    tabIndex={0}
+                    className={`admin-msg-table__row admin-msg-table__row--clickable ${selected ? 'admin-msg-table__row--selected' : ''} ${msg.status === 'new' ? 'admin-msg-table__row--unread' : ''}`}
+                    onClick={() => {
+                      if (!busy) openRow(msg);
+                    }}
+                    onKeyDown={(e) => {
+                      if (busy) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openRow(msg);
+                      }
+                    }}
+                  >
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="admin-msg-inbox__checkbox"
+                        checked={selected}
+                        onChange={(e) => toggleSelectOne(id, e)}
+                        aria-label={`Select ${msg.name || msg.email || 'message'}`}
+                      />
+                    </td>
+                    <td className="admin-msg-table__cell-name">{msg.name || '—'}</td>
+                    <td className="admin-msg-table__cell-email">{msg.email || '—'}</td>
+                    <td className="admin-msg-table__cell-phone">{msg.phone || '—'}</td>
+                    <td className="admin-msg-table__cell-msg">{snippetFromMessage(msg.message)}</td>
+                    <td className="admin-msg-table__cell-date">{formatListDate(msg.createdAt)}</td>
+                    <td className="admin-msg-table__cell-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="admin-msg-table__icon-btn"
+                        title="View"
+                        disabled={busy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRow(msg);
+                        }}
+                      >
+                        <Eye size={18} />
+                      </button>
+                      {folder === 'inbox' ? (
+                        <button
+                          type="button"
+                          className="admin-msg-table__icon-btn admin-msg-table__icon-btn--danger"
+                          title="Move to Trash"
+                          disabled={busy || deleting}
+                          onClick={(e) => void moveOneToTrash(id, e)}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="admin-msg-table__icon-btn"
+                            title="Restore"
+                            disabled={busy || restoring}
+                            onClick={(e) => void restoreOne(id, e)}
+                          >
+                            <RotateCcw size={18} />
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-msg-table__icon-btn admin-msg-table__icon-btn--danger"
+                            title="Delete forever"
+                            disabled={busy || deleting}
+                            onClick={(e) => void deleteOneForever(id, e)}
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
-      {totalPages > 1 && (
-        <div className="mt-8 flex justify-center items-center gap-2 pb-10">
-          <button
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage(prev => prev - 1)}
-            className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-gray-50"
-          >
-            Previous
-          </button>
-
-          <div className="flex items-center gap-1">
-            {[...Array(totalPages)].map((_, index) => (
-              <button
-                key={index + 1}
-                onClick={() => setCurrentPage(index + 1)}
-                className={`w-9 h-9 rounded-lg text-sm font-semibold transition-all ${currentPage === index + 1
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:border-indigo-300'
-                  }`}
+      {messages.length > 0 ? (
+        <div className="admin-msg-card-list" aria-label="Messages (mobile view)">
+          {messages.map((msg) => {
+            const id = String(msg._id);
+            const busy = rowBusyId === id;
+            const selected = selectedIds.has(id);
+            return (
+              <div
+                key={`card-${id}`}
+                className={`admin-msg-card ${msg.status === 'new' ? 'admin-msg-card--unread' : ''} ${selected ? 'admin-msg-card--selected' : ''}`}
               >
-                {index + 1}
-              </button>
-            ))}
-          </div>
-
-          <button
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage(prev => prev + 1)}
-            className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-gray-50"
-          >
-            Next
-          </button>
-        </div>
-      )}
-
-      {selectedMessage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="font-bold text-gray-900">Reply to Request</h3>
-              <button onClick={() => setSelectedMessage(null)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="bg-indigo-50/50 p-4 rounded-xl">
-                <p className="text-xs text-indigo-600 font-bold mb-1">USER MESSAGE:</p>
-                <p className="text-sm text-gray-700 italic">"{selectedMessage.message}"</p>
+                <div className="admin-msg-card__top">
+                  <input
+                    type="checkbox"
+                    className="admin-msg-inbox__checkbox"
+                    checked={selected}
+                    onChange={(e) => toggleSelectOne(id, e)}
+                    aria-label={`Select ${msg.name || msg.email || 'message'}`}
+                  />
+                  <button
+                    type="button"
+                    className="admin-msg-card__main"
+                    disabled={busy}
+                    onClick={() => openRow(msg)}
+                  >
+                    <span className="admin-msg-card__name">{msg.name || '—'}</span>
+                    <span className="admin-msg-card__snippet">{snippetFromMessage(msg.message)}</span>
+                    <span className="admin-msg-card__meta">
+                      {msg.email || '—'} · {formatListDate(msg.createdAt)}
+                    </span>
+                  </button>
+                </div>
+                <div className="admin-msg-card__actions">
+                  <button
+                    type="button"
+                    className="admin-msg-table__icon-btn"
+                    title="View"
+                    disabled={busy}
+                    onClick={() => openRow(msg)}
+                  >
+                    <Eye size={18} />
+                  </button>
+                  {folder === 'inbox' ? (
+                    <button
+                      type="button"
+                      className="admin-msg-table__icon-btn admin-msg-table__icon-btn--danger"
+                      title="Move to Trash"
+                      disabled={busy || deleting}
+                      onClick={(e) => void moveOneToTrash(id, e)}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="admin-msg-table__icon-btn"
+                        title="Restore"
+                        disabled={busy || restoring}
+                        onClick={(e) => void restoreOne(id, e)}
+                      >
+                        <RotateCcw size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-msg-table__icon-btn admin-msg-table__icon-btn--danger"
+                        title="Delete forever"
+                        disabled={busy || deleting}
+                        onClick={(e) => void deleteOneForever(id, e)}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              <textarea
-                className="w-full border border-gray-200 rounded-xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none min-h-[150px]"
-                placeholder="Write your professional response here..."
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-              />
-            </div>
-            <div className="p-6 pt-0 flex gap-3">
-              <button
-                onClick={() => setSelectedMessage(null)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
-              >
-                Discard
-              </button>
-              <button
-                onClick={handleReply}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-shadow shadow-lg shadow-indigo-200"
-              >
-                Send Message
-              </button>
-            </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {totalPages > 1 ? (
+        <div className="admin-msg-inbox__pager-footer">
+          <span className="admin-msg-inbox__pager-text">
+            {rangeStart}–{rangeEnd} of {totalCount}
+          </span>
+          <div className="admin-msg-inbox__pager-btns">
+            <button
+              type="button"
+              className="admin-msg-inbox__pager-btn"
+              title="Previous page"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft size={22} />
+            </button>
+            <button
+              type="button"
+              className="admin-msg-inbox__pager-btn"
+              title="Next page"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              <ChevronRight size={22} />
+            </button>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, color }) {
-  return (
-    <div className="bg-white px-5 py-3 rounded-2xl border border-gray-100 shadow-sm min-w-[120px]">
-      <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400">{label}</p>
-      <p className={`text-xl font-bold ${color}`}>{value}</p>
+      ) : totalCount > 0 ? (
+        <div className="admin-msg-inbox__pager-footer">
+          <span className="admin-msg-inbox__pager-text">
+            {rangeStart}–{rangeEnd} of {totalCount}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

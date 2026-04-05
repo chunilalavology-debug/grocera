@@ -224,59 +224,64 @@ app.post("/api/checkout/session", async (req, res) => {
   const parsed = CheckoutSessionRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { draft, selectedRate, promotionCode } = parsed.data;
+  try {
+    const { draft, selectedRate, promotionCode } = parsed.data;
 
-  // Server-side price confirmation (trust but verify)
-  const markedUpTotal = selectedRate.shipment_charge_total * env.ZIPPYYY_MARKUP_MULTIPLIER;
-  const amountCents = Math.round(markedUpTotal * 100) + env.ZIPPYYY_FEE_CENTS;
-  if (!Number.isFinite(amountCents) || amountCents <= 0) {
-    return res.status(400).json({ error: "INVALID_AMOUNT" });
-  }
-
-  const currency = selectedRate.shipment_charge_total_currency.toLowerCase();
-
-  let discounts;
-  if (promotionCode?.trim()) {
-    const pc = await findActivePromotionCodeByCode(stripe, promotionCode.trim());
-    if (!pc) {
-      return res.status(400).json({
-        error: "INVALID_PROMOTION_CODE",
-        message: "Promotion code is invalid or no longer active.",
-      });
+    // Server-side price confirmation (trust but verify)
+    const markedUpTotal = selectedRate.shipment_charge_total * env.ZIPPYYY_MARKUP_MULTIPLIER;
+    const amountCents = Math.round(markedUpTotal * 100) + env.ZIPPYYY_FEE_CENTS;
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      return res.status(400).json({ error: "INVALID_AMOUNT" });
     }
-    discounts = [{ promotion_code: pc.id }];
-  }
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    success_url: shipsCheckoutUrl("/checkout/success?session_id={CHECKOUT_SESSION_ID}"),
-    cancel_url: shipsCheckoutUrl("/checkout/cancel"),
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency,
-          product_data: {
-            name: `Zippyyy Shipping (${selectedRate.courier_name})`,
-            description: selectedRate.courier_service_name ?? "Shipping label",
+    const currency = selectedRate.shipment_charge_total_currency.toLowerCase();
+
+    let discounts;
+    if (promotionCode?.trim()) {
+      const pc = await findActivePromotionCodeByCode(stripe, promotionCode.trim());
+      if (!pc) {
+        return res.status(400).json({
+          error: "INVALID_PROMOTION_CODE",
+          message: "Promotion code is invalid or no longer active.",
+        });
+      }
+      discounts = [{ promotion_code: pc.id }];
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      success_url: shipsCheckoutUrl("/checkout/success?session_id={CHECKOUT_SESSION_ID}"),
+      cancel_url: shipsCheckoutUrl("/checkout/cancel"),
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency,
+            product_data: {
+              name: `Zippyyy Shipping (${selectedRate.courier_name})`,
+              description: selectedRate.courier_service_name ?? "Shipping label",
+            },
+            unit_amount: amountCents,
           },
-          unit_amount: amountCents,
         },
+      ],
+      ...(discounts ? { discounts } : {}),
+      metadata: {
+        easyship_rate_id: selectedRate.easyship_rate_id ?? "",
       },
-    ],
-    ...(discounts ? { discounts } : {}),
-    metadata: {
-      easyship_rate_id: selectedRate.easyship_rate_id ?? "",
-    },
-  });
+    });
 
-  upsertDraft({
-    checkoutSessionId: session.id,
-    draft,
-    selectedRate,
-  });
+    upsertDraft({
+      checkoutSessionId: session.id,
+      draft,
+      selectedRate,
+    });
 
-  res.json({ url: session.url, sessionId: session.id });
+    return res.json({ url: session.url, sessionId: session.id });
+  } catch (e) {
+    const msg = e && typeof e.message === "string" ? e.message : "Checkout session failed";
+    return res.status(502).json({ error: "STRIPE_CHECKOUT_FAILED", message: msg });
+  }
 });
 
 // Stripe webhook needs raw body
@@ -369,7 +374,11 @@ async function fulfillPaidSession({ sessionId }) {
   const createPayload = {
     buy_label: true,
     buy_label_synchronous: true,
-    courier_service_id: selectedRate?.raw?.courier_service_id ?? undefined,
+    courier_service_id:
+      selectedRate?.courier_service_id ??
+      selectedRate?.raw?.courier_service_id ??
+      selectedRate?.raw?.courier_service?.id ??
+      undefined,
     shipment: shipmentBody,
   };
 
@@ -410,33 +419,56 @@ async function findActivePromotionCodeByCode(stripe, customerCode) {
   return null;
 }
 
+function firstPositiveRateTotal(...candidates) {
+  for (const v of candidates) {
+    if (v == null || v === "") continue;
+    const n = typeof v === "number" ? v : Number(v);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
 function normalizeEasyshipRates(result) {
   const rates = result?.rates ?? result?.data?.rates ?? [];
   if (!Array.isArray(rates)) return [];
   return rates
     .map((r) => {
-      const total =
-        Number(r?.shipment_charge_total) ||
-        Number(r?.total_charge) ||
-        Number(r?.shipment_charge?.total) ||
-        0;
-      const currency = r?.shipment_charge_total_currency || r?.currency || "USD";
+      const ric = r?.rates_in_origin_currency;
+      const total = firstPositiveRateTotal(
+        r?.shipment_charge_total,
+        r?.total_charge,
+        r?.shipment_charge?.total,
+        typeof r?.shipment_charge === "number" ? r.shipment_charge : null,
+        ric?.shipment_charge_total,
+        ric?.total_charge,
+        ric?.shipment_charge?.total,
+        typeof ric?.shipment_charge === "number" ? ric.shipment_charge : null,
+      );
+      const currency =
+        (typeof r?.shipment_charge_total_currency === "string" && r.shipment_charge_total_currency) ||
+        (typeof r?.currency === "string" && r.currency) ||
+        (typeof ric?.currency === "string" && ric.currency) ||
+        "USD";
+      const cs = r?.courier_service;
       return {
-        courier_name: r?.courier_name || r?.courier?.name || r?.courier_service?.name || "Courier",
+        courier_name:
+          r?.courier_name || cs?.umbrella_name || r?.courier?.name || cs?.name || "Courier",
         courier_service_name:
-          r?.courier_service_name || r?.service_name || r?.courier_service?.name || r?.full_description || "",
-        courier_service_id: r?.courier_service_id || r?.courier_service?.id || r?.courier_id || undefined,
+          r?.courier_service_name || r?.service_name || cs?.name || r?.full_description || "",
+        courier_service_id: r?.courier_service_id || cs?.id || r?.courier_id || undefined,
         shipment_charge_total: total,
         shipment_charge_total_currency: currency,
-        easyship_rate_id: r?.easyship_rate_id || r?.rate_id || "",
+        easyship_rate_id: r?.easyship_rate_id || r?.rate_id || cs?.id || "",
         min_delivery_time: r?.min_delivery_time ?? null,
         max_delivery_time: r?.max_delivery_time ?? null,
         minimum_pickup_fee:
           typeof r?.minimum_pickup_fee === "number"
             ? r.minimum_pickup_fee
-            : typeof r?.pickup_fee === "number"
-              ? r.pickup_fee
-              : null,
+            : typeof ric?.minimum_pickup_fee === "number"
+              ? ric.minimum_pickup_fee
+              : typeof r?.pickup_fee === "number"
+                ? r.pickup_fee
+                : null,
         rate_description: r?.full_description || r?.description || "",
         raw: r,
       };

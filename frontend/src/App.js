@@ -46,8 +46,17 @@ const About = lazy(() => import('./pages/About'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 // const AdminPricing = lazy(() => import('./pages/AdminPricing'));
 const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'));
+const AdminProductEdit = lazy(() => import('./pages/admin/AdminProductEdit'));
+const AdminCategoryEdit = lazy(() => import('./pages/admin/AdminCategoryEdit'));
 const AdminOrders = lazy(() => import('./pages/admin/AdminOrders'));
+const AdminOrderDetail = lazy(() => import('./pages/admin/AdminOrderDetail'));
 const AdminMessages = lazy(() => import('./pages/admin/AdminMessages'));
+const AdminMessageDetail = lazy(() => import('./pages/admin/AdminMessageDetail'));
+const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
+const AdminGeneralSettings = lazy(() => import('./pages/admin/AdminGeneralSettings'));
+const AdminProfileSettings = lazy(() => import('./pages/admin/AdminProfileSettings'));
+const AdminEmailSettings = lazy(() => import('./pages/admin/AdminEmailSettings'));
+const AdminEmailTemplates = lazy(() => import('./pages/admin/AdminEmailTemplates'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminContacts = lazy(() => import('./pages/admin/AdminContacts'));
 
@@ -130,10 +139,21 @@ function App() {
                             </ProtectedRoute>
                         }>
                             <Route path="dashboard" element={<AdminDashboard />} />
-                            <Route path="categories" element={<CategoryDashboard />} />
+                            <Route path="products/new" element={<AdminProductEdit />} />
+                            <Route path="products/:id" element={<AdminProductEdit />} />
                             <Route path="products" element={<AdminProducts />} />
+                            <Route path="categories/new" element={<AdminCategoryEdit />} />
+                            <Route path="categories/:id" element={<AdminCategoryEdit />} />
+                            <Route path="categories" element={<CategoryDashboard />} />
+                            <Route path="orders/:id" element={<AdminOrderDetail />} />
                             <Route path="orders" element={<AdminOrders />} />
+                            <Route path="messages/:id" element={<AdminMessageDetail />} />
                             <Route path="messages" element={<AdminMessages />} />
+                            <Route path="settings/templates" element={<AdminEmailTemplates />} />
+                            <Route path="settings/email" element={<AdminEmailSettings />} />
+                            <Route path="settings/general" element={<AdminGeneralSettings />} />
+                            <Route path="settings/profile" element={<AdminProfileSettings />} />
+                            <Route path="settings" element={<AdminSettings />} />
                             <Route path="users" element={<AdminUsers />} />
                             <Route path="contacts" element={<AdminContacts />} />
                             <Route path="voucher" element={<AdminVoucher />} />
@@ -174,19 +194,19 @@ function App() {
                   background: '#1e293b',
                   color: '#e2e8f0',
                   borderRadius: '10px',
-                  border: '1px solid rgba(48, 144, 207, 0.3)',
+                  border: '1px solid rgba(0, 128, 96, 0.25)',
                   padding: '14px 18px',
                   fontSize: '0.9375rem',
                   boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
                 },
                 success: {
-                  iconTheme: { primary: '#3090cf', secondary: '#1e293b' },
+                  iconTheme: { primary: '#008060', secondary: '#1e293b' },
                 },
                 error: {
                   iconTheme: { primary: '#f87171', secondary: '#1e293b' },
                 },
                 loading: {
-                  iconTheme: { primary: '#3090cf', secondary: '#334155' },
+                  iconTheme: { primary: '#008060', secondary: '#334155' },
                 },
               }}
             />

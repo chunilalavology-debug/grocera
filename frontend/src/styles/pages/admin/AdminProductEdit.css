@@ -1,0 +1,172 @@
+/* Dedicated product editor (Shopify-style full page) */
+.admin-product-edit {
+  max-width: 920px;
+  margin: 0 auto;
+  padding-bottom: 3rem;
+}
+
+.admin-product-edit__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-product-edit__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #3090cf;
+  text-decoration: none;
+}
+
+.admin-product-edit__back:hover {
+  text-decoration: underline;
+}
+
+.admin-product-edit__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  flex: 1;
+  min-width: 12rem;
+}
+
+.admin-product-edit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.admin-product-edit__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.admin-product-edit__btn:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.admin-product-edit__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-product-edit__btn--primary {
+  background: #3090cf;
+  border-color: #3090cf;
+  color: #fff;
+}
+
+.admin-product-edit__btn--primary:hover:not(:disabled) {
+  background: #246fa0;
+  border-color: #246fa0;
+}
+
+.admin-product-edit__btn--danger {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fff;
+}
+
+.admin-product-edit__btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.admin-product-edit__card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.admin-product-edit__card-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  margin: 0 0 1rem;
+}
+
+.admin-product-edit__grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .admin-product-edit__grid--2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.admin-product-edit__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.admin-product-edit__field--full {
+  grid-column: 1 / -1;
+}
+
+.admin-product-edit__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.admin-product-edit__input,
+.admin-product-edit__select,
+.admin-product-edit__textarea {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  background: #fff;
+  color: #0f172a;
+}
+
+.admin-product-edit__input:focus,
+.admin-product-edit__select:focus,
+.admin-product-edit__textarea:focus {
+  outline: none;
+  border-color: #3090cf;
+  box-shadow: 0 0 0 3px rgba(48, 144, 207, 0.15);
+}
+
+.admin-product-edit__textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.admin-product-edit__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  gap: 1rem;
+  color: #64748b;
+}

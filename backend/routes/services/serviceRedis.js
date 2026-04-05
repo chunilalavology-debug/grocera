@@ -30,7 +30,6 @@ let setKey = async (key, value) => {
     }
 };
 let setKeyWithOneYear = async (key, value) => {
-    console.log('key_____________key', key, value);
     try {
         await client.set(key, value, 'EX', 60 * 60 * 24 * 365);
         return resultDb(SUCCESS);
@@ -53,7 +52,7 @@ let setKeyWithTime = async (key, value, time) => {
         await client.set(key, value, 'EX', 60 * time);
         return resultDb(SUCCESS)
     } catch (error) {
-        console.log(error);
+        console.error("setKeyWithTime:", error);
         return resultDb(SERVER_ERROR, DATA_NULL)
     }
 };

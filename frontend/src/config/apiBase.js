@@ -4,7 +4,7 @@
  * 1) Local dev (npm start on localhost / LAN): same-origin /api → setupProxy.js → backend :5000
  * 2) REACT_APP_API_URL when set (production / REACT_APP_FORCE_REMOTE_API for local)
  * 3) Known split Vercel deploys + fallbacks for static hosting
- * 4) REACT_APP_SAME_ORIGIN_API=1 when API is reverse-proxied on the same host as the SPA
+ * 4) REACT_APP_SAME_ORIGIN_API=1|true when /api is reverse-proxied on the same host as the SPA
  */
 
 const LEGACY_API_FALLBACK = "https://zippyyy.com/api";
@@ -20,8 +20,43 @@ const VERCEL_HOST_API_MAP = {
   "grocera-osi8.vercel.app": "https://grocera-k45u.vercel.app/api",
 };
 
+/**
+ * When the storefront is on these hosts and REACT_APP_API_URL is unset, assume the Node API
+ * is served at the same origin under /api (typical nginx/Caddy proxy). Avoids hitting a
+ * fallback host that returns HTML and triggers "API call returned a web page".
+ */
+const DEFAULT_SAME_ORIGIN_API_HOSTS = new Set(["zippyyy.com", "www.zippyyy.com"]);
+
 function stripTrailingSlashes(s) {
   return s.replace(/\/+$/, "");
+}
+
+/** Accepts 1, true, yes (case-insensitive). */
+function envFlagTrue(value) {
+  const s = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
+/**
+ * Ensures `https://host` → `https://host/api` when the path is empty or `/`.
+ * Leaves `http://localhost:5000/api` unchanged.
+ */
+export function normalizeApiBaseUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return raw;
+  try {
+    const u = new URL(raw);
+    const path = (u.pathname || "/").replace(/\/+$/, "") || "/";
+    if (path === "/") {
+      u.pathname = "/api";
+      return stripTrailingSlashes(u.toString());
+    }
+    return stripTrailingSlashes(raw);
+  } catch {
+    return stripTrailingSlashes(raw);
+  }
 }
 
 function isPrivateLanHost(host) {
@@ -41,7 +76,7 @@ function isVercelFrontendHost(host) {
 function getSplitDeployFallbackApi() {
   const fromEnv = process.env.REACT_APP_API_FALLBACK_URL;
   if (fromEnv && String(fromEnv).trim()) {
-    return stripTrailingSlashes(String(fromEnv).trim());
+    return normalizeApiBaseUrl(String(fromEnv).trim());
   }
   return stripTrailingSlashes(DEFAULT_SPLIT_BACKEND_API);
 }
@@ -56,8 +91,11 @@ export function getApiBaseUrl() {
     process.env.NODE_ENV === "development";
 
   /**
-   * Local `npm start`: use same-origin `/api` so webpack proxies to :5000 (avoids CORS + broken uploads).
-   * Set REACT_APP_FORCE_REMOTE_API=1 to keep using REACT_APP_API_URL from .env while UI is on localhost.
+   * Local `npm start`: always use same-origin `/api` so setupProxy forwards to the grocery API.
+   * Otherwise opening the app as http://DESKTOP-NAME:3000 or http://my-pc.local:3000 would skip the
+   * proxy and use REACT_APP_API_URL (e.g. http://localhost:5000/api) from the browser — wrong host
+   * from other devices and often returns HTML → "API call returned a web page".
+   * Set REACT_APP_FORCE_REMOTE_API=1 to call REACT_APP_API_URL directly (CORS must allow your UI origin).
    */
   const forceRemoteApi =
     process.env.REACT_APP_FORCE_REMOTE_API === "1" &&
@@ -65,23 +103,35 @@ export function getApiBaseUrl() {
     String(fromEnv).trim();
 
   if (!forceRemoteApi && typeof window !== "undefined" && isDev) {
-    const host = window.location.hostname;
-    const localDevUi =
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "[::1]" ||
-      isPrivateLanHost(host);
-    if (localDevUi) {
-      return `${stripTrailingSlashes(window.location.origin)}/api`;
-    }
+    return `${stripTrailingSlashes(window.location.origin)}/api`;
   }
 
   if (fromEnv && String(fromEnv).trim()) {
-    return stripTrailingSlashes(String(fromEnv).trim());
+    return normalizeApiBaseUrl(String(fromEnv).trim());
   }
 
   if (typeof window !== "undefined") {
+    if (window.location.protocol === "file:") {
+      return stripTrailingSlashes(LEGACY_API_FALLBACK);
+    }
+
     const host = window.location.hostname;
+
+    /**
+     * Production preview (serve/build) on loopback or LAN: use same-origin /api so a local static server
+     * + reverse proxy (or CRA-like setup) can reach JSON. Avoids falling through to a hard-coded Vercel
+     * API URL that returns HTML 404 for /auth/login.
+     */
+    const isLoopbackOrLan =
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "[::1]" ||
+      host === "::1" ||
+      isPrivateLanHost(host);
+
+    if (isLoopbackOrLan && !forceRemoteApi) {
+      return `${stripTrailingSlashes(window.location.origin)}/api`;
+    }
 
     const mapped = VERCEL_HOST_API_MAP[host];
     if (mapped) {
@@ -97,13 +147,14 @@ export function getApiBaseUrl() {
     }
 
     /**
-     * Custom domain on static hosting: same-origin `/api` often returns `index.html` (uploads see "unexpected HTML").
-     * Prefer split backend unless you explicitly serve the API on this host (proxy /api → Node).
+     * Custom domain: same-origin `/api` when you reverse-proxy /api → Node.
+     * REACT_APP_SAME_ORIGIN_API=1 or true (rebuild required).
      */
-    const sameOriginApi =
-      typeof process.env.REACT_APP_SAME_ORIGIN_API !== "undefined" &&
-      String(process.env.REACT_APP_SAME_ORIGIN_API).trim() === "1";
-    if (sameOriginApi) {
+    if (envFlagTrue(process.env.REACT_APP_SAME_ORIGIN_API)) {
+      return `${stripTrailingSlashes(window.location.origin)}/api`;
+    }
+
+    if (DEFAULT_SAME_ORIGIN_API_HOSTS.has(host)) {
       return `${stripTrailingSlashes(window.location.origin)}/api`;
     }
 
