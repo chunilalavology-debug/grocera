@@ -1,8 +1,16 @@
-import { getApiOrigin, getUploadsOrigin } from '../config/apiBase';
+import { getApiBaseUrl, getApiOrigin, getUploadsOrigin } from '../config/apiBase';
+
+function joinOriginPath(base, pathWithLeadingSlash) {
+  const b = String(base || '').replace(/\/+$/, '');
+  const p = String(pathWithLeadingSlash || '');
+  if (!p.startsWith('/')) return `${b}/${p}`;
+  return `${b}${p}`;
+}
 
 /**
  * Turn stored logo/favicon URLs into absolute URLs the browser can load.
- * Relative `/uploads/...` must hit the API host (split deploy / dev proxy).
+ * - `/uploads/...` → uploads host (often API origin without `/api`; static is mounted at `/uploads`).
+ * - `/user/...`, `/admin/...` → **API base** including `/api` (Express mounts routers at `/api/user`, `/api/admin`).
  */
 export function resolveBrandingAssetUrl(href) {
   const s = String(href || '').trim();
@@ -13,7 +21,10 @@ export function resolveBrandingAssetUrl(href) {
       const u = new URL(s);
       const p = (u.pathname || '').split('?')[0] || '';
       if (p.startsWith('/uploads/')) {
-        return `${getUploadsOrigin()}${p}`;
+        return joinOriginPath(getUploadsOrigin(), p);
+      }
+      if (p.startsWith('/user/') || p.startsWith('/admin/')) {
+        return joinOriginPath(getApiBaseUrl(), p);
       }
     } catch {
       /* fall through */
@@ -25,8 +36,13 @@ export function resolveBrandingAssetUrl(href) {
   }
   if (s.startsWith('/')) {
     try {
-      const base = s.startsWith('/uploads/') ? getUploadsOrigin() : getApiOrigin();
-      return `${base}${s}`;
+      if (s.startsWith('/uploads/')) {
+        return joinOriginPath(getUploadsOrigin(), s);
+      }
+      if (s.startsWith('/user/') || s.startsWith('/admin/')) {
+        return joinOriginPath(getApiBaseUrl(), s);
+      }
+      return joinOriginPath(getApiOrigin(), s);
     } catch {
       return s;
     }
