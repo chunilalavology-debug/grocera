@@ -115,16 +115,18 @@ export default function AdminGeneralSettings() {
     try {
       setUploadingLogo(true);
       const res = await api.post('/admin/settings/upload-logo', fd);
-      if (res.success) {
-        toast.success('Logo uploaded');
-        logoPickRef.current = null;
-        revokeIfBlob(logoPreview);
-        setLogoPreview('');
-        syncFromResponse(res.data);
-        void refreshPublicBranding();
+      if (!res?.success) {
+        toast.error(res?.message || 'Upload failed');
+        return;
       }
+      toast.success('Logo uploaded');
+      logoPickRef.current = null;
+      revokeIfBlob(logoPreview);
+      setLogoPreview('');
+      syncFromResponse(res.data);
+      void refreshPublicBranding();
     } catch (e) {
-      toast.error(e.message || 'Upload failed');
+      toast.error(e?.message || 'Upload failed');
     } finally {
       setUploadingLogo(false);
     }
@@ -141,16 +143,18 @@ export default function AdminGeneralSettings() {
     try {
       setUploadingFavicon(true);
       const res = await api.post('/admin/settings/upload-favicon', fd);
-      if (res.success) {
-        toast.success('Favicon uploaded');
-        faviconPickRef.current = null;
-        revokeIfBlob(faviconPreview);
-        setFaviconPreview('');
-        syncFromResponse(res.data);
-        void refreshPublicBranding();
+      if (!res?.success) {
+        toast.error(res?.message || 'Upload failed');
+        return;
       }
+      toast.success('Favicon uploaded');
+      faviconPickRef.current = null;
+      revokeIfBlob(faviconPreview);
+      setFaviconPreview('');
+      syncFromResponse(res.data);
+      void refreshPublicBranding();
     } catch (e) {
-      toast.error(e.message || 'Upload failed');
+      toast.error(e?.message || 'Upload failed');
     } finally {
       setUploadingFavicon(false);
     }

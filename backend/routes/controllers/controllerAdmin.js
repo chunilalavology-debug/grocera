@@ -87,6 +87,14 @@ const storage = multer.diskStorage({
   }
 });
 
+/** Vercel: no reliable disk for multipart temp files; buffer + Cloudinary in finalizeBrandingUpload. */
+const brandingUploadStorage = process.env.VERCEL
+  ? multer.memoryStorage()
+  : storage;
+
+/** Logo, favicon, and admin profile photo — always same storage as logo upload. */
+const brandingMulterBase = { storage: brandingUploadStorage };
+
 const upload = multer({
   storage,
   limits: { fileSize: 5000000 },
@@ -163,7 +171,7 @@ const uploadCategoryImageMulter = (req, res, next) => {
 };
 
 const uploadBrandingLogo = multer({
-  storage,
+  ...brandingMulterBase,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const fileExt = path.extname(file.originalname).toLowerCase();
@@ -180,7 +188,7 @@ const uploadBrandingLogo = multer({
 });
 
 const uploadBrandingFavicon = multer({
-  storage,
+  ...brandingMulterBase,
   limits: { fileSize: 512 * 1024 },
   fileFilter: (req, file, cb) => {
     const fileExt = path.extname(file.originalname).toLowerCase();
@@ -262,7 +270,7 @@ function adminProfilePayload(u) {
 }
 
 const uploadAdminAvatar = multer({
-  storage,
+  ...brandingMulterBase,
   limits: { fileSize: 3 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const fileExt = path.extname(file.originalname).toLowerCase();

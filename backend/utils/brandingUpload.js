@@ -3,10 +3,28 @@ const path = require("path");
 const streamifier = require("streamifier");
 const { uploadsPublicPath } = require("./brandingPublicUrl");
 
-function clientVisibleError(message) {
+function clientVisibleError(message, statusCode = 400) {
   const e = new Error(message);
-  e.statusCode = 400;
+  e.statusCode = statusCode;
   return e;
+}
+
+function readBrandingFileBuffer(file) {
+  if (!file) return null;
+  if (file.buffer && Buffer.isBuffer(file.buffer) && file.buffer.length > 0) {
+    return file.buffer;
+  }
+  if (file.path) {
+    try {
+      return fs.readFileSync(file.path);
+    } catch (readErr) {
+      throw clientVisibleError(
+        `Could not read uploaded file (${readErr.message || "disk read failed"}). Try a smaller image or another format.`,
+        400,
+      );
+    }
+  }
+  return null;
 }
 
 function cloudinaryCreds() {
@@ -28,10 +46,31 @@ function cloudinaryCreds() {
  * @returns {Promise<string>} secure URL or `/uploads/...`
  */
 async function finalizeBrandingUpload(file, kind) {
-  if (!file || !file.path) return "";
   const isVercel = Boolean(process.env.VERCEL);
+  const buf = readBrandingFileBuffer(file);
+  if (!buf || !buf.length) {
+    if (!file) return "";
+    if (isVercel) {
+      throw clientVisibleError(
+        'No file bytes received. Use field name "file", JPG/PNG/WebP/SVG under 5MB (logo), and try again.',
+        400,
+      );
+    }
+    return "";
+  }
+
   const { cloudName, apiKey, apiSecret } = cloudinaryCreds();
   const useCloudinary = Boolean(cloudName && apiKey && apiSecret);
+
+  const unlinkDiskIfAny = () => {
+    if (file.path) {
+      try {
+        fs.unlinkSync(file.path);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  };
 
   if (useCloudinary) {
     try {
@@ -41,7 +80,6 @@ async function finalizeBrandingUpload(file, kind) {
         api_key: apiKey,
         api_secret: apiSecret,
       });
-      const buf = fs.readFileSync(file.path);
       const folder =
         kind === "admin-avatar"
           ? "zippyyy-branding/admin-avatar"
@@ -74,38 +112,31 @@ async function finalizeBrandingUpload(file, kind) {
         );
         streamifier.createReadStream(buf).pipe(stream);
       });
-      try {
-        fs.unlinkSync(file.path);
-      } catch (_) {
-        /* ignore */
-      }
+      unlinkDiskIfAny();
       return uploadResult.secure_url;
     } catch (e) {
       console.error("Cloudinary branding upload failed:", e.message);
       if (isVercel) {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (_) {
-          /* ignore */
-        }
+        unlinkDiskIfAny();
         throw clientVisibleError(
-          `Cloudinary upload failed (${e.message || "unknown error"}). Check CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET on Vercel, then redeploy.`,
+          `Cloudinary upload failed (${e.message || "unknown error"}). On the API Vercel project set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET (correct spelling; redeploy after saving).`,
+          502,
         );
       }
       console.warn("Falling back to local /uploads (dev only).");
     }
   } else if (isVercel) {
-    try {
-      fs.unlinkSync(file.path);
-    } catch (_) {
-      /* ignore */
-    }
+    unlinkDiskIfAny();
     throw clientVisibleError(
-      "Vercel has no persistent disk: logo, favicon, and profile photos must be stored on Cloudinary. In Vercel → Project → Settings → Environment Variables, add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET (same as category images). Redeploy, then upload again.",
+      "Logo uploads on Vercel require Cloudinary (no persistent disk). On project grocera-k45u (API): Settings → Environment Variables → add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET. Redeploy, then upload again.",
+      503,
     );
   }
 
-  return uploadsPublicPath(file.filename);
+  const fname =
+    file.filename ||
+    `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname || "") || ".jpg"}`;
+  return uploadsPublicPath(fname);
 }
 
 module.exports = { finalizeBrandingUpload };
