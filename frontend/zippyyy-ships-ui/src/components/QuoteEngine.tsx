@@ -79,6 +79,48 @@ function computeSavingsLabel(base: number, markupMult: number, listMult: number)
   return { listRef, yourPrice, savePct };
 }
 
+type ParcelDims = { length: number; width: number; height: number };
+
+/**
+ * Very thin presets (envelopes) + high weight: Easyship often returns only one carrier/service.
+ * Nudge toward a small-parcel height so parcel-grade options (USPS / UPS / FedEx) are quoted.
+ * Checkout uses the same dims so the selected rate stays valid.
+ */
+function effectiveParcelDimsForRates(dims: ParcelDims, weightLb: number): { dims: ParcelDims; adjusted: boolean } {
+  const L = Number(dims.length);
+  const W = Number(dims.width);
+  const H = Number(dims.height);
+  const wt = Number(weightLb);
+  if (![L, W, H, wt].every((n) => Number.isFinite(n) && n > 0)) {
+    return { dims, adjusted: false };
+  }
+  const thinnest = Math.min(L, W, H);
+  let l = L;
+  let w = W;
+  let h = H;
+  let adjusted = false;
+
+  if (thinnest <= 1 && wt >= 8) {
+    const targetH = wt >= 35 ? 12 : wt >= 20 ? 10 : 8;
+    if (h < targetH) {
+      h = targetH;
+      adjusted = true;
+    }
+  } else if (thinnest <= 2 && wt >= 25) {
+    const targetH = 8;
+    if (h < targetH) {
+      h = targetH;
+      adjusted = true;
+    }
+  }
+
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    dims: { length: round2(l), width: round2(w), height: round2(h) },
+    adjusted,
+  };
+}
+
 function parseApiErrorMessage(err: unknown): string {
   if (!(err instanceof Error) || !err.message) return "Something went wrong.";
   try {
@@ -234,6 +276,11 @@ const QuoteEngine = () => {
     return false;
   }, [dims, weight]);
 
+  const parcelDimsForApi = useMemo(() => {
+    if (!dims) return null;
+    return effectiveParcelDimsForRates(dims, Number(weight) || 0);
+  }, [dims, weight]);
+
   const calculatePrice = (base: number) => Math.ceil(base * pricing.markupMultiplier);
 
   const uniqueCarrierCount = useMemo(
@@ -316,13 +363,15 @@ const QuoteEngine = () => {
   const fetchRates = async (options?: { force?: boolean }) => {
     if (!dims || !Number(weight)) return;
 
+    const { dims: apiDims } = effectiveParcelDimsForRates(dims, Number(weight));
+
     const quoteKey = JSON.stringify({
       fromZip: fromZip.trim(),
       toZip: toZip.trim(),
       country: shipCountryAlpha2.trim().toUpperCase(),
       fromState: derivedFromState,
       toState: derivedToState,
-      dims,
+      dims: apiDims,
       weight: Number(weight),
       setAsResidential,
       wantInsurance,
@@ -342,9 +391,9 @@ const QuoteEngine = () => {
         from: zipOnlyAddress(fromZip, shipCountryAlpha2, derivedFromState || undefined),
         to: zipOnlyAddress(toZip, shipCountryAlpha2, derivedToState || undefined),
         parcel: {
-          length: dims.length,
-          width: dims.width,
-          height: dims.height,
+          length: apiDims.length,
+          width: apiDims.width,
+          height: apiDims.height,
           weight: Number(weight),
         },
         currency: "USD",
@@ -365,9 +414,9 @@ const QuoteEngine = () => {
         const fromCity = usCityFromZip(fromZip.trim()) || "City";
         const toCity = usCityFromZip(toZip.trim()) || "City";
         const gPayload: Record<string, unknown> = {
-          length: dims.length,
-          width: dims.width,
-          height: dims.height,
+          length: apiDims.length,
+          width: apiDims.width,
+          height: apiDims.height,
           weight: Number(weight),
           destinationZip: toZip.trim(),
           destinationAddress: `100 Main St, ${toCity}, ${toSt}`,
@@ -460,13 +509,15 @@ const QuoteEngine = () => {
     if (!selectedRateObj || !fromAddress || !toAddress || !dims || !Number(weight)) return;
     setCheckoutError(null);
 
+    const { dims: checkoutDims } = effectiveParcelDimsForRates(dims, Number(weight));
+
     if (USE_GROCERA_CHECKOUT) {
       const token = getStorefrontAuthToken();
       const declared = Number(declaredCustomsValue) || 50;
       const payload: Record<string, unknown> = {
-        length: dims.length,
-        width: dims.width,
-        height: dims.height,
+        length: checkoutDims.length,
+        width: checkoutDims.width,
+        height: checkoutDims.height,
         weight: Number(weight),
         destinationZip: (toAddress.components.postalCode || toZip).trim(),
         destinationAddress: toAddress.formattedAddress,
@@ -508,9 +559,9 @@ const QuoteEngine = () => {
       from: toEasyshipAddress(fromAddress, fromContact),
       to: toEasyshipAddress(toAddress, toContact),
       parcel: {
-        length: dims.length,
-        width: dims.width,
-        height: dims.height,
+        length: checkoutDims.length,
+        width: checkoutDims.width,
+        height: checkoutDims.height,
         weight: Number(weight),
       },
       currency: "USD",
@@ -920,9 +971,8 @@ const QuoteEngine = () => {
                     <div className="mt-5 rounded-2xl border border-amber-200/80 bg-amber-50/90 dark:bg-amber-950/25 dark:border-amber-800/60 px-4 py-3 text-sm text-amber-950 dark:text-amber-100/95">
                       <p className="font-semibold mb-1">Tip for more carrier options</p>
                       <p className="text-xs leading-relaxed opacity-95">
-                        A very flat envelope or mailer with a high weight often gets only one or two live quotes from carriers. For USPS, FedEx, and UPS options together, go back to{" "}
-                        <span className="font-semibold">Box</span>, choose <span className="font-semibold">Custom</span> (or a rigid box preset), and enter dimensions that match how you will
-                        actually ship the parcel.
+                        We automatically use taller parcel-style dimensions for quotes when a flat mailer doesn’t match the weight (see manifest on the next step). For exact packaging, use{" "}
+                        <span className="font-semibold">Custom</span> with real box measurements.
                       </p>
                     </div>
                   ) : null}
@@ -1445,7 +1495,25 @@ const QuoteEngine = () => {
               <div className="border-t border-primary-foreground/10 pt-4">
                 <span className="text-[10px] uppercase tracking-widest opacity-40">Dimensions</span>
                 <div className="mt-1 font-medium">
-                  {dims && dims.length > 0 ? `${dims.length}×${dims.width}×${dims.height} in` : "—"}
+                  {dims && dims.length > 0 && parcelDimsForApi ? (
+                    <>
+                      {parcelDimsForApi.adjusted ? (
+                        <>
+                          <span className="block">
+                            {parcelDimsForApi.dims.length}×{parcelDimsForApi.dims.width}×{parcelDimsForApi.dims.height} in
+                          </span>
+                          <span className="mt-1 block text-[10px] font-normal opacity-70 leading-snug">
+                            Used for live rates (preset was {dims.length}×{dims.width}×{dims.height} in). Heavy shipments in
+                            flat mailers get a single carrier unless we quote a parcel-sized height.
+                          </span>
+                        </>
+                      ) : (
+                        `${dims.length}×${dims.width}×${dims.height} in`
+                      )}
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </div>
               </div>
               <div>
