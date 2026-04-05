@@ -76,43 +76,38 @@ function sampleRatesPayload() {
   };
 }
 
-function extractRatesArray(json) {
-  if (!json || typeof json !== "object") return [];
-  const r = json.rates ?? json.data?.rates;
-  return Array.isArray(r) ? r : [];
-}
+const {
+  extractEasyshipRatesArray: extractRatesArray,
+  easyshipRowChargeTotalUSD: rateTotal,
+} = require("../utils/easyshipRatesParse");
 
-function rateTotal(r) {
-  if (!r) return 0;
-  const ric = r?.rates_in_origin_currency;
-  const candidates = [
-    r?.shipment_charge_total,
-    r?.total_charge,
-    r?.shipment_charge?.total,
-    typeof r?.shipment_charge === "number" ? r.shipment_charge : null,
-    ric?.shipment_charge_total,
-    ric?.total_charge,
-    ric?.shipment_charge?.total,
-    typeof ric?.shipment_charge === "number" ? ric.shipment_charge : null,
-  ];
-  for (const v of candidates) {
-    if (v == null || v === "") continue;
-    const n = typeof v === "number" ? v : Number(v);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return 0;
+function ratesRequestBody(overrides = {}) {
+  const base = sampleRatesPayload();
+  return {
+    ...base,
+    ...overrides,
+    origin_address: { ...base.origin_address, ...(overrides.origin_address || {}) },
+    destination_address: { ...base.destination_address, ...(overrides.destination_address || {}) },
+    parcels: overrides.parcels || base.parcels,
+  };
 }
 
 async function testEasyship(apiKey) {
-  const base = easyshipBaseUrl(apiKey);
-  const url = `${base}/2024-09/rates`;
+  const apiBase = easyshipBaseUrl(apiKey);
+  const url = `${apiBase}/2024-09/rates`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(sampleRatesPayload()),
+    body: JSON.stringify(
+      ratesRequestBody({
+        calculate_tax_and_duties: false,
+        courier_settings: { apply_shipping_rules: false },
+        shipping_settings: { output_currency: "USD" },
+      }),
+    ),
   });
   const text = await res.text();
   let json;

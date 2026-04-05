@@ -38,6 +38,10 @@ const {
   getSiteBrandingFavicon,
 } = require("../siteBrandingPublicImages");
 const { coerceHomeSliderSlides } = require("../../utils/homeSliderSlides");
+const {
+  extractEasyshipRatesArray,
+  easyshipRowChargeTotalUSD,
+} = require("../../utils/easyshipRatesParse");
 
 function orderViewJwtSecret() {
   const isProd = process.env.NODE_ENV === "production";
@@ -2289,28 +2293,6 @@ const parseAddressForEasyship = (fullAddress, postalCode) => {
   };
 };
 
-/** Match zippyyy-ships-server: Easyship v2024 totals often live under rates_in_origin_currency or nested shipment_charge. */
-function easyshipRowChargeTotalUSD(r) {
-  if (!r) return 0;
-  const ric = r?.rates_in_origin_currency;
-  const candidates = [
-    r?.shipment_charge_total,
-    r?.total_charge,
-    r?.shipment_charge?.total,
-    typeof r?.shipment_charge === "number" ? r.shipment_charge : null,
-    ric?.shipment_charge_total,
-    ric?.total_charge,
-    ric?.shipment_charge?.total,
-    typeof ric?.shipment_charge === "number" ? ric.shipment_charge : null,
-  ];
-  for (const v of candidates) {
-    if (v == null || v === "") continue;
-    const n = typeof v === "number" ? v : Number(v);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return 0;
-}
-
 const mapEasyshipRateRow = (r) => {
   if (!r) return null;
   const total = easyshipRowChargeTotalUSD(r);
@@ -2321,7 +2303,7 @@ const mapEasyshipRateRow = (r) => {
     courierName:
       r?.courier_name || cs?.umbrella_name || r?.courier?.name || cs?.name || r?.courier_service_name || "Courier",
     serviceName: r?.courier_service_name || cs?.name || r?.full_description || cs?.umbrella_name || "",
-    easyshipRateId: r?.easyship_rate_id || r?.rate_id || cs?.id || "",
+    easyshipRateId: r?.easyship_rate_id || r?.rate_id || r?.id || cs?.id || "",
     minDeliveryDays: r?.min_delivery_time != null ? Number(r.min_delivery_time) : null,
     maxDeliveryDays: r?.max_delivery_time != null ? Number(r.max_delivery_time) : null,
     description: String(r?.full_description || r?.description || "").trim(),
@@ -2430,6 +2412,9 @@ const requestEasyshipRates = async (body) => {
 
   const declaredVal = Math.max(1, Number(insuranceDeclaredValue) || 50);
 
+  /** Dashboard “shipping rules” default to on in Easyship and can collapse quotes to a single option. */
+  const applyShippingRules = String(process.env.EASYSHIP_APPLY_SHIPPING_RULES || "").trim() === "1";
+
   const payload = {
     origin_address: {
       line_1: origin.line_1,
@@ -2446,6 +2431,13 @@ const requestEasyshipRates = async (body) => {
       country_alpha2: "US",
     },
     set_as_residential: Boolean(destinationResidential),
+    calculate_tax_and_duties: false,
+    courier_settings: {
+      apply_shipping_rules: applyShippingRules,
+    },
+    shipping_settings: {
+      output_currency: "USD",
+    },
     parcels: [
       {
         total_actual_weight: lbToKg(weight),
@@ -2479,7 +2471,7 @@ const requestEasyshipRates = async (body) => {
 
   const url = `${getEasyshipBaseUrl()}/${EASYSHIP_API_VERSION}/rates`;
   const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(), 25_000);
+  const t = setTimeout(() => ac.abort(), 60_000);
   let response;
   try {
     response = await fetch(url, {
@@ -2516,18 +2508,26 @@ const requestEasyshipRates = async (body) => {
     throw new Error(msg);
   }
 
-  /** Easyship may return `rates` at root or under `data.rates` (match ships-server + smoke script). */
-  const list = (() => {
-    if (!parsed || typeof parsed !== "object") return [];
-    const r = parsed.rates ?? parsed.data?.rates;
-    return Array.isArray(r) ? r : [];
-  })();
+  const list = extractEasyshipRatesArray(parsed);
   if (!list.length) return { rates: [], cheapest: null };
 
   const mapped = list
     .map((r) => mapEasyshipRateRow(r))
     .filter((r) => r && Number.isFinite(r.total) && r.total > 0)
     .sort((a, b) => a.total - b.total);
+
+  if (String(process.env.EASYSHIP_RATES_DEBUG || "").trim() === "1") {
+    const umbrellas = new Set(mapped.map((x) => String(x.courierName || "").split(/\s+/)[0]));
+    console.info(
+      "[Easyship rates]",
+      JSON.stringify({
+        rawRows: list.length,
+        pricedRows: mapped.length,
+        umbrellaPrefixes: [...umbrellas].slice(0, 12),
+        cheapest: mapped[0] ? { carrier: mapped[0].courierName, total: mapped[0].total } : null,
+      }),
+    );
+  }
 
   return { rates: mapped, cheapest: mapped[0] || null };
 };

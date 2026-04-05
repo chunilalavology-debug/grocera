@@ -1,11 +1,18 @@
 import express from "express";
 import cors from "cors";
+import { createRequire } from "module";
 import { env } from "./env.js";
 import { createEasyshipClient } from "./easyship.js";
 import { createStripe } from "./stripeClient.js";
 import { CheckoutSessionRequestSchema, QuoteRequestSchema } from "./schemas.js";
 import { getShipmentBySessionId, setShipmentStatus, upsertDraft } from "./db.js";
 import crypto from "crypto";
+
+const require = createRequire(import.meta.url);
+const {
+  extractEasyshipRatesArray,
+  easyshipRowChargeTotalUSD,
+} = require("../../utils/easyshipRatesParse.js");
 
 const app = express();
 
@@ -102,6 +109,15 @@ app.post("/api/quotes", async (req, res) => {
 
     const kg = lbToKg(parsed.data.parcel.weight);
     const declaredVal = parsed.data.declared_customs_value ?? 50;
+    const domesticUS =
+      String(parsed.data.from.country_alpha2 || "").toUpperCase() === "US" &&
+      String(parsed.data.to.country_alpha2 || "").toUpperCase() === "US";
+    const applyShippingRules = String(process.env.EASYSHIP_APPLY_SHIPPING_RULES || "").trim() === "1";
+    const outCurrency = String(parsed.data.currency || "USD")
+      .trim()
+      .slice(0, 3)
+      .toUpperCase() || "USD";
+
     const payload = {
       origin_address: {
         line_1: parsed.data.from.address_line_1,
@@ -118,6 +134,13 @@ app.post("/api/quotes", async (req, res) => {
         city: parsed.data.to.city,
         postal_code: parsed.data.to.postal_code,
         country_alpha2: parsed.data.to.country_alpha2,
+      },
+      calculate_tax_and_duties: !domesticUS,
+      courier_settings: {
+        apply_shipping_rules: applyShippingRules,
+      },
+      shipping_settings: {
+        output_currency: outCurrency,
       },
       parcels: [
         {
@@ -419,31 +442,12 @@ async function findActivePromotionCodeByCode(stripe, customerCode) {
   return null;
 }
 
-function firstPositiveRateTotal(...candidates) {
-  for (const v of candidates) {
-    if (v == null || v === "") continue;
-    const n = typeof v === "number" ? v : Number(v);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return 0;
-}
-
 function normalizeEasyshipRates(result) {
-  const rates = result?.rates ?? result?.data?.rates ?? [];
-  if (!Array.isArray(rates)) return [];
+  const rates = extractEasyshipRatesArray(result);
   return rates
     .map((r) => {
+      const total = easyshipRowChargeTotalUSD(r);
       const ric = r?.rates_in_origin_currency;
-      const total = firstPositiveRateTotal(
-        r?.shipment_charge_total,
-        r?.total_charge,
-        r?.shipment_charge?.total,
-        typeof r?.shipment_charge === "number" ? r.shipment_charge : null,
-        ric?.shipment_charge_total,
-        ric?.total_charge,
-        ric?.shipment_charge?.total,
-        typeof ric?.shipment_charge === "number" ? ric.shipment_charge : null,
-      );
       const currency =
         (typeof r?.shipment_charge_total_currency === "string" && r.shipment_charge_total_currency) ||
         (typeof r?.currency === "string" && r.currency) ||
@@ -458,7 +462,7 @@ function normalizeEasyshipRates(result) {
         courier_service_id: r?.courier_service_id || cs?.id || r?.courier_id || undefined,
         shipment_charge_total: total,
         shipment_charge_total_currency: currency,
-        easyship_rate_id: r?.easyship_rate_id || r?.rate_id || cs?.id || "",
+        easyship_rate_id: r?.easyship_rate_id || r?.rate_id || r?.id || cs?.id || "",
         min_delivery_time: r?.min_delivery_time ?? null,
         max_delivery_time: r?.max_delivery_time ?? null,
         minimum_pickup_fee:

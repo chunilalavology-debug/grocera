@@ -59,11 +59,19 @@ function parseTotalFromProductsResponse(res) {
   return null;
 }
 
+const FEATURED_FETCH_ATTEMPTS = 2;
+const FEATURED_RETRY_DELAY_MS = 2000;
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export default function FeaturedCategories() {
   const mains = MAIN_CATEGORIES.filter((m) => m.id !== 'all');
   const [activeMain, setActiveMain] = useState(mains[0]?.id || 'indian');
   const [apiRows, setApiRows] = useState([]);
-  const [featuredLoadError, setFeaturedLoadError] = useState('');
+  /** True when the last request cycle ended in failure (no user-facing error copy; avoids “empty admin” false positives). */
+  const [featuredFetchFailed, setFeaturedFetchFailed] = useState(false);
   const [featuredCatalogReady, setFeaturedCatalogReady] = useState(false);
   const [sectionTitle, setSectionTitle] = useState('Featured Categories');
   /** `${main}:${value}` → real thumb URL + SKU count from Mongo via /user/products */
@@ -71,7 +79,7 @@ export default function FeaturedCategories() {
   const scrollRef = useRef(null);
 
   const baseDisplayList = useMemo(() => {
-    if (!featuredCatalogReady || featuredLoadError) return [];
+    if (!featuredCatalogReady || featuredFetchFailed) return [];
     return apiRows
       .filter((r) => r && r.name && categoryRowIsActiveForFeatured(r))
       .map((r) => {
@@ -86,7 +94,7 @@ export default function FeaturedCategories() {
           _source: 'api',
         };
       });
-  }, [featuredCatalogReady, apiRows, featuredLoadError]);
+  }, [featuredCatalogReady, apiRows, featuredFetchFailed]);
 
   const rowsToShow = useMemo(() => {
     return baseDisplayList.map((item) => {
@@ -106,41 +114,51 @@ export default function FeaturedCategories() {
     const controller = new AbortController();
     let alive = true;
     setFeaturedCatalogReady(false);
-    setFeaturedLoadError('');
+    setFeaturedFetchFailed(false);
     setCategoryOverlay({});
     (async () => {
-      try {
-        const res = await api.get('/user/featured-categories', {
-          params: { main: activeMain, _: Date.now() },
-          signal: controller.signal,
-          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-        });
-        if (!alive) return;
-        if (res && res.success === false) {
-          setApiRows([]);
-          setFeaturedLoadError(
-            typeof res.message === 'string' && res.message.trim()
-              ? res.message.trim()
-              : 'Could not load featured categories.'
-          );
-        } else {
+      let succeeded = false;
+      for (let attempt = 0; attempt < FEATURED_FETCH_ATTEMPTS && alive && !controller.signal.aborted; attempt++) {
+        if (attempt > 0) {
+          await sleep(FEATURED_RETRY_DELAY_MS);
+          if (!alive || controller.signal.aborted) return;
+        }
+        try {
+          const res = await api.get('/user/featured-categories', {
+            params: { main: activeMain, _: Date.now() + attempt },
+            signal: controller.signal,
+            timeout: 90_000,
+            headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+          });
+          if (!alive) return;
+          if (res && res.success === false) {
+            setApiRows([]);
+            continue;
+          }
           const rows = featuredCategoriesListFromResponse(res);
           if (rows === null) {
             setApiRows([]);
-            setFeaturedLoadError('api_html');
-          } else {
-            setApiRows(rows);
-            const t = typeof res.sectionTitle === 'string' ? res.sectionTitle.trim() : '';
-            setSectionTitle(t || 'Featured Categories');
+            continue;
           }
-        }
-      } catch {
-        if (alive && !controller.signal.aborted) {
+          setApiRows(rows);
+          setFeaturedFetchFailed(false);
+          const t = typeof res.sectionTitle === 'string' ? res.sectionTitle.trim() : '';
+          setSectionTitle(t || 'Featured Categories');
+          succeeded = true;
+          break;
+        } catch (e) {
+          if (!alive || controller.signal.aborted) return;
+          const aborted = e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.name === 'AbortError';
+          if (aborted) return;
           setApiRows([]);
-          setFeaturedLoadError('network');
         }
-      } finally {
-        if (alive) setFeaturedCatalogReady(true);
+      }
+      if (alive && !controller.signal.aborted) {
+        if (!succeeded) {
+          setApiRows([]);
+          setFeaturedFetchFailed(true);
+        }
+        setFeaturedCatalogReady(true);
       }
     })();
     return () => {
@@ -200,15 +218,6 @@ export default function FeaturedCategories() {
     el.scrollBy({ left: dir === 'left' ? -step : step, behavior: 'smooth' });
   };
 
-  const errorMessage =
-    featuredLoadError === 'network'
-      ? 'Could not load categories. Check your connection and that the API is running.'
-      : featuredLoadError === 'api_html'
-        ? 'Store API returned an error page. Check REACT_APP_API_URL / proxy configuration.'
-        : typeof featuredLoadError === 'string' && featuredLoadError.length > 0
-          ? featuredLoadError
-          : '';
-
   return (
     <section className="featured-categories featured-categories--v2 bg-[#f4f6f8] pt-10 pb-12 md:pt-14 md:pb-16">
       <div className="container max-w-7xl mx-auto px-4 sm:px-5 md:px-6">
@@ -256,13 +265,7 @@ export default function FeaturedCategories() {
           </div>
         </div>
 
-        {featuredCatalogReady && featuredLoadError ? (
-          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 mb-3" role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
-
-        {featuredCatalogReady && !featuredLoadError && rowsToShow.length === 0 ? (
+        {featuredCatalogReady && !featuredFetchFailed && rowsToShow.length === 0 ? (
           <p className="text-center text-slate-600 py-10 px-4 rounded-2xl bg-white/80 border border-slate-200/80">
             No homepage categories for this region yet. Add categories in the admin and assign a parent region, or enable &quot;Show on
             homepage featured categories&quot; on each category.{' '}

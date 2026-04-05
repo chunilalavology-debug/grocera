@@ -223,6 +223,17 @@ const QuoteEngine = () => {
     ? filteredPresets[selectedBox]
     : null;
 
+  /** Very thin package + high weight: physically uncommon; Easyship often returns one carrier/service. */
+  const heavyFlatMailerMismatch = useMemo(() => {
+    const w = Number(weight);
+    if (!dims || !Number.isFinite(w) || w < 8) return false;
+    const thinnest = Math.min(dims.length, dims.width, dims.height);
+    if (thinnest <= 0) return false;
+    if (thinnest <= 1 && w >= 8) return true;
+    if (thinnest <= 2 && w >= 20) return true;
+    return false;
+  }, [dims, weight]);
+
   const calculatePrice = (base: number) => Math.ceil(base * pricing.markupMultiplier);
 
   const uniqueCarrierCount = useMemo(
@@ -904,6 +915,17 @@ const QuoteEngine = () => {
                       </div>
                     )}
                   </div>
+
+                  {heavyFlatMailerMismatch ? (
+                    <div className="mt-5 rounded-2xl border border-amber-200/80 bg-amber-50/90 dark:bg-amber-950/25 dark:border-amber-800/60 px-4 py-3 text-sm text-amber-950 dark:text-amber-100/95">
+                      <p className="font-semibold mb-1">Tip for more carrier options</p>
+                      <p className="text-xs leading-relaxed opacity-95">
+                        A very flat envelope or mailer with a high weight often gets only one or two live quotes from carriers. For USPS, FedEx, and UPS options together, go back to{" "}
+                        <span className="font-semibold">Box</span>, choose <span className="font-semibold">Custom</span> (or a rigid box preset), and enter dimensions that match how you will
+                        actually ship the parcel.
+                      </p>
+                    </div>
+                  ) : null}
                 </motion.div>
               )}
 
@@ -918,6 +940,12 @@ const QuoteEngine = () => {
                   <p className="text-xs text-muted-foreground/90 mb-6">
                     Save % compares your price to an estimated typical carrier list price; published counter rates vary by location.
                   </p>
+                  {heavyFlatMailerMismatch && rates.length > 0 && uniqueCarrierCount <= 2 ? (
+                    <div className="mb-4 rounded-2xl border border-amber-200/80 bg-amber-50/90 dark:bg-amber-950/25 dark:border-amber-800/60 px-4 py-3 text-xs text-amber-950 dark:text-amber-100/95 leading-relaxed">
+                      Few quotes usually means the size/weight combo is unusual (for example a thin mailer with a heavy weight). Adjust packaging on the{" "}
+                      <span className="font-semibold">Box</span> step to match a real box — then refresh quotes — to see more carriers and services.
+                    </div>
+                  ) : null}
                   <div className="min-h-[200px]">
                   {isLoadingRates ? (
                     <div className="bg-secondary rounded-2xl p-6 text-sm text-muted-foreground">
