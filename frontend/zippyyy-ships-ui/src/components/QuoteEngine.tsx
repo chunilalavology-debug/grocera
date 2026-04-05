@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import {
   Box,
   Weight,
@@ -174,10 +174,17 @@ const STEPS: Step[] = ["zips", "dimensions", "weight", "quotes", "details", "che
 const STEP_LABELS = ["ZIP", "Box", "Weight", "Quote", "Details", "Pay"];
 
 const QuoteEngine = () => {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ["start end", "end start"] });
+  const sidebarY = useTransform(scrollYProgress, [0, 1], [40, -40]);
+
   const [step, setStep] = useState<Step>("zips");
   const [fromZip, setFromZip] = useState("");
   const [toZip, setToZip] = useState("");
   const [shipCountryAlpha2, setShipCountryAlpha2] = useState("US");
+  /** Optional 2-letter override (backup app required manual state for Easyship US quotes). */
+  const [quoteStateFrom, setQuoteStateFrom] = useState("");
+  const [quoteStateTo, setQuoteStateTo] = useState("");
   const [fromAddress, setFromAddress] = useState<TaggedAddress | null>(null);
   const [toAddress, setToAddress] = useState<TaggedAddress | null>(null);
   const [carrier, setCarrier] = useState<PackagingCarrier>("UPS");
@@ -259,6 +266,24 @@ const QuoteEngine = () => {
     [shipCountryAlpha2, toZip],
   );
 
+  const effectiveQuoteFromState = useMemo(() => {
+    const manual = quoteStateFrom.trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+    if (manual.length === 2) return manual;
+    return String(derivedFromState || "")
+      .trim()
+      .toUpperCase()
+      .slice(0, 2);
+  }, [quoteStateFrom, derivedFromState]);
+
+  const effectiveQuoteToState = useMemo(() => {
+    const manual = quoteStateTo.trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+    if (manual.length === 2) return manual;
+    return String(derivedToState || "")
+      .trim()
+      .toUpperCase()
+      .slice(0, 2);
+  }, [quoteStateTo, derivedToState]);
+
   const dims = isCustom
     ? { length: Number(customDims.length) || 0, width: Number(customDims.width) || 0, height: Number(customDims.height) || 0 }
     : selectedBox !== null
@@ -317,7 +342,7 @@ const QuoteEngine = () => {
           toZip.trim().length >= 4 &&
           shipCountryAlpha2.trim().length === 2 &&
           (shipCountryAlpha2.trim().toUpperCase() !== "US" ||
-            (derivedFromState.length === 2 && derivedToState.length === 2))
+            (effectiveQuoteFromState.length === 2 && effectiveQuoteToState.length === 2))
         );
       case "dimensions": return dims !== null && dims.length > 0 && dims.width > 0 && dims.height > 0;
       case "weight":
@@ -369,8 +394,8 @@ const QuoteEngine = () => {
       fromZip: fromZip.trim(),
       toZip: toZip.trim(),
       country: shipCountryAlpha2.trim().toUpperCase(),
-      fromState: derivedFromState,
-      toState: derivedToState,
+      fromState: effectiveQuoteFromState,
+      toState: effectiveQuoteToState,
       dims: apiDims,
       weight: Number(weight),
       setAsResidential,
@@ -388,8 +413,8 @@ const QuoteEngine = () => {
     try {
       const declared = Number(declaredCustomsValue) || 50;
       const body: Record<string, unknown> = {
-        from: zipOnlyAddress(fromZip, shipCountryAlpha2, derivedFromState || undefined),
-        to: zipOnlyAddress(toZip, shipCountryAlpha2, derivedToState || undefined),
+        from: zipOnlyAddress(fromZip, shipCountryAlpha2, effectiveQuoteFromState || undefined),
+        to: zipOnlyAddress(toZip, shipCountryAlpha2, effectiveQuoteToState || undefined),
         parcel: {
           length: apiDims.length,
           width: apiDims.width,
@@ -409,8 +434,8 @@ const QuoteEngine = () => {
       }
 
       if (USE_GROCERA_QUOTES) {
-        const fromSt = (derivedFromState || "CA").slice(0, 2).toUpperCase();
-        const toSt = (derivedToState || "NY").slice(0, 2).toUpperCase();
+        const fromSt = effectiveQuoteFromState.length === 2 ? effectiveQuoteFromState : "CA";
+        const toSt = effectiveQuoteToState.length === 2 ? effectiveQuoteToState : "NY";
         const fromCity = usCityFromZip(fromZip.trim()) || "City";
         const toCity = usCityFromZip(toZip.trim()) || "City";
         const gPayload: Record<string, unknown> = {
@@ -608,7 +633,7 @@ const QuoteEngine = () => {
   };
 
   return (
-    <section id="quote" className="py-8 sm:py-14 md:py-24 relative overflow-hidden">
+    <section ref={sectionRef} id="quote" className="py-8 sm:py-14 md:py-24 relative overflow-x-hidden">
       {/* Background */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-primary/3 rounded-full blur-[120px]" />
@@ -706,9 +731,11 @@ const QuoteEngine = () => {
             {/* Short steps stay compact; longer steps (quote/details/pay) get a modest min-h for stability */}
             <div
               className={
-                step === "quotes" || step === "details" || step === "checkout"
-                  ? "flex flex-col min-h-[min(220px,42vh)] sm:min-h-[260px]"
-                  : "flex flex-col min-h-0"
+                step === "quotes"
+                  ? "flex flex-col min-h-[min(320px,50vh)] sm:min-h-[360px]"
+                  : step === "details" || step === "checkout"
+                    ? "flex flex-col min-h-[min(220px,42vh)] sm:min-h-[260px]"
+                    : "flex flex-col min-h-0"
               }
             >
             <AnimatePresence mode="wait">
@@ -747,6 +774,38 @@ const QuoteEngine = () => {
                       />
                     </div>
                   </div>
+
+                  {shipCountryAlpha2.trim().toUpperCase() === "US" && (
+                    <div className="grid sm:grid-cols-2 gap-3 mt-4">
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-2 block">
+                          From state (optional)
+                        </label>
+                        <input
+                          value={quoteStateFrom}
+                          onChange={(e) => setQuoteStateFrom(e.target.value.toUpperCase())}
+                          placeholder={derivedFromState || "NY"}
+                          className="w-full bg-secondary border-none focus:ring-2 focus:ring-primary/50 transition-all p-4 rounded-2xl text-foreground placeholder:text-muted-foreground outline-none font-mono uppercase"
+                          maxLength={2}
+                        />
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          Overrides ZIP lookup if needed (same as classic Zippyyy Ships).
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-2 block">
+                          To state (optional)
+                        </label>
+                        <input
+                          value={quoteStateTo}
+                          onChange={(e) => setQuoteStateTo(e.target.value.toUpperCase())}
+                          placeholder={derivedToState || "CA"}
+                          className="w-full bg-secondary border-none focus:ring-2 focus:ring-primary/50 transition-all p-4 rounded-2xl text-foreground placeholder:text-muted-foreground outline-none font-mono uppercase"
+                          maxLength={2}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
 
@@ -984,10 +1043,10 @@ const QuoteEngine = () => {
                   <h3 className="text-xl font-bold text-foreground mb-2">Available rates</h3>
                   <p className="text-sm text-muted-foreground mb-1">
                     {rates.length > 0
-                      ? `Showing options from ${uniqueCarrierCount} carrier${uniqueCarrierCount === 1 ? "" : "s"} — choose any service below.`
+                      ? `${rates.length} option${rates.length === 1 ? "" : "s"} from ${uniqueCarrierCount} carrier${uniqueCarrierCount === 1 ? "" : "s"}. Pick a service in the list below${rates.length > 4 ? " (scroll inside the shaded area)" : ""}.`
                       : "All-inclusive professional rates from major carriers."}
                   </p>
-                  <p className="text-xs text-muted-foreground/90 mb-6">
+                  <p className="text-xs text-muted-foreground/90 mb-4">
                     Save % compares your price to an estimated typical carrier list price; published counter rates vary by location.
                   </p>
                   {heavyFlatMailerMismatch && rates.length > 0 && uniqueCarrierCount <= 2 ? (
@@ -1013,7 +1072,15 @@ const QuoteEngine = () => {
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div
+                      className={
+                        rates.length > 4
+                          ? "max-h-[min(58vh,520px)] sm:max-h-[min(62vh,600px)] overflow-y-auto overscroll-y-contain rounded-2xl border border-border/40 bg-muted/20 py-2 px-1 sm:px-2 space-y-3 [scrollbar-gutter:stable]"
+                          : "space-y-3"
+                      }
+                      role="list"
+                      aria-label="Shipping rate options"
+                    >
                       {rates.map((rate, i) => {
                         const displayPrice = calculatePrice(rate.shipment_charge_total);
                         const savings = computeSavingsLabel(
@@ -1468,6 +1535,7 @@ const QuoteEngine = () => {
             initial={{ opacity: 0, x: 30 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
+            style={{ y: sidebarY }}
             className="bg-foreground text-primary-foreground rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 h-fit relative lg:sticky lg:top-24 border border-primary-foreground/5 self-start"
           >
             <div className="flex items-center gap-3 mb-6">
