@@ -1960,6 +1960,14 @@ const getCategories = async (req, res) => {
 
 const getFeaturedCategories = async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      setCatalogNoCacheHeaders(res);
+      return res.status(503).json({
+        success: false,
+        message: "Database temporarily unavailable. Retry in a moment.",
+      });
+    }
+
     const main = String(req.query.main || "indian").toLowerCase();
     if (!FEATURED_MAIN_IDS.includes(main)) {
       return res.status(400).json({

@@ -2,9 +2,24 @@ const { expressjwt: jwt } = require("express-jwt");
 const jwtLib = require("jsonwebtoken");
 const { INVALID_TOKEN, DATA_NULL } = require("../../utils/constants");
 
-const API_END_POINT_V1 =
+let API_END_POINT_V1 =
   String(process.env.API_END_POINT_V1 || "/api").replace(/\/+$/, "") || "/api";
+if (!API_END_POINT_V1.startsWith("/")) {
+  API_END_POINT_V1 = `/${API_END_POINT_V1}`;
+}
 const A = API_END_POINT_V1;
+
+/** Collapse duplicate slashes and trim trailing slash so Vercel/proxies match public route allowlists. */
+function normalizeJwtPathname(p) {
+  let s = String(p || "")
+    .split("?")[0]
+    .trim();
+  if (!s) s = "/";
+  if (!s.startsWith("/")) s = `/${s}`;
+  s = s.replace(/\/+/g, "/");
+  if (s.length > 1) s = s.replace(/\/$/, "");
+  return s;
+}
 
 const isProd = process.env.NODE_ENV === "production";
 /** Must match `Users` model token signing when JWT_SECRET_KEY is unset. */
@@ -27,7 +42,7 @@ function pathnameForJwt(req) {
   ) {
     pathname = `${base}${pathname}`;
   }
-  return pathname;
+  return normalizeJwtPathname(pathname);
 }
 
 /**
@@ -38,57 +53,61 @@ function isPublicJwtPath(req) {
   const pathname = pathnameForJwt(req);
   const m = req.method.toUpperCase();
 
-  if (pathname === `${A}/health`) return true;
+  if (pathname === normalizeJwtPathname(`${A}/health`)) return true;
 
-  if (pathname === `${A}/orders/webhook` && m === "POST") return true;
+  if (pathname === normalizeJwtPathname(`${A}/orders/webhook`) && m === "POST") return true;
 
   if (pathname.startsWith("/verify-session/")) return true;
 
   if (pathname.startsWith("/api/v1/upload")) return true;
 
-  const publicAuth = new Set([
-    `${A}/auth/login`,
-    `${A}/auth/register`,
-    `${A}/auth/forgetPasswordSendMail`,
-    `${A}/auth/resetpassword`,
-    `${A}/auth/forgotPassword`,
-    `${A}/auth/resetPassword`,
-    `${A}/auth/verifyEmail`,
-  ]);
+  const publicAuth = new Set(
+    [
+      `${A}/auth/login`,
+      `${A}/auth/register`,
+      `${A}/auth/forgetPasswordSendMail`,
+      `${A}/auth/resetpassword`,
+      `${A}/auth/forgotPassword`,
+      `${A}/auth/resetPassword`,
+      `${A}/auth/verifyEmail`,
+    ].map(normalizeJwtPathname),
+  );
   if (publicAuth.has(pathname)) return true;
 
-  const publicUserReads = new Set([
-    `${A}/user/products`,
-    `${A}/user/products/getById`,
-    `${A}/user/categories`,
-    `${A}/user/getCategories`,
-    `${A}/user/featured-categories`,
-    `${A}/user/home-slider-settings`,
-    `${A}/user/site-settings`,
-    `${A}/user/referral/discount`,
-  ]);
+  const publicUserReads = new Set(
+    [
+      `${A}/user/products`,
+      `${A}/user/products/getById`,
+      `${A}/user/categories`,
+      `${A}/user/getCategories`,
+      `${A}/user/featured-categories`,
+      `${A}/user/home-slider-settings`,
+      `${A}/user/site-settings`,
+      `${A}/user/referral/discount`,
+    ].map(normalizeJwtPathname),
+  );
   if (publicUserReads.has(pathname)) return true;
 
-  if (pathname === `${A}/settings` && m === "GET") return true;
+  if (pathname === normalizeJwtPathname(`${A}/settings`) && m === "GET") return true;
 
-  if (pathname === `${A}/user/contactForm` && m === "POST") return true;
+  if (pathname === normalizeJwtPathname(`${A}/user/contactForm`) && m === "POST") return true;
 
   /** Guest checkout — body must include shipping `address`; logged-in users send addressId + Bearer token */
-  if (pathname === `${A}/user/orderPayment` && m === "POST") return true;
+  if (pathname === normalizeJwtPathname(`${A}/user/orderPayment`) && m === "POST") return true;
 
   /**
    * Zippyyy Ships (public iframe / storefront) — quote + checkout can run without login; optional Bearer still attaches req.user.
    */
-  if (pathname === `${A}/user/shipping/quote` && m === "POST") return true;
-  if (pathname === `${A}/user/shipping/checkout` && m === "POST") return true;
+  if (pathname === normalizeJwtPathname(`${A}/user/shipping/quote`) && m === "POST") return true;
+  if (pathname === normalizeJwtPathname(`${A}/user/shipping/checkout`) && m === "POST") return true;
 
   /** Order confirmation page — signed token from checkout (guests have no JWT) */
-  if (pathname === `${A}/user/orderByViewToken` && m === "GET") return true;
+  if (pathname === normalizeJwtPathname(`${A}/user/orderByViewToken`) && m === "GET") return true;
 
-  if (pathname === `${A}/products/list`) return true;
-  if (pathname === `${A}/deals/list`) return true;
-  if (pathname === `${A}/voucher/redeem` && m === "POST") return true;
-  if (pathname === `${A}/subscription/subscribe` && m === "POST") return true;
+  if (pathname === normalizeJwtPathname(`${A}/products/list`)) return true;
+  if (pathname === normalizeJwtPathname(`${A}/deals/list`)) return true;
+  if (pathname === normalizeJwtPathname(`${A}/voucher/redeem`) && m === "POST") return true;
+  if (pathname === normalizeJwtPathname(`${A}/subscription/subscribe`) && m === "POST") return true;
 
   return false;
 }
@@ -100,8 +119,10 @@ function isPublicJwtPath(req) {
 function attachUserFromBearerForOrderPayment(req, res, next) {
   const pathname = pathnameForJwt(req);
   const m = req.method.toUpperCase();
-  const isOrderPayment = pathname === `${A}/user/orderPayment` && m === "POST";
-  const isShippingCheckout = pathname === `${A}/user/shipping/checkout` && m === "POST";
+  const isOrderPayment =
+    pathname === normalizeJwtPathname(`${A}/user/orderPayment`) && m === "POST";
+  const isShippingCheckout =
+    pathname === normalizeJwtPathname(`${A}/user/shipping/checkout`) && m === "POST";
   if (!isOrderPayment && !isShippingCheckout) {
     return next();
   }
@@ -130,7 +151,17 @@ function createJwtMiddleware() {
       custom: isPublicJwtPath,
     })(req, res, (err) => {
       if (err) {
-        if (err.name === "UnauthorizedError") {
+        const jwtAuthNames = new Set([
+          "UnauthorizedError",
+          "JsonWebTokenError",
+          "TokenExpiredError",
+          "NotBeforeError",
+        ]);
+        if (
+          jwtAuthNames.has(err.name) ||
+          err.code === "credentials_required" ||
+          err.code === "invalid_token"
+        ) {
           return res.status(401).json({
             success: false,
             error: true,
