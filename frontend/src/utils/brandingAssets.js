@@ -13,7 +13,7 @@ export function resolveBrandingAssetUrl(href) {
       const u = new URL(s);
       const p = (u.pathname || '').split('?')[0] || '';
       if (p.startsWith('/uploads/')) {
-        return `${getApiOrigin()}${p}`;
+        return `${getUploadsOrigin()}${p}`;
       }
     } catch {
       /* fall through */

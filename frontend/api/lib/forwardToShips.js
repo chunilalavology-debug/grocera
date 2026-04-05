@@ -15,8 +15,15 @@ async function forwardToShips(req, res, apiPath) {
     return;
   }
 
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
+  const method = String(req.method || "GET").toUpperCase();
+  if (method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    return res.status(204).end();
+  }
+  if (method !== "POST") {
+    res.setHeader("Allow", "POST, OPTIONS");
     res.status(405).json({ error: "METHOD_NOT_ALLOWED", message: "Use POST." });
     return;
   }

@@ -7,9 +7,12 @@
     "api/checkout/promotion-code.js": { "maxDuration": 30 },
     "api/shipments/[checkoutSessionId].js": { "maxDuration": 30 },
     "api/shipments/[checkoutSessionId]/label.js": { "maxDuration": 30 },
-    "api/easyship/item-categories.js": { "maxDuration": 30 }
+    "api/easyship/item-categories.js": { "maxDuration": 30 },
+    "api/user/shipping/quote.js": { "maxDuration": 120 },
+    "api/user/shipping/checkout.js": { "maxDuration": 120 }
   },
   "rewrites": [
+    { "handle": "filesystem" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -311,9 +311,11 @@ export default function AdminGeneralSettings() {
                   ) : null}
                 </div>
                 <p className="text-xs text-slate-500">
-                  Choose a file to preview, then click Save logo. Delete removes the logo from the site (default
-                  graphic is used again). Files are saved on the API server under <code className="text-[11px]">/uploads</code>{' '}
-                  and loaded using your app&apos;s API base URL.
+                  Choose a file to preview, then click Save logo. Delete removes the logo from the site (default graphic
+                  is used again). On your own server, files live under <code className="text-[11px]">/uploads</code> on the
+                  API host. <span className="font-medium text-slate-600">On Vercel</span>, uploads go to{' '}
+                  <strong>Cloudinary</strong> (set <code className="text-[11px]">CLOUDINARY_*</code> env vars on the API
+                  project) — local <code className="text-[11px]">/uploads</code> URLs break after deploy.
                 </p>
               </div>
             </div>

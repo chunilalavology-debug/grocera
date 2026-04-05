@@ -20,6 +20,19 @@ function defaultFaviconHref() {
   return `${base}${pub}/favicon/logoRemo.svg`;
 }
 
+function faviconMimeTypeFromHref(href) {
+  const base = String(href || '')
+    .split('?')[0]
+    .split('#')[0]
+    .toLowerCase();
+  if (/\.svg$/i.test(base)) return 'image/svg+xml';
+  if (/\.ico$/i.test(base)) return 'image/x-icon';
+  if (/\.webp$/i.test(base)) return 'image/webp';
+  if (/\.jpe?g$/i.test(base)) return 'image/jpeg';
+  if (/\.png$/i.test(base)) return 'image/png';
+  return '';
+}
+
 /**
  * Replace static <link rel="icon"> entries so the tab icon can change after admin updates.
  * href must already be absolute and cache-busted.
@@ -27,10 +40,16 @@ function defaultFaviconHref() {
 function applyFaviconToDocument(bustedHref) {
   if (typeof document === 'undefined') return;
   document.querySelectorAll("link[rel='icon'], link[rel='shortcut icon']").forEach((el) => el.remove());
-  const link = document.createElement('link');
-  link.rel = 'icon';
-  link.href = bustedHref;
-  document.head.appendChild(link);
+  const type = faviconMimeTypeFromHref(bustedHref);
+  const append = (rel) => {
+    const link = document.createElement('link');
+    link.rel = rel;
+    link.href = bustedHref;
+    if (type) link.type = type;
+    document.head.appendChild(link);
+  };
+  append('icon');
+  append('shortcut icon');
 }
 
 export function SiteBrandingProvider({ children }) {

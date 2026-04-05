@@ -430,7 +430,8 @@ const postAdminProfileUploadAvatar = async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
-    const url = normalizeStoredUploadsUrl(publicBrandingUrl(req, req.file.filename));
+    const rawUrl = await finalizeBrandingUpload(req.file, "admin-avatar");
+    const url = normalizeStoredUploadsUrl(rawUrl);
     user.profileImageUrl = url;
     user.profileAvatarKey = "";
     await user.save();
@@ -442,9 +443,11 @@ const postAdminProfileUploadAvatar = async (req, res) => {
     });
   } catch (e) {
     console.error("postAdminProfileUploadAvatar", e);
-    return res.status(500).json({
+    const status =
+      Number(e.statusCode) >= 400 && Number(e.statusCode) < 600 ? e.statusCode : 500;
+    return res.status(status).json({
       success: false,
-      message: safeApiMessage(e),
+      message: e.message || safeApiMessage(e),
     });
   }
 };
@@ -2231,7 +2234,11 @@ const postAdminSettingsUploadLogo = async (req, res) => {
     res.json({ success: true, data: settingsResponse(doc) });
   } catch (error) {
     console.error('postAdminSettingsUploadLogo error:', error);
-    res.status(500).json({ success: false, message: 'Failed to save logo' });
+    const status = Number(error.statusCode) >= 400 && Number(error.statusCode) < 600 ? error.statusCode : 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to save logo',
+    });
   }
 };
 
@@ -2254,7 +2261,11 @@ const postAdminSettingsUploadFavicon = async (req, res) => {
     res.json({ success: true, data: settingsResponse(doc) });
   } catch (error) {
     console.error('postAdminSettingsUploadFavicon error:', error);
-    res.status(500).json({ success: false, message: 'Failed to save favicon' });
+    const status = Number(error.statusCode) >= 400 && Number(error.statusCode) < 600 ? error.statusCode : 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to save favicon',
+    });
   }
 };
 
