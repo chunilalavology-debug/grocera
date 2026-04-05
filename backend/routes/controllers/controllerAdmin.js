@@ -168,10 +168,12 @@ const uploadBrandingLogo = multer({
   fileFilter: (req, file, cb) => {
     const fileExt = path.extname(file.originalname).toLowerCase();
     const okExt = [".jpeg", ".jpg", ".png", ".webp", ".svg"].includes(fileExt);
+    const mime = String(file.mimetype || "").toLowerCase();
     const okMime =
-      !file.mimetype ||
-      /^image\//i.test(file.mimetype) ||
-      /svg|jpeg|jpg|png|webp/i.test(file.mimetype);
+      !mime ||
+      mime === "application/octet-stream" ||
+      /^image\//i.test(mime) ||
+      /svg|jpeg|jpg|png|webp/i.test(mime);
     if (okExt && okMime) return cb(null, true);
     cb(new Error("Logo must be JPG, PNG, WebP, or SVG (max 5MB)."));
   },
@@ -183,10 +185,12 @@ const uploadBrandingFavicon = multer({
   fileFilter: (req, file, cb) => {
     const fileExt = path.extname(file.originalname).toLowerCase();
     const okExt = [".ico", ".png", ".svg", ".webp", ".jpg", ".jpeg"].includes(fileExt);
+    const mime = String(file.mimetype || "").toLowerCase();
     const okMime =
-      !file.mimetype ||
-      /^image\//i.test(file.mimetype) ||
-      /svg|ico|jpeg|jpg|png|webp|x-icon|vnd\.microsoft\.icon/i.test(file.mimetype);
+      !mime ||
+      mime === "application/octet-stream" ||
+      /^image\//i.test(mime) ||
+      /svg|ico|jpeg|jpg|png|webp|x-icon|vnd\.microsoft\.icon/i.test(mime);
     if (okExt && okMime) return cb(null, true);
     cb(new Error("Favicon must be ICO, PNG, SVG, or WebP (max 512KB)."));
   },
@@ -228,6 +232,7 @@ const {
   uploadsPublicPath,
   normalizeStoredUploadsUrl,
 } = require("../../utils/brandingPublicUrl");
+const { finalizeBrandingUpload } = require("../../utils/brandingUpload");
 
 /**
  * Public path for a file under /uploads (always `/uploads/...`, no host).
@@ -2212,7 +2217,8 @@ const postAdminSettingsUploadLogo = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
-    const url = publicBrandingUrl(req, req.file.filename);
+    const rawUrl = await finalizeBrandingUpload(req.file, "logo");
+    const url = normalizeStoredUploadsUrl(rawUrl);
     const doc = await AppSettings.findOneAndUpdate(
       {},
       { $set: { websiteLogoUrl: url } },
@@ -2234,7 +2240,8 @@ const postAdminSettingsUploadFavicon = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
-    const url = publicBrandingUrl(req, req.file.filename);
+    const rawUrl = await finalizeBrandingUpload(req.file, "favicon");
+    const url = normalizeStoredUploadsUrl(rawUrl);
     const doc = await AppSettings.findOneAndUpdate(
       {},
       { $set: { websiteFaviconUrl: url } },

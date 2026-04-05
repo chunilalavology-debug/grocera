@@ -31,32 +31,9 @@ function AdminDashboard() {
   });
   const [selectedPeriod, setSelectedPeriod] = useState('day');
   const [loading, setLoading] = useState(true);
-  const [contactAutoReplyPreview, setContactAutoReplyPreview] = useState('');
-  const [contactAutoReplyLoading, setContactAutoReplyLoading] = useState(true);
 
   useEffect(() => {
     if (isAdmin) fetchDashboardData();
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        setContactAutoReplyLoading(true);
-        const res = await api.get('/admin/settings');
-        if (!cancelled && res?.success && res.data?.contactAutoReplyPreview != null) {
-          setContactAutoReplyPreview(String(res.data.contactAutoReplyPreview));
-        }
-      } catch {
-        if (!cancelled) setContactAutoReplyPreview('');
-      } finally {
-        if (!cancelled) setContactAutoReplyLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
   }, [isAdmin]);
 
   if (!isAdmin) return <Navigate to="/" replace />;
@@ -184,33 +161,6 @@ function AdminDashboard() {
 
       <section className="admin-overview__grid" style={{ marginTop: '2rem' }}>
         <div>
-          <section className="admin-overview-auto-reply" aria-label="Automatic contact reply">
-            <div className="admin-overview-auto-reply__inner">
-              <div className="admin-overview-auto-reply__head">
-                <div className="admin-overview-auto-reply__title-row">
-                  <span className="admin-overview-auto-reply__icon" aria-hidden>
-                    <MessageCircle size={20} strokeWidth={2} />
-                  </span>
-                  <h2 className="admin-overview-auto-reply__title">Contact auto-reply</h2>
-                </div>
-                <p className="admin-overview-auto-reply__desc">
-                  Preview of the message customers see after submitting the contact form (from General / Notifications settings).
-                </p>
-                <Link to="/admin/settings/general" className="admin-overview-auto-reply__edit">
-                  Edit in settings
-                  <ChevronRight size={16} />
-                </Link>
-              </div>
-              {contactAutoReplyLoading ? (
-                <p className="admin-overview-auto-reply__loading">Loading preview…</p>
-              ) : (
-                <div className="admin-overview-auto-reply__body">
-                  {contactAutoReplyPreview || 'No auto-reply template configured yet.'}
-                </div>
-              )}
-            </div>
-          </section>
-
           <section className="admin-overview__actions" aria-label="Quick actions">
             <h2 className="admin-overview__section-title">Store management</h2>
             <div className="admin-overview-actions">

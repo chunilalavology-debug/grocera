@@ -150,6 +150,24 @@ export default function AdminSliderSettings() {
     setOpenSlide(nextOpen);
   };
 
+  const copySlide = (index) => {
+    setForm((prev) => {
+      const src = prev.slides[index];
+      if (!src) return prev;
+      const raw = JSON.parse(JSON.stringify(src));
+      delete raw._id;
+      delete raw.id;
+      const baseTitle = String(src.title || "").trim();
+      raw.title = baseTitle ? `${baseTitle} (copy)` : `Slide ${index + 2} (copy)`;
+      const clone = normalizeSlide(raw);
+      const slides = [...prev.slides];
+      slides.splice(index + 1, 0, clone);
+      return { ...prev, slides };
+    });
+    setOpenSlide(index + 1);
+    toast.success("Slide copied — edit below, then save.");
+  };
+
   const moveSlide = (index, delta) => {
     const j = index + delta;
     if (j < 0 || j >= form.slides.length) return;
@@ -409,6 +427,14 @@ export default function AdminSliderSettings() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => copySlide(index)}
+                      className="text-xs font-semibold px-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+                      title="Duplicate this slide (inserts below; same image and styling)"
+                    >
+                      Copy
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         if (window.confirm("Remove this slide from the homepage slider?")) removeSlide(index);
                       }}
@@ -444,6 +470,13 @@ export default function AdminSliderSettings() {
                         className="text-xs font-medium px-3 py-1.5 rounded-md border border-slate-200 bg-white text-red-700 hover:bg-red-50"
                       >
                         Remove slide
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copySlide(index)}
+                        className="text-xs font-medium px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      >
+                        Copy slide
                       </button>
                     </div>
 

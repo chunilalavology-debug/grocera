@@ -8,27 +8,32 @@ const userSchema = new mongoose.Schema({
   // Basic Information
   firstName: {
     type: String,
-    required: [true, 'First name is required'],
+    /** Not required at schema level: legacy/admin users may only have `name`. Pre-save fills from `name`. */
+    required: false,
+    default: '',
     trim: true,
     maxlength: [50, 'First name cannot exceed 50 characters'],
     validate: {
       validator: function (v) {
-        return /^[a-zA-Z\s]+$/.test(v);
+        if (v == null || String(v).trim() === '') return true;
+        return /^[a-zA-Z\s]+$/.test(String(v));
       },
-      message: 'First name can only contain letters and spaces'
-    }
+      message: 'First name can only contain letters and spaces',
+    },
   },
   lastName: {
     type: String,
-    // required: [true, 'Last name is required'],
+    required: false,
+    default: '',
     trim: true,
     maxlength: [50, 'Last name cannot exceed 50 characters'],
     validate: {
       validator: function (v) {
-        return /^[a-zA-Z\s]+$/.test(v);
+        if (v == null || String(v).trim() === '') return true;
+        return /^[a-zA-Z\s]+$/.test(String(v));
       },
-      message: 'Last name can only contain letters and spaces'
-    }
+      message: 'Last name can only contain letters and spaces',
+    },
   },
   // Keep legacy name field for backward compatibility
   name: {
@@ -223,6 +228,25 @@ userSchema.pre('save', async function (next) {
   // Auto-populate name field for backward compatibility
   if (!this.name && this.firstName && this.lastName) {
     this.name = `${this.firstName} ${this.lastName}`;
+  }
+
+  // Legacy / admin: `name` (or username) may exist without split first/last — required for any save()
+  const fnTrim = String(this.firstName || '').trim();
+  const nameTrim = String(this.name || '').trim();
+  if (!fnTrim) {
+    if (nameTrim) {
+      const parts = nameTrim.split(/\s+/).filter(Boolean);
+      this.firstName = parts[0] || 'User';
+      const lnTrim = String(this.lastName || '').trim();
+      if (!lnTrim && parts.length > 1) {
+        this.lastName = parts.slice(1).join(' ');
+      }
+    } else {
+      this.firstName = 'User';
+    }
+  }
+  if (this.lastName == null || this.lastName === undefined) {
+    this.lastName = '';
   }
 
   // Ensure every user has a stable referral code

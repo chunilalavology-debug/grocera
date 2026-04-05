@@ -5,6 +5,7 @@
  * 2) REACT_APP_API_URL when set (production / REACT_APP_FORCE_REMOTE_API for local)
  * 3) Known split Vercel deploys + fallbacks for static hosting
  * 4) REACT_APP_SAME_ORIGIN_API=1|true when /api is reverse-proxied on the same host as the SPA
+ * 5) REACT_APP_UPLOADS_ORIGIN — optional origin (no /api) for GET /uploads/* when only /api is proxied to Node
  */
 
 const LEGACY_API_FALLBACK = "https://zippyyy.com/api";
@@ -171,4 +172,17 @@ export function getApiBaseUrl() {
 /** Origin only (no /api), for resolving relative image paths */
 export function getApiOrigin() {
   return stripTrailingSlashes(getApiBaseUrl().replace(/\/api\/?$/, ""));
+}
+
+/**
+ * Host that serves GET /uploads/* (often same as getApiOrigin()).
+ * Set REACT_APP_UPLOADS_ORIGIN when the SPA uses same-origin /api but static /uploads is not
+ * proxied to Node (e.g. only /api is reverse-proxied). No trailing slash.
+ */
+export function getUploadsOrigin() {
+  const raw = process.env.REACT_APP_UPLOADS_ORIGIN;
+  if (raw && String(raw).trim()) {
+    return stripTrailingSlashes(String(raw).trim());
+  }
+  return getApiOrigin();
 }

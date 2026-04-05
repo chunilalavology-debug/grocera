@@ -1,9 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { Settings, Save, MessageCircle, RotateCcw } from 'lucide-react';
 import { AdminButton, AdminPageShell } from '../../components/admin/ui';
+
+function substituteContactNamePreview(template, customerName = 'Alex') {
+  const n =
+    customerName && String(customerName).trim() ? String(customerName).trim() : 'there';
+  return String(template)
+    .replace(/\{\{\s*name\s*\}\}/gi, n)
+    .replace(/\{name\}/gi, n);
+}
 
 export default function AdminSettings() {
   const [loading, setLoading] = useState(true);
@@ -14,6 +22,7 @@ export default function AdminSettings() {
   const [homeFeaturedSectionTitle, setHomeFeaturedSectionTitle] = useState('Featured Categories');
   const [contactAutoReplyMessage, setContactAutoReplyMessage] = useState('');
   const [contactAutoReplyDefaultTemplate, setContactAutoReplyDefaultTemplate] = useState('');
+  const [contactAutoReplyPreview, setContactAutoReplyPreview] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -30,6 +39,9 @@ export default function AdminSettings() {
         setContactAutoReplyDefaultTemplate(
           res.data.contactAutoReplyDefaultTemplate != null ? String(res.data.contactAutoReplyDefaultTemplate) : '',
         );
+        setContactAutoReplyPreview(
+          res.data.contactAutoReplyPreview != null ? String(res.data.contactAutoReplyPreview) : '',
+        );
       }
     } catch {
       toast.error('Could not load settings');
@@ -41,6 +53,16 @@ export default function AdminSettings() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const displayAutoReplyPreview = useMemo(() => {
+    const draft = contactAutoReplyMessage.trim();
+    const fallbackDefault = (contactAutoReplyDefaultTemplate || '').trim();
+    const base = draft || fallbackDefault;
+    if (!base) {
+      return contactAutoReplyPreview || 'No auto-reply template configured yet.';
+    }
+    return substituteContactNamePreview(base, 'Alex');
+  }, [contactAutoReplyMessage, contactAutoReplyDefaultTemplate, contactAutoReplyPreview]);
 
   const save = async () => {
     try {
@@ -61,6 +83,9 @@ export default function AdminSettings() {
           setHomeFeaturedSectionTitle(res.data.homeFeaturedSectionTitle || 'Featured Categories');
           setContactAutoReplyMessage(
             res.data.contactAutoReplyMessage != null ? String(res.data.contactAutoReplyMessage) : '',
+          );
+          setContactAutoReplyPreview(
+            res.data.contactAutoReplyPreview != null ? String(res.data.contactAutoReplyPreview) : '',
           );
         }
       }
@@ -208,6 +233,22 @@ export default function AdminSettings() {
                           Load default text
                         </button>
                       ) : null}
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        Customer preview
+                      </p>
+                      <p className="text-xs text-slate-500 mb-2">
+                        Uses the name <strong>Alex</strong> for <code className="rounded bg-slate-100 px-1">{'{{name}}'}</code> /{' '}
+                        <code className="rounded bg-slate-100 px-1">{'{name}'}</code>. Updates as you type; save to persist.
+                      </p>
+                      <div
+                        className="max-h-52 overflow-y-auto rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap font-sans"
+                        role="region"
+                        aria-label="Resolved auto-reply preview"
+                      >
+                        {displayAutoReplyPreview}
+                      </div>
                     </div>
                   </div>
                 </div>

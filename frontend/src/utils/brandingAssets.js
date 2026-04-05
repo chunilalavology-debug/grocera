@@ -1,4 +1,4 @@
-import { getApiOrigin } from '../config/apiBase';
+import { getApiOrigin, getUploadsOrigin } from '../config/apiBase';
 
 /**
  * Turn stored logo/favicon URLs into absolute URLs the browser can load.
@@ -25,7 +25,8 @@ export function resolveBrandingAssetUrl(href) {
   }
   if (s.startsWith('/')) {
     try {
-      return `${getApiOrigin()}${s}`;
+      const base = s.startsWith('/uploads/') ? getUploadsOrigin() : getApiOrigin();
+      return `${base}${s}`;
     } catch {
       return s;
     }
