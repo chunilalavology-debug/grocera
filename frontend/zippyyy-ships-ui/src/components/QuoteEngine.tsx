@@ -182,9 +182,6 @@ const QuoteEngine = () => {
   const [fromZip, setFromZip] = useState("");
   const [toZip, setToZip] = useState("");
   const [shipCountryAlpha2, setShipCountryAlpha2] = useState("US");
-  /** Optional 2-letter override (backup app required manual state for Easyship US quotes). */
-  const [quoteStateFrom, setQuoteStateFrom] = useState("");
-  const [quoteStateTo, setQuoteStateTo] = useState("");
   const [fromAddress, setFromAddress] = useState<TaggedAddress | null>(null);
   const [toAddress, setToAddress] = useState<TaggedAddress | null>(null);
   const [carrier, setCarrier] = useState<PackagingCarrier>("UPS");
@@ -266,23 +263,25 @@ const QuoteEngine = () => {
     [shipCountryAlpha2, toZip],
   );
 
-  const effectiveQuoteFromState = useMemo(() => {
-    const manual = quoteStateFrom.trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
-    if (manual.length === 2) return manual;
-    return String(derivedFromState || "")
-      .trim()
-      .toUpperCase()
-      .slice(0, 2);
-  }, [quoteStateFrom, derivedFromState]);
+  const effectiveQuoteFromState = useMemo(
+    () =>
+      String(derivedFromState || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z]/g, "")
+        .slice(0, 2),
+    [derivedFromState],
+  );
 
-  const effectiveQuoteToState = useMemo(() => {
-    const manual = quoteStateTo.trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
-    if (manual.length === 2) return manual;
-    return String(derivedToState || "")
-      .trim()
-      .toUpperCase()
-      .slice(0, 2);
-  }, [quoteStateTo, derivedToState]);
+  const effectiveQuoteToState = useMemo(
+    () =>
+      String(derivedToState || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z]/g, "")
+        .slice(0, 2),
+    [derivedToState],
+  );
 
   const dims = isCustom
     ? { length: Number(customDims.length) || 0, width: Number(customDims.width) || 0, height: Number(customDims.height) || 0 }
@@ -774,38 +773,6 @@ const QuoteEngine = () => {
                       />
                     </div>
                   </div>
-
-                  {shipCountryAlpha2.trim().toUpperCase() === "US" && (
-                    <div className="grid sm:grid-cols-2 gap-3 mt-4">
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-2 block">
-                          From state (optional)
-                        </label>
-                        <input
-                          value={quoteStateFrom}
-                          onChange={(e) => setQuoteStateFrom(e.target.value.toUpperCase())}
-                          placeholder={derivedFromState || "NY"}
-                          className="w-full bg-secondary border-none focus:ring-2 focus:ring-primary/50 transition-all p-4 rounded-2xl text-foreground placeholder:text-muted-foreground outline-none font-mono uppercase"
-                          maxLength={2}
-                        />
-                        <p className="mt-1 text-[10px] text-muted-foreground">
-                          Overrides ZIP lookup if needed (same as classic Zippyyy Ships).
-                        </p>
-                      </div>
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-2 block">
-                          To state (optional)
-                        </label>
-                        <input
-                          value={quoteStateTo}
-                          onChange={(e) => setQuoteStateTo(e.target.value.toUpperCase())}
-                          placeholder={derivedToState || "CA"}
-                          className="w-full bg-secondary border-none focus:ring-2 focus:ring-primary/50 transition-all p-4 rounded-2xl text-foreground placeholder:text-muted-foreground outline-none font-mono uppercase"
-                          maxLength={2}
-                        />
-                      </div>
-                    </div>
-                  )}
                 </motion.div>
               )}
 
