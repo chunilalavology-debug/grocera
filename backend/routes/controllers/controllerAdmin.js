@@ -9,6 +9,8 @@ const XLSX = require("xlsx");
 const path = require("path");
 const fs = require("fs");
 const mongoose = require("mongoose");
+const { useMongoForBranding } = require("../../utils/useMongoBranding");
+const { mongoBinaryToBuffer } = require("../../utils/mongoBinaryToBuffer");
 const Deal = require("../../db/models/deals");
 const Contact = require("../../db/models/Contact");
 const Address = require("../../db/models/Address");
@@ -87,8 +89,8 @@ const storage = multer.diskStorage({
   }
 });
 
-/** Vercel: no persistent disk — branding/avatar bytes go to MongoDB; local dev still uses /uploads. */
-const brandingUploadStorage = process.env.VERCEL
+/** Production / Vercel: bytes in MongoDB; local dev uses disk unless NODE_ENV=production. */
+const brandingUploadStorage = useMongoForBranding()
   ? multer.memoryStorage()
   : storage;
 
@@ -453,13 +455,13 @@ const getAdminProfileAvatarImage = async (req, res) => {
       .select("+profileImageBinary profileImageContentType profileImageUrl")
       .lean();
     if (!u) return res.status(404).end();
-    const bin = u.profileImageBinary;
-    if (bin != null && Buffer.byteLength(Buffer.from(bin)) > 0) {
+    const out = mongoBinaryToBuffer(u.profileImageBinary);
+    if (out.length > 0) {
       res.set({
         "Content-Type": u.profileImageContentType || "image/jpeg",
         "Cache-Control": "private, max-age=120",
       });
-      return res.send(Buffer.from(bin));
+      return res.send(out);
     }
     const raw = u.profileImageUrl != null ? String(u.profileImageUrl).trim() : "";
     if (/^https?:\/\//i.test(raw)) {
@@ -481,7 +483,7 @@ const postAdminProfileUploadAvatar = async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
-    if (process.env.VERCEL) {
+    if (useMongoForBranding()) {
       const buf = readBrandingFileBuffer(req.file);
       if (!buf || !buf.length) {
         return res.status(400).json({ success: false, message: "No file data received" });
@@ -491,7 +493,7 @@ const postAdminProfileUploadAvatar = async (req, res) => {
       await User.findByIdAndUpdate(req.user.id, {
         $set: {
           profileImageUrl: ADMIN_PROFILE_AVATAR_API_PATH,
-          profileImageBinary: buf,
+          profileImageBinary: Buffer.from(buf),
           profileImageContentType: mime,
           profileAvatarKey: "",
         },
@@ -2234,6 +2236,13 @@ const putAdminSettings = async (req, res) => {
       const v = normalizeStoredUploadsUrl(
         body.websiteLogoUrl == null ? '' : String(body.websiteLogoUrl).trim(),
       );
+      if (v === BRANDING_LOGO_API_PATH) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Logo URL cannot be set to the internal image path. Use “Upload logo” in General settings (POST upload-logo).',
+        });
+      }
       $set.websiteLogoUrl = v;
       if (!v || v !== BRANDING_LOGO_API_PATH) {
         $unset.websiteLogoBinary = 1;
@@ -2244,6 +2253,13 @@ const putAdminSettings = async (req, res) => {
       const v = normalizeStoredUploadsUrl(
         body.websiteFaviconUrl == null ? '' : String(body.websiteFaviconUrl).trim(),
       );
+      if (v === BRANDING_FAVICON_API_PATH) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Favicon URL cannot be set to the internal image path. Use “Upload favicon” (POST upload-favicon).',
+        });
+      }
       $set.websiteFaviconUrl = v;
       if (!v || v !== BRANDING_FAVICON_API_PATH) {
         $unset.websiteFaviconBinary = 1;
@@ -2304,7 +2320,7 @@ const postAdminSettingsUploadLogo = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
     let doc;
-    if (process.env.VERCEL) {
+    if (useMongoForBranding()) {
       const buf = readBrandingFileBuffer(req.file);
       if (!buf || !buf.length) {
         return res.status(400).json({ success: false, message: 'No file data received' });
@@ -2316,7 +2332,7 @@ const postAdminSettingsUploadLogo = async (req, res) => {
         {
           $set: {
             websiteLogoUrl: BRANDING_LOGO_API_PATH,
-            websiteLogoBinary: buf,
+            websiteLogoBinary: Buffer.from(buf),
             websiteLogoContentType: mime,
           },
         },
@@ -2355,7 +2371,7 @@ const postAdminSettingsUploadFavicon = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
     let doc;
-    if (process.env.VERCEL) {
+    if (useMongoForBranding()) {
       const buf = readBrandingFileBuffer(req.file);
       if (!buf || !buf.length) {
         return res.status(400).json({ success: false, message: 'No file data received' });
@@ -2367,7 +2383,7 @@ const postAdminSettingsUploadFavicon = async (req, res) => {
         {
           $set: {
             websiteFaviconUrl: BRANDING_FAVICON_API_PATH,
-            websiteFaviconBinary: buf,
+            websiteFaviconBinary: Buffer.from(buf),
             websiteFaviconContentType: mime,
           },
         },

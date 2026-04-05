@@ -1,7 +1,8 @@
 const AppSettings = require("../db/models/AppSettings");
+const { mongoBinaryToBuffer } = require("../utils/mongoBinaryToBuffer");
 
 function sendBuffer(res, buf, contentType) {
-  const b = buf && Buffer.isBuffer(buf) ? buf : Buffer.from(buf || []);
+  const b = mongoBinaryToBuffer(buf);
   if (!b.length) return false;
   const ct = String(contentType || "").trim() || "application/octet-stream";
   res.set({

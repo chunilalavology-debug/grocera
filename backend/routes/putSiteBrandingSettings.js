@@ -58,6 +58,12 @@ async function putSiteBrandingSettings(req, res) {
       const v = normalizeStoredUploadsUrl(
         body.websiteLogoUrl == null ? "" : String(body.websiteLogoUrl).trim(),
       );
+      if (v === BRANDING_LOGO_API_PATH) {
+        return res.status(400).json({
+          success: false,
+          message: "Use admin “Upload logo” (POST /admin/settings/upload-logo), not this URL in PUT /settings.",
+        });
+      }
       $set.websiteLogoUrl = v;
       if (!v || v !== BRANDING_LOGO_API_PATH) {
         $unset.websiteLogoBinary = 1;
@@ -65,6 +71,12 @@ async function putSiteBrandingSettings(req, res) {
       }
     } else if (has("logo")) {
       const v = normalizeStoredUploadsUrl(body.logo == null ? "" : String(body.logo).trim());
+      if (v === BRANDING_LOGO_API_PATH) {
+        return res.status(400).json({
+          success: false,
+          message: "Use admin upload-logo; do not set logo to the internal path.",
+        });
+      }
       $set.websiteLogoUrl = v;
       if (!v || v !== BRANDING_LOGO_API_PATH) {
         $unset.websiteLogoBinary = 1;
@@ -75,6 +87,12 @@ async function putSiteBrandingSettings(req, res) {
       const v = normalizeStoredUploadsUrl(
         body.websiteFaviconUrl == null ? "" : String(body.websiteFaviconUrl).trim(),
       );
+      if (v === BRANDING_FAVICON_API_PATH) {
+        return res.status(400).json({
+          success: false,
+          message: "Use admin upload-favicon (POST /admin/settings/upload-favicon).",
+        });
+      }
       $set.websiteFaviconUrl = v;
       if (!v || v !== BRANDING_FAVICON_API_PATH) {
         $unset.websiteFaviconBinary = 1;
@@ -82,6 +100,12 @@ async function putSiteBrandingSettings(req, res) {
       }
     } else if (has("favicon")) {
       const v = normalizeStoredUploadsUrl(body.favicon == null ? "" : String(body.favicon).trim());
+      if (v === BRANDING_FAVICON_API_PATH) {
+        return res.status(400).json({
+          success: false,
+          message: "Use admin upload-favicon; do not set favicon to the internal path.",
+        });
+      }
       $set.websiteFaviconUrl = v;
       if (!v || v !== BRANDING_FAVICON_API_PATH) {
         $unset.websiteFaviconBinary = 1;
