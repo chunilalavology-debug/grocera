@@ -395,8 +395,8 @@ export default function AdminProfileSettings() {
             <p className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">
               <span className="font-semibold text-slate-800">Recommended:</span> square image about{' '}
               <strong>200×200px</strong> (or larger, same ratio). <span className="font-semibold">Max file:</span> 3MB.
-              The file is stored on the API server as <code className="text-[11px]">/uploads/…</code> and your app loads it
-              using the configured API URL (same as store logos).
+              On production (Vercel), the image is stored in your MongoDB database and served over the API; locally it may
+              be saved under <code className="text-[11px]">/uploads/…</code> like store assets.
             </p>
             <div className="flex flex-wrap items-center gap-5">
               <AdminUserAvatar

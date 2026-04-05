@@ -47,6 +47,9 @@ const userSchema = new mongoose.Schema({
     default: '',
     maxlength: 2048,
   },
+  /** Avatar bytes when stored in MongoDB (Vercel); served at GET /admin/profile/avatar-image. */
+  profileImageBinary: { type: Buffer, select: false },
+  profileImageContentType: { type: String, trim: true, maxlength: 120, default: '', select: false },
   /** Preset avatar key when not using a custom upload (e.g. preset-violet). */
   profileAvatarKey: {
     type: String,
@@ -384,5 +387,13 @@ userSchema.statics.findByEmailWithPassword = function (email) {
 userSchema.statics.findActiveUser = function (criteria) {
   return this.findOne({ ...criteria, isActive: true });
 };
+
+userSchema.set("toJSON", {
+  transform(_doc, ret) {
+    delete ret.profileImageBinary;
+    delete ret.profileImageContentType;
+    return ret;
+  },
+});
 
 module.exports = mongoose.model('User', userSchema);

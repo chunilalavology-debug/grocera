@@ -87,7 +87,7 @@ const storage = multer.diskStorage({
   }
 });
 
-/** Vercel: no reliable disk for multipart temp files; buffer + Cloudinary in finalizeBrandingUpload. */
+/** Vercel: no persistent disk — branding/avatar bytes go to MongoDB; local dev still uses /uploads. */
 const brandingUploadStorage = process.env.VERCEL
   ? multer.memoryStorage()
   : storage;
@@ -240,7 +240,17 @@ const {
   uploadsPublicPath,
   normalizeStoredUploadsUrl,
 } = require("../../utils/brandingPublicUrl");
-const { finalizeBrandingUpload } = require("../../utils/brandingUpload");
+const {
+  finalizeBrandingUpload,
+  readBrandingFileBuffer,
+  contentTypeFromFile,
+  unlinkBrandingDiskIfAny,
+} = require("../../utils/brandingUpload");
+const {
+  BRANDING_LOGO_API_PATH,
+  BRANDING_FAVICON_API_PATH,
+  ADMIN_PROFILE_AVATAR_API_PATH,
+} = require("../../utils/brandingStoredPaths");
 
 /**
  * Public path for a file under /uploads (always `/uploads/...`, no host).
@@ -345,15 +355,23 @@ const putAdminProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    const $setProf = {};
+    const $unsetProf = {};
     if (username !== undefined) {
-      user.name = String(username).trim();
+      $setProf.name = String(username).trim();
     }
     if (removeAvatar === true) {
-      user.profileImageUrl = "";
-      user.profileAvatarKey = "";
+      $setProf.profileImageUrl = "";
+      $setProf.profileAvatarKey = "";
+      $unsetProf.profileImageBinary = 1;
+      $unsetProf.profileImageContentType = 1;
     }
 
-    await user.save();
+    const profUpd = {};
+    if (Object.keys($setProf).length) profUpd.$set = $setProf;
+    if (Object.keys($unsetProf).length) profUpd.$unset = $unsetProf;
+    await User.findByIdAndUpdate(req.user.id, profUpd);
+
     const fresh = await User.findById(req.user.id);
     return res.json({
       success: true,
@@ -429,6 +447,31 @@ const putAdminChangePassword = async (req, res) => {
   }
 };
 
+const getAdminProfileAvatarImage = async (req, res) => {
+  try {
+    const u = await User.findById(req.user.id)
+      .select("+profileImageBinary profileImageContentType profileImageUrl")
+      .lean();
+    if (!u) return res.status(404).end();
+    const bin = u.profileImageBinary;
+    if (bin != null && Buffer.byteLength(Buffer.from(bin)) > 0) {
+      res.set({
+        "Content-Type": u.profileImageContentType || "image/jpeg",
+        "Cache-Control": "private, max-age=120",
+      });
+      return res.send(Buffer.from(bin));
+    }
+    const raw = u.profileImageUrl != null ? String(u.profileImageUrl).trim() : "";
+    if (/^https?:\/\//i.test(raw)) {
+      return res.redirect(302, raw);
+    }
+    return res.status(404).end();
+  } catch (e) {
+    console.error("getAdminProfileAvatarImage", e);
+    return res.status(500).end();
+  }
+};
+
 const postAdminProfileUploadAvatar = async (req, res) => {
   try {
     if (!req.file) {
@@ -438,11 +481,29 @@ const postAdminProfileUploadAvatar = async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
-    const rawUrl = await finalizeBrandingUpload(req.file, "admin-avatar");
-    const url = normalizeStoredUploadsUrl(rawUrl);
-    user.profileImageUrl = url;
-    user.profileAvatarKey = "";
-    await user.save();
+    if (process.env.VERCEL) {
+      const buf = readBrandingFileBuffer(req.file);
+      if (!buf || !buf.length) {
+        return res.status(400).json({ success: false, message: "No file data received" });
+      }
+      const mime = contentTypeFromFile(req.file);
+      unlinkBrandingDiskIfAny(req.file);
+      await User.findByIdAndUpdate(req.user.id, {
+        $set: {
+          profileImageUrl: ADMIN_PROFILE_AVATAR_API_PATH,
+          profileImageBinary: buf,
+          profileImageContentType: mime,
+          profileAvatarKey: "",
+        },
+      });
+    } else {
+      const rawUrl = await finalizeBrandingUpload(req.file);
+      const url = normalizeStoredUploadsUrl(rawUrl);
+      await User.findByIdAndUpdate(req.user.id, {
+        $set: { profileImageUrl: url, profileAvatarKey: "" },
+        $unset: { profileImageBinary: 1, profileImageContentType: 1 },
+      });
+    }
     const fresh = await User.findById(req.user.id);
     return res.json({
       success: true,
@@ -2163,20 +2224,31 @@ const putAdminSettings = async (req, res) => {
     const raw = req.body || {};
     const body = await schema.validateAsync(raw, { abortEarly: true });
     const $set = {};
+    const $unset = {};
     const has = (k) => Object.prototype.hasOwnProperty.call(raw, k);
 
     if (has('websiteName')) {
       $set.websiteName = String(body.websiteName ?? '').trim() || 'Zippyyy';
     }
     if (has('websiteLogoUrl')) {
-      $set.websiteLogoUrl = normalizeStoredUploadsUrl(
+      const v = normalizeStoredUploadsUrl(
         body.websiteLogoUrl == null ? '' : String(body.websiteLogoUrl).trim(),
       );
+      $set.websiteLogoUrl = v;
+      if (!v || v !== BRANDING_LOGO_API_PATH) {
+        $unset.websiteLogoBinary = 1;
+        $unset.websiteLogoContentType = 1;
+      }
     }
     if (has('websiteFaviconUrl')) {
-      $set.websiteFaviconUrl = normalizeStoredUploadsUrl(
+      const v = normalizeStoredUploadsUrl(
         body.websiteFaviconUrl == null ? '' : String(body.websiteFaviconUrl).trim(),
       );
+      $set.websiteFaviconUrl = v;
+      if (!v || v !== BRANDING_FAVICON_API_PATH) {
+        $unset.websiteFaviconBinary = 1;
+        $unset.websiteFaviconContentType = 1;
+      }
     }
     if (has('adminMail')) $set.adminMail = String(body.adminMail ?? '').trim();
     if (has('contactFormToEmailPrimary')) {
@@ -2201,11 +2273,14 @@ const putAdminSettings = async (req, res) => {
       $set.smtpPass = String(body.smtpPass);
     }
 
-    if (Object.keys($set).length === 0) {
+    if (Object.keys($set).length === 0 && Object.keys($unset).length === 0) {
       return res.status(400).json({ success: false, message: 'No fields to update' });
     }
 
-    const doc = await AppSettings.findOneAndUpdate({}, { $set }, { new: true, upsert: true, setDefaultsOnInsert: true });
+    const upd = {};
+    if (Object.keys($set).length) upd.$set = $set;
+    if (Object.keys($unset).length) upd.$unset = $unset;
+    const doc = await AppSettings.findOneAndUpdate({}, upd, { new: true, upsert: true, setDefaultsOnInsert: true });
     res.set({
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       Pragma: "no-cache",
@@ -2228,13 +2303,37 @@ const postAdminSettingsUploadLogo = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
-    const rawUrl = await finalizeBrandingUpload(req.file, "logo");
-    const url = normalizeStoredUploadsUrl(rawUrl);
-    const doc = await AppSettings.findOneAndUpdate(
-      {},
-      { $set: { websiteLogoUrl: url } },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
-    );
+    let doc;
+    if (process.env.VERCEL) {
+      const buf = readBrandingFileBuffer(req.file);
+      if (!buf || !buf.length) {
+        return res.status(400).json({ success: false, message: 'No file data received' });
+      }
+      const mime = contentTypeFromFile(req.file);
+      unlinkBrandingDiskIfAny(req.file);
+      doc = await AppSettings.findOneAndUpdate(
+        {},
+        {
+          $set: {
+            websiteLogoUrl: BRANDING_LOGO_API_PATH,
+            websiteLogoBinary: buf,
+            websiteLogoContentType: mime,
+          },
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      );
+    } else {
+      const rawUrl = await finalizeBrandingUpload(req.file);
+      const url = normalizeStoredUploadsUrl(rawUrl);
+      doc = await AppSettings.findOneAndUpdate(
+        {},
+        {
+          $set: { websiteLogoUrl: url },
+          $unset: { websiteLogoBinary: 1, websiteLogoContentType: 1 },
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      );
+    }
     res.set({
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       Pragma: "no-cache",
@@ -2255,13 +2354,37 @@ const postAdminSettingsUploadFavicon = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
-    const rawUrl = await finalizeBrandingUpload(req.file, "favicon");
-    const url = normalizeStoredUploadsUrl(rawUrl);
-    const doc = await AppSettings.findOneAndUpdate(
-      {},
-      { $set: { websiteFaviconUrl: url } },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
-    );
+    let doc;
+    if (process.env.VERCEL) {
+      const buf = readBrandingFileBuffer(req.file);
+      if (!buf || !buf.length) {
+        return res.status(400).json({ success: false, message: 'No file data received' });
+      }
+      const mime = contentTypeFromFile(req.file);
+      unlinkBrandingDiskIfAny(req.file);
+      doc = await AppSettings.findOneAndUpdate(
+        {},
+        {
+          $set: {
+            websiteFaviconUrl: BRANDING_FAVICON_API_PATH,
+            websiteFaviconBinary: buf,
+            websiteFaviconContentType: mime,
+          },
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      );
+    } else {
+      const rawUrl = await finalizeBrandingUpload(req.file);
+      const url = normalizeStoredUploadsUrl(rawUrl);
+      doc = await AppSettings.findOneAndUpdate(
+        {},
+        {
+          $set: { websiteFaviconUrl: url },
+          $unset: { websiteFaviconBinary: 1, websiteFaviconContentType: 1 },
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      );
+    }
     res.set({
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       Pragma: "no-cache",
@@ -4554,6 +4677,7 @@ const importProductsCsv = async (req, res) => {
 
 
 router.get('/profile', adminAuth, getAdminProfile);
+router.get('/profile/avatar-image', adminAuth, getAdminProfileAvatarImage);
 router.put('/profile', adminAuth, putAdminProfile);
 router.put('/change-password', adminAuth, putAdminChangePassword);
 router.post(

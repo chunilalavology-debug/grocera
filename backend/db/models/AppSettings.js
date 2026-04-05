@@ -5,10 +5,16 @@ const appSettingsSchema = new mongoose.Schema(
   {
     /** Storefront / browser tab branding (singleton). */
     websiteName: { type: String, trim: true, maxlength: 120, default: 'Zippyyy' },
-    /** Public URL to header logo (uploaded to /uploads). */
+    /** Public URL to header logo (/uploads/..., Cloudinary, or /user/site-branding/logo when stored in DB). */
     websiteLogoUrl: { type: String, trim: true, maxlength: 2048, default: '' },
+    /** Raw logo bytes when hosted from MongoDB (e.g. Vercel; not exposed in JSON). */
+    websiteLogoBinary: { type: Buffer, select: false },
+    websiteLogoContentType: { type: String, trim: true, maxlength: 120, default: '', select: false },
+
     /** Public URL to favicon (.ico / png / svg). */
     websiteFaviconUrl: { type: String, trim: true, maxlength: 2048, default: '' },
+    websiteFaviconBinary: { type: Buffer, select: false },
+    websiteFaviconContentType: { type: String, trim: true, maxlength: 120, default: '', select: false },
 
     /** Admin-facing email (new order + system alerts). */
     adminMail: { type: String, trim: true, default: '' },
@@ -41,5 +47,15 @@ const appSettingsSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+appSettingsSchema.set('toJSON', {
+  transform(_doc, ret) {
+    delete ret.websiteLogoBinary;
+    delete ret.websiteFaviconBinary;
+    delete ret.websiteLogoContentType;
+    delete ret.websiteFaviconContentType;
+    return ret;
+  },
+});
 
 module.exports = mongoose.model('AppSettings', appSettingsSchema);

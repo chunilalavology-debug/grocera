@@ -33,6 +33,10 @@ const {
 const { connectDB } = require("../../lib/db");
 const jwt = require("jsonwebtoken");
 const getPublicSiteSettings = require("../publicSiteSettings");
+const {
+  getSiteBrandingLogo,
+  getSiteBrandingFavicon,
+} = require("../siteBrandingPublicImages");
 const { coerceHomeSliderSlides } = require("../../utils/homeSliderSlides");
 
 function orderViewJwtSecret() {
@@ -2806,6 +2810,8 @@ router.get('/getCategories', getCategories);
 router.get('/featured-categories', getFeaturedCategories);
 router.get('/referral/discount', getReferralDiscount);
 router.get('/home-slider-settings', getHomeSliderSettings);
+router.get('/site-branding/logo', getSiteBrandingLogo);
+router.get('/site-branding/favicon', getSiteBrandingFavicon);
 router.get('/site-settings', getPublicSiteSettings);
 router.post('/shipping/quote', getShippingQuote);
 router.post('/shipping/checkout', createShippingCheckout);

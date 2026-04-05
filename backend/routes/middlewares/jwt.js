@@ -83,6 +83,8 @@ function isPublicJwtPath(req) {
       `${A}/user/featured-categories`,
       `${A}/user/home-slider-settings`,
       `${A}/user/site-settings`,
+      `${A}/user/site-branding/logo`,
+      `${A}/user/site-branding/favicon`,
       `${A}/user/referral/discount`,
     ].map(normalizeJwtPathname),
   );

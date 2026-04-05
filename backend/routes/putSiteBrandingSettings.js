@@ -1,6 +1,10 @@
 const Joi = require("joi");
 const AppSettings = require("../db/models/AppSettings");
 const { normalizeStoredUploadsUrl } = require("../utils/brandingPublicUrl");
+const {
+  BRANDING_LOGO_API_PATH,
+  BRANDING_FAVICON_API_PATH,
+} = require("../utils/brandingStoredPaths");
 
 const formatJoiErrors = (error) => {
   if (!error.details) return "";
@@ -44,35 +48,57 @@ async function putSiteBrandingSettings(req, res) {
     const raw = req.body ?? {};
     const body = await schema.validateAsync(raw, { abortEarly: true });
     const $set = {};
+    const $unset = {};
     const has = (k) => Object.prototype.hasOwnProperty.call(raw, k);
 
     if (has("websiteName")) {
       $set.websiteName = String(body.websiteName ?? "").trim() || "Zippyyy";
     }
     if (has("websiteLogoUrl")) {
-      $set.websiteLogoUrl = normalizeStoredUploadsUrl(
+      const v = normalizeStoredUploadsUrl(
         body.websiteLogoUrl == null ? "" : String(body.websiteLogoUrl).trim(),
       );
+      $set.websiteLogoUrl = v;
+      if (!v || v !== BRANDING_LOGO_API_PATH) {
+        $unset.websiteLogoBinary = 1;
+        $unset.websiteLogoContentType = 1;
+      }
     } else if (has("logo")) {
-      $set.websiteLogoUrl = normalizeStoredUploadsUrl(body.logo == null ? "" : String(body.logo).trim());
+      const v = normalizeStoredUploadsUrl(body.logo == null ? "" : String(body.logo).trim());
+      $set.websiteLogoUrl = v;
+      if (!v || v !== BRANDING_LOGO_API_PATH) {
+        $unset.websiteLogoBinary = 1;
+        $unset.websiteLogoContentType = 1;
+      }
     }
     if (has("websiteFaviconUrl")) {
-      $set.websiteFaviconUrl = normalizeStoredUploadsUrl(
+      const v = normalizeStoredUploadsUrl(
         body.websiteFaviconUrl == null ? "" : String(body.websiteFaviconUrl).trim(),
       );
+      $set.websiteFaviconUrl = v;
+      if (!v || v !== BRANDING_FAVICON_API_PATH) {
+        $unset.websiteFaviconBinary = 1;
+        $unset.websiteFaviconContentType = 1;
+      }
     } else if (has("favicon")) {
-      $set.websiteFaviconUrl = normalizeStoredUploadsUrl(
-        body.favicon == null ? "" : String(body.favicon).trim(),
-      );
+      const v = normalizeStoredUploadsUrl(body.favicon == null ? "" : String(body.favicon).trim());
+      $set.websiteFaviconUrl = v;
+      if (!v || v !== BRANDING_FAVICON_API_PATH) {
+        $unset.websiteFaviconBinary = 1;
+        $unset.websiteFaviconContentType = 1;
+      }
     }
 
-    if (Object.keys($set).length === 0) {
+    if (Object.keys($set).length === 0 && Object.keys($unset).length === 0) {
       return res.status(400).json({ success: false, message: "No branding fields to update" });
     }
 
+    const upd = {};
+    if (Object.keys($set).length) upd.$set = $set;
+    if (Object.keys($unset).length) upd.$unset = $unset;
     const doc = await AppSettings.findOneAndUpdate(
       {},
-      { $set },
+      upd,
       { new: true, upsert: true, setDefaultsOnInsert: true },
     );
 
