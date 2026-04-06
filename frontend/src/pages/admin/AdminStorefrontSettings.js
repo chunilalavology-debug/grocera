@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Layout, Megaphone, ImageIcon, Save, Trash2, Upload } from 'lucide-react';
+import { Layout, Megaphone, ImageIcon, Save, Trash2, Upload, Copy } from 'lucide-react';
 import api from '../../services/api';
 import { AdminButton, AdminCard, AdminPageShell } from '../../components/admin/ui';
 import { resolveBrandingAssetUrl } from '../../utils/brandingAssets';
@@ -78,8 +78,16 @@ export default function AdminStorefrontSettings() {
   }, [load]);
 
   const addSlide = () => {
-    if (marqueeSlides.length >= 12) return;
     setMarqueeSlides((prev) => [...prev, '']);
+  };
+
+  const copySlideAt = (idx) => {
+    setMarqueeSlides((prev) => {
+      const text = String(prev[idx] ?? '');
+      const next = [...prev];
+      next.splice(idx + 1, 0, text);
+      return next;
+    });
   };
 
   const save = async () => {
@@ -199,21 +207,29 @@ export default function AdminStorefrontSettings() {
             <div className="mt-4 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="admin-label !mb-0">Slides</label>
-                <AdminButton type="button" variant="secondary" onClick={addSlide} disabled={marqueeSlides.length >= 12}>
+                <AdminButton type="button" variant="secondary" onClick={addSlide}>
                   Add slide
                 </AdminButton>
               </div>
               {marqueeSlides.map((slide, idx) => (
-                <div key={`slide-${idx}`} className="flex gap-2">
+                <div key={`slide-${idx}`} className="flex flex-wrap gap-2 sm:flex-nowrap">
                   <input
-                    className="admin-field"
+                    className="admin-field min-w-0 flex-1"
                     value={slide}
                     onChange={(e) =>
                       setMarqueeSlides((prev) => prev.map((x, i) => (i === idx ? e.target.value : x)))
                     }
                     placeholder={`Slide ${idx + 1}`}
-                    maxLength={180}
+                    maxLength={2000}
                   />
+                  <AdminButton
+                    type="button"
+                    variant="secondary"
+                    title="Duplicate this line"
+                    onClick={() => copySlideAt(idx)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </AdminButton>
                   <AdminButton
                     type="button"
                     variant="secondary"

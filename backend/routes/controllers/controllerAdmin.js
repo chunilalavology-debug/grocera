@@ -791,14 +791,26 @@ const getOrders = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const orders = await Orders.find(filter)
-      .populate('items.product', 'name image')
-      .populate('addressId', 'name phone fullAddress city state pincode addressType')
-      .populate('userId', 'name email')
+      .populate({
+        path: 'items.product',
+        select: 'name image',
+        strictPopulate: false,
+      })
+      .populate({
+        path: 'addressId',
+        select: 'name phone fullAddress city state pincode addressType',
+        strictPopulate: false,
+      })
+      .populate({
+        path: 'userId',
+        select: 'name email',
+        strictPopulate: false,
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .select(
-        'orderNumber customerEmail paymentMethod paymentCards status paymentStatus subtotal taxAmount shippingAmount totalAmount stripeAmount otcAmount remainingAmount requestedPaymentAmount requestedPaymentAt items createdAt estimatedDelivery deliveredAt addressId userId guestShipping'
+        'orderId orderNumber customerEmail paymentMethod paymentCards status paymentStatus subtotal taxAmount shippingAmount totalAmount stripeAmount otcAmount remainingAmount requestedPaymentAmount requestedPaymentAt items createdAt estimatedDelivery deliveredAt addressId userId guestShipping'
       )
       .lean();
 
@@ -869,20 +881,36 @@ const getOrderInvoicePdf = async (req, res) => {
     }
 
     let websiteName = "Zippyyy";
-    let websiteLogoUrl = "";
+    let websiteLogoUrl = String(process.env.INVOICE_LOGO_URL || "").trim();
+    const apiSeg = String(process.env.API_END_POINT_V1 || "/api").replace(/\/+$/, "") || "/api";
+    const publicOrigin = String(process.env.API_PUBLIC_URL || "")
+      .trim()
+      .split(",")[0]
+      .trim()
+      .replace(/\/+$/, "");
+    const reqOrigin = `${(req.protocol || "https").replace(/:+$/, "")}://${req.get("host") || ""}`.replace(/\/+$/, "");
+    const originForLogo = publicOrigin || reqOrigin;
+    /** Same asset as storefront GET /api/user/site-branding/logo — matches Mongo-hosted logo used on the site. */
+    if (!websiteLogoUrl && originForLogo) {
+      const p = `${apiSeg.startsWith("/") ? "" : "/"}${apiSeg}/user/site-branding/logo`;
+      websiteLogoUrl = `${originForLogo}${p}`;
+    }
     try {
       const s = await AppSettings.findOne().lean();
       if (s) {
         websiteName = String(s.websiteName || websiteName).trim() || websiteName;
-        websiteLogoUrl = normalizeStoredUploadsUrl(String(s.websiteLogoUrl || "").trim());
+        const fallback = normalizeStoredUploadsUrl(String(s.websiteLogoUrl || "").trim());
+        if (!websiteLogoUrl && fallback) {
+          websiteLogoUrl = fallback;
+          if (!/^https?:\/\//i.test(websiteLogoUrl)) {
+            const proto = req.protocol || "http";
+            const host = req.get("host") || `localhost:${process.env.PORT || 5000}`;
+            websiteLogoUrl = `${proto}://${host}${websiteLogoUrl.startsWith("/") ? "" : "/"}${websiteLogoUrl}`;
+          }
+        }
       }
     } catch (_) {
       /* ignore */
-    }
-    if (websiteLogoUrl && !/^https?:\/\//i.test(websiteLogoUrl)) {
-      const proto = req.protocol || "http";
-      const host = req.get("host") || `localhost:${process.env.PORT || 5000}`;
-      websiteLogoUrl = `${proto}://${host}${websiteLogoUrl.startsWith("/") ? "" : "/"}${websiteLogoUrl}`;
     }
 
     const pdf = await buildOrderInvoicePdfBuffer(order, { websiteName, websiteLogoUrl });
@@ -2394,7 +2422,7 @@ const putAdminSettings = async (req, res) => {
       bgColor: Joi.string().trim().max(32).optional(),
       textColor: Joi.string().trim().max(32).optional(),
       speed: Joi.number().min(8).max(120).optional(),
-      slides: Joi.array().items(Joi.string().trim().max(180)).min(1).max(12).optional(),
+      slides: Joi.array().items(Joi.string().trim().max(2000)).min(1).max(200).optional(),
     }).optional(),
     header: Joi.object({
       isFixed: Joi.boolean().optional(),
@@ -2490,7 +2518,7 @@ const putAdminSettings = async (req, res) => {
       if (textColor !== undefined) $set['marquee.textColor'] = String(textColor || '').trim() || '#ffffff';
       if (speed !== undefined) $set['marquee.speed'] = Number(speed) || 35;
       if (Array.isArray(slides)) {
-        const cleanedSlides = slides.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 12);
+        const cleanedSlides = slides.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 200);
         $set['marquee.slides'] = cleanedSlides.length
           ? cleanedSlides
           : [

@@ -91,7 +91,7 @@ export default function AdminOrders() {
         if (q) params.set('search', q);
         if (dateFrom) params.set('dateFrom', dateFrom);
         if (dateTo) params.set('dateTo', dateTo);
-        const response = await api.get(`/admin/orders?${params.toString()}`);
+        const response = await api.get(`/admin/orders?${params.toString()}`, { timeout: 120_000 });
         if (response.success) {
           const formatted = formatOrders(response.data || []);
           setOrders(formatted);

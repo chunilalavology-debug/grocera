@@ -1135,7 +1135,7 @@ button.header-main__action {
     text-align: center;
     text-decoration: none;
     color: #fff;
-    background-color: #e9aa42;
+    background-color: #3090cf;
     font-weight: 700;
     font-size: 0.8125rem;
     line-height: 1.2;
@@ -1153,7 +1153,7 @@ button.header-main__action {
 
   .header-main__ships-tab:hover {
     color: #fff;
-    background-color: #d89b38;
+    background-color: #2878b5;
   }
 
   .header-main__ships-tab:active {
@@ -1168,7 +1168,7 @@ button.header-main__action {
 
   .header-main__ships-tab--active {
     color: #fff;
-    background-color: #cf8f35;
+    background-color: #256fa8;
     text-decoration: none;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
   }
