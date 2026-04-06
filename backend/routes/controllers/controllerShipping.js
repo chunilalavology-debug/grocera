@@ -339,26 +339,42 @@ router.get("/admin/clients", adminAuth, route(async (_req, res) => {
 router.post("/admin/clients", adminAuth, route(async (req, res) => {
   const { error, value } = createClientSchema.validate(req.body || {}, { abortEarly: false });
   if (error) return res.status(400).json({ success: false, message: error.details.map((d) => d.message).join(", ") });
-  const generated = generateClientApiKey();
-  const created = await ShippingApiClient.create({
-    clientName: value.clientName,
-    keyId: generated.keyId,
-    keyHash: hashClientApiKey(generated.apiKey),
-    commissionPercent: value.commissionPercent ?? null,
-    status: "active",
-  });
-  return res.status(201).json({
-    success: true,
-    message: "Client API key created. Store it now; it will not be shown again.",
-    data: {
-      _id: created._id,
-      clientName: created.clientName,
-      keyId: created.keyId,
-      status: created.status,
-      commissionPercent: created.commissionPercent,
-      apiKey: generated.apiKey,
-    },
-  });
+
+  try {
+    const generated = generateClientApiKey();
+    const payload = {
+      clientName: value.clientName,
+      keyId: generated.keyId,
+      keyHash: hashClientApiKey(generated.apiKey),
+      status: "active",
+    };
+    const pct = value.commissionPercent;
+    if (pct != null && Number.isFinite(Number(pct))) {
+      payload.commissionPercent = Number(pct);
+    }
+    const created = await ShippingApiClient.create(payload);
+    return res.status(201).json({
+      success: true,
+      message: "Client API key created. Store it now; it will not be shown again.",
+      data: {
+        _id: created._id,
+        clientName: created.clientName,
+        keyId: created.keyId,
+        status: created.status,
+        commissionPercent: created.commissionPercent,
+        apiKey: generated.apiKey,
+      },
+    });
+  } catch (err) {
+    if (err?.name === "ValidationError") {
+      const msgs = Object.values(err.errors || {}).map((e) => e.message);
+      return res.status(400).json({ success: false, message: msgs.length ? msgs.join(", ") : err.message });
+    }
+    if (err?.code === 11000) {
+      return res.status(409).json({ success: false, message: "Duplicate key id; try creating again." });
+    }
+    throw err;
+  }
 }));
 
 router.patch("/admin/clients/:id", adminAuth, route(async (req, res) => {
