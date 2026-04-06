@@ -398,6 +398,19 @@ router.patch("/admin/clients/:id", adminAuth, route(async (req, res) => {
   });
 }));
 
+router.delete("/admin/clients/:id", adminAuth, route(async (req, res) => {
+  try {
+    const deleted = await ShippingApiClient.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ success: false, message: "Client not found" });
+    return res.json({ success: true, message: "Partner client removed" });
+  } catch (err) {
+    if (err?.name === "CastError") {
+      return res.status(400).json({ success: false, message: "Invalid client id" });
+    }
+    throw err;
+  }
+}));
+
 router.post("/admin/clients/:id/rotate", adminAuth, route(async (req, res) => {
   const generated = generateClientApiKey();
   const updated = await ShippingApiClient.findByIdAndUpdate(
