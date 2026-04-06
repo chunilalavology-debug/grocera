@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 import { AdminButton } from "../../components/admin/ui";
+import { coerceSlidesFromApi } from "../../utils/homeSliderCoercion";
 
 const createDefaultSlide = () => ({
   title: "",
@@ -27,23 +28,6 @@ const defaultState = {
   slidesPerViewMobile: 1,
   slides: [createDefaultSlide()],
 };
-
-/** Match backend coerceHomeSliderSlides — legacy object-shaped slide lists. */
-function coerceSlidesFromApi(slides) {
-  if (slides == null) return [];
-  if (Array.isArray(slides)) return slides;
-  if (typeof slides === "object") {
-    const keys = Object.keys(slides).filter((k) => /^\d+$/.test(k));
-    if (keys.length > 0) {
-      return keys
-        .sort((a, b) => Number(a) - Number(b))
-        .map((k) => slides[k])
-        .filter((s) => s != null);
-    }
-    if ("title" in slides || "imageUrl" in slides || "subtitle" in slides) return [slides];
-  }
-  return [];
-}
 
 function deriveFilenameFromUrl(url) {
   const u = String(url || "").trim();

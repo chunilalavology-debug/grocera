@@ -4,6 +4,7 @@ const { normalizeStoredUploadsUrl } = require("../utils/brandingPublicUrl");
 const {
   BRANDING_LOGO_API_PATH,
   BRANDING_FAVICON_API_PATH,
+  BRANDING_HERO_BANNER_API_PATH,
 } = require("../utils/brandingStoredPaths");
 
 const formatJoiErrors = (error) => {
@@ -28,6 +29,35 @@ function brandingResponse(doc) {
     websiteFaviconUrl,
     logo: websiteLogoUrl,
     favicon: websiteFaviconUrl,
+    marquee: {
+      enabled: Boolean(doc?.marquee?.enabled ?? true),
+      bgColor: String(doc?.marquee?.bgColor || "#e9aa42"),
+      textColor: String(doc?.marquee?.textColor || "#ffffff"),
+      speed: Number(doc?.marquee?.speed || 35),
+      slides:
+        Array.isArray(doc?.marquee?.slides) && doc.marquee.slides.length > 0
+          ? doc.marquee.slides.map((s) => String(s || "").trim()).filter(Boolean)
+          : [
+              "🥦 Fresh groceries delivered to your door – shop with ease 🥕",
+              "🥦 Free delivery on orders over $50 – order now! 🥕",
+              "🥦 Best quality, best prices – Zippyyy has it all 🥕",
+            ],
+    },
+    header: {
+      isFixed: Boolean(doc?.header?.isFixed ?? false),
+    },
+    heroBanner: {
+      image: normalizeStoredUploadsUrl(doc?.heroBanner?.image ? String(doc.heroBanner.image).trim() : ""),
+      overlayColor: String(doc?.heroBanner?.overlayColor || "rgba(0,0,0,0.45)"),
+    },
+    socialLinks: {
+      facebook: String(doc?.socialLinks?.facebook || ""),
+      instagram: String(doc?.socialLinks?.instagram || ""),
+      linkedin: String(doc?.socialLinks?.linkedin || ""),
+      twitter: String(doc?.socialLinks?.twitter || ""),
+      snapchat: String(doc?.socialLinks?.snapchat || ""),
+      whatsapp: String(doc?.socialLinks?.whatsapp || ""),
+    },
   };
 }
 
@@ -42,6 +72,28 @@ async function putSiteBrandingSettings(req, res) {
     websiteFaviconUrl: Joi.string().trim().max(2048).allow("", null).optional(),
     logo: Joi.string().trim().max(2048).allow("", null).optional(),
     favicon: Joi.string().trim().max(2048).allow("", null).optional(),
+    marquee: Joi.object({
+      enabled: Joi.boolean().optional(),
+      bgColor: Joi.string().trim().max(32).optional(),
+      textColor: Joi.string().trim().max(32).optional(),
+      speed: Joi.number().min(8).max(120).optional(),
+      slides: Joi.array().items(Joi.string().trim().max(180)).min(1).max(12).optional(),
+    }).optional(),
+    header: Joi.object({
+      isFixed: Joi.boolean().optional(),
+    }).optional(),
+    heroBanner: Joi.object({
+      image: Joi.string().trim().max(2048).allow("", null).optional(),
+      overlayColor: Joi.string().trim().max(64).allow("", null).optional(),
+    }).optional(),
+    socialLinks: Joi.object({
+      facebook: Joi.string().trim().max(2048).allow("", null).optional(),
+      instagram: Joi.string().trim().max(2048).allow("", null).optional(),
+      linkedin: Joi.string().trim().max(2048).allow("", null).optional(),
+      twitter: Joi.string().trim().max(2048).allow("", null).optional(),
+      snapchat: Joi.string().trim().max(2048).allow("", null).optional(),
+      whatsapp: Joi.string().trim().max(2048).allow("", null).optional(),
+    }).optional(),
   });
 
   try {
@@ -113,8 +165,66 @@ async function putSiteBrandingSettings(req, res) {
       }
     }
 
+    if (has("marquee")) {
+      const enabled = body?.marquee?.enabled;
+      const bgColor = body?.marquee?.bgColor;
+      const textColor = body?.marquee?.textColor;
+      const speed = body?.marquee?.speed;
+      const slides = body?.marquee?.slides;
+      if (typeof enabled === "boolean") $set["marquee.enabled"] = enabled;
+      if (bgColor !== undefined) $set["marquee.bgColor"] = String(bgColor || "").trim() || "#e9aa42";
+      if (textColor !== undefined) $set["marquee.textColor"] = String(textColor || "").trim() || "#ffffff";
+      if (speed !== undefined) $set["marquee.speed"] = Number(speed) || 35;
+      if (Array.isArray(slides)) {
+        const cleanedSlides = slides.map((s) => String(s || "").trim()).filter(Boolean).slice(0, 12);
+        $set["marquee.slides"] = cleanedSlides.length
+          ? cleanedSlides
+          : [
+              "🥦 Fresh groceries delivered to your door – shop with ease 🥕",
+              "🥦 Free delivery on orders over $50 – order now! 🥕",
+              "🥦 Best quality, best prices – Zippyyy has it all 🥕",
+            ];
+      }
+    }
+
+    if (has("header") && body?.header && Object.prototype.hasOwnProperty.call(body.header, "isFixed")) {
+      $set["header.isFixed"] = Boolean(body.header.isFixed);
+    }
+
+    if (has("heroBanner")) {
+      if (Object.prototype.hasOwnProperty.call(body.heroBanner || {}, "image")) {
+        const v = normalizeStoredUploadsUrl(
+          body.heroBanner?.image == null ? "" : String(body.heroBanner.image).trim(),
+        );
+        if (v === BRANDING_HERO_BANNER_API_PATH) {
+          return res.status(400).json({
+            success: false,
+            message: "Use admin hero upload endpoint for internal hero image path.",
+          });
+        }
+        $set["heroBanner.image"] = v;
+        if (!v || v !== BRANDING_HERO_BANNER_API_PATH) {
+          $unset["heroBanner.imageBinary"] = 1;
+          $unset["heroBanner.imageContentType"] = 1;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(body.heroBanner || {}, "overlayColor")) {
+        $set["heroBanner.overlayColor"] =
+          String(body.heroBanner.overlayColor || "").trim() || "rgba(0,0,0,0.45)";
+      }
+    }
+
+    if (has("socialLinks") && body?.socialLinks) {
+      const keys = ["facebook", "instagram", "linkedin", "twitter", "snapchat", "whatsapp"];
+      for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(body.socialLinks, key)) {
+          $set[`socialLinks.${key}`] = String(body.socialLinks[key] ?? "").trim();
+        }
+      }
+    }
+
     if (Object.keys($set).length === 0 && Object.keys($unset).length === 0) {
-      return res.status(400).json({ success: false, message: "No branding fields to update" });
+      return res.status(400).json({ success: false, message: "No settings fields to update" });
     }
 
     const upd = {};

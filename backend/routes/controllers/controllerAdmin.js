@@ -42,6 +42,7 @@ const {
   pickProductImage,
   PRODUCT_NOT_DELETED,
 } = require("../../utils/categoryCounts");
+const { buildOrderInvoicePdfBuffer } = require("../../utils/orderInvoicePdf");
 
 const ALLOWED_PRODUCT_BADGES = new Set(["hot", "sale", "new", "trending", ""]);
 
@@ -206,6 +207,23 @@ const uploadBrandingFavicon = multer({
   },
 });
 
+const uploadBrandingHeroBanner = multer({
+  ...brandingMulterBase,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    const okExt = [".jpeg", ".jpg", ".png", ".webp", ".svg"].includes(fileExt);
+    const mime = String(file.mimetype || "").toLowerCase();
+    const okMime =
+      !mime ||
+      mime === "application/octet-stream" ||
+      /^image\//i.test(mime) ||
+      /svg|jpeg|jpg|png|webp/i.test(mime);
+    if (okExt && okMime) return cb(null, true);
+    cb(new Error("Hero banner must be JPG, PNG, WebP, or SVG (max 8MB)."));
+  },
+});
+
 const uploadBrandingLogoMulter = (req, res, next) => {
   uploadBrandingLogo.single("file")(req, res, (err) => {
     if (!err) return next();
@@ -238,6 +256,22 @@ const uploadBrandingFaviconMulter = (req, res, next) => {
   });
 };
 
+const uploadBrandingHeroBannerMulter = (req, res, next) => {
+  uploadBrandingHeroBanner.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "Hero banner file is too large (max 8MB).",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Invalid hero banner upload",
+    });
+  });
+};
+
 const {
   uploadsPublicPath,
   normalizeStoredUploadsUrl,
@@ -251,6 +285,7 @@ const {
 const {
   BRANDING_LOGO_API_PATH,
   BRANDING_FAVICON_API_PATH,
+  BRANDING_HERO_BANNER_API_PATH,
   ADMIN_PROFILE_AVATAR_API_PATH,
 } = require("../../utils/brandingStoredPaths");
 
@@ -763,7 +798,7 @@ const getOrders = async (req, res) => {
       .skip(skip)
       .limit(limit)
       .select(
-        'orderNumber customerEmail paymentMethod paymentCards status paymentStatus subtotal taxAmount shippingAmount totalAmount remainingAmount requestedPaymentAmount requestedPaymentAt items createdAt estimatedDelivery deliveredAt addressId userId guestShipping'
+        'orderNumber customerEmail paymentMethod paymentCards status paymentStatus subtotal taxAmount shippingAmount totalAmount stripeAmount otcAmount remainingAmount requestedPaymentAmount requestedPaymentAt items createdAt estimatedDelivery deliveredAt addressId userId guestShipping'
       )
       .lean();
 
@@ -817,6 +852,65 @@ const getAdminOrderById = async (req, res) => {
   }
 };
 
+const getOrderInvoicePdf = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid order id" });
+    }
+    const order = await Orders.findById(id)
+      .populate("items.product", "name image category cost price")
+      .populate("addressId", "name phone fullAddress city state pincode addressType")
+      .populate("userId", "name email phone firstName lastName")
+      .lean();
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    let websiteName = "Zippyyy";
+    let websiteLogoUrl = "";
+    try {
+      const s = await AppSettings.findOne().lean();
+      if (s) {
+        websiteName = String(s.websiteName || websiteName).trim() || websiteName;
+        websiteLogoUrl = normalizeStoredUploadsUrl(String(s.websiteLogoUrl || "").trim());
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    if (websiteLogoUrl && !/^https?:\/\//i.test(websiteLogoUrl)) {
+      const proto = req.protocol || "http";
+      const host = req.get("host") || `localhost:${process.env.PORT || 5000}`;
+      websiteLogoUrl = `${proto}://${host}${websiteLogoUrl.startsWith("/") ? "" : "/"}${websiteLogoUrl}`;
+    }
+
+    const pdf = await buildOrderInvoicePdfBuffer(order, { websiteName, websiteLogoUrl });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="invoice-${String(order.orderNumber || id).replace(/[^\w.-]+/g, "_")}.pdf"`
+    );
+    return res.status(200).send(pdf);
+  } catch (error) {
+    console.error("getOrderInvoicePdf error:", error);
+    return res.status(500).json({ success: false, message: "Failed to generate invoice PDF" });
+  }
+};
+
+function lineItemsProfitForOrder(order) {
+  let sum = 0;
+  for (const item of order.items || []) {
+    const qty = Number(item.quantity || 0);
+    const price = Number(item.price || 0);
+    const cost = Number(item.product?.cost ?? 0);
+    if (Number.isFinite(qty) && Number.isFinite(price) && Number.isFinite(cost)) {
+      sum += (price - cost) * qty;
+    }
+  }
+  return +sum.toFixed(2);
+}
+
 const exportOrdersCsv = async (req, res) => {
   try {
     const status = req.query.status || "all";
@@ -839,7 +933,7 @@ const exportOrdersCsv = async (req, res) => {
     const filter = buildAdminOrdersListFilter({ status, searchRaw, dateFrom, dateTo });
 
     const orders = await Orders.find(filter)
-      .populate('items.product', 'name image category')
+      .populate('items.product', 'name image category cost')
       .populate('addressId', 'name phone fullAddress city state pincode addressType')
       .populate('userId', 'name email firstName lastName phone role isActive isDeleted')
       .sort({ createdAt: -1 })
@@ -859,7 +953,10 @@ const exportOrdersCsv = async (req, res) => {
         "date",
         "status",
         "totalAmount",
+        "lineItemsProfit",
       ];
+      let grandTotalAmt = 0;
+      let grandProfitSum = 0;
       const sumRows = orders.map((order) => {
         const customerName =
           order.userId?.name ||
@@ -871,19 +968,29 @@ const exportOrdersCsv = async (req, res) => {
           order.userId?.email ||
           order.guestShipping?.email ||
           "";
+        const totalAmt = Number(order.totalAmount || 0);
+        const profit = lineItemsProfitForOrder(order);
+        grandTotalAmt += totalAmt;
+        grandProfitSum += profit;
         return [
-          order._id || "",
+          order.orderId || order.orderNumber || order._id || "",
           order.orderNumber || "",
           customerName,
           customerEmail,
           order.createdAt ? new Date(order.createdAt).toISOString() : "",
           order.status || "",
-          Number(order.totalAmount || 0),
+          totalAmt,
+          profit,
         ]
           .map(escapeCsv)
           .join(",");
       });
-      const sumCsv = [sumHeaders.join(","), ...sumRows].join("\n");
+      const summaryFooter = new Array(sumHeaders.length).fill("");
+      summaryFooter[0] = "GRAND_TOTALS";
+      summaryFooter[1] = "Grand Total (exported orders)";
+      summaryFooter[6] = (+grandTotalAmt.toFixed(2)).toString();
+      summaryFooter[7] = (+grandProfitSum.toFixed(2)).toString();
+      const sumCsv = [sumHeaders.join(","), ...sumRows, summaryFooter.map(escapeCsv).join(",")].join("\n");
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader(
         "Content-Disposition",
@@ -943,6 +1050,9 @@ const exportOrdersCsv = async (req, res) => {
       "paymentCardsJson",
       "statusHistoryJson",
       "itemsJson",
+      "stripeAmount",
+      "otcAmount",
+      "lineItemsProfit",
     ];
 
     const rows = orders.map((order) => {
@@ -996,8 +1106,8 @@ const exportOrdersCsv = async (req, res) => {
       );
 
       return [
-        order._id || "",
-        order.orderNumber,
+        order.orderId || order.orderNumber || order._id || "",
+        order.orderNumber || order.orderId || "",
         order.userId?._id || "",
         order.addressId?._id || "",
         order.status || "",
@@ -1046,10 +1156,30 @@ const exportOrdersCsv = async (req, res) => {
         JSON.stringify(order.paymentCards || {}),
         JSON.stringify(order.statusHistory || []),
         itemsJson,
+        Number(order.stripeAmount || 0),
+        Number(order.otcAmount || 0),
+        lineItemsProfitForOrder(order),
       ].map(escapeCsv).join(",");
     });
 
-    const csv = [headers.join(","), ...rows].join("\n");
+    let grandTotalAmt = 0;
+    let grandProfitSum = 0;
+    for (const o of orders) {
+      grandTotalAmt += Number(o.totalAmount || 0);
+      grandProfitSum += lineItemsProfitForOrder(o);
+    }
+    grandTotalAmt = +grandTotalAmt.toFixed(2);
+    grandProfitSum = +grandProfitSum.toFixed(2);
+    const idxOrderNumber = headers.indexOf("orderNumber");
+    const idxTotal = headers.indexOf("totalAmount");
+    const idxProfit = headers.indexOf("lineItemsProfit");
+    const summaryRow = new Array(headers.length).fill("");
+    summaryRow[0] = "GRAND_TOTALS";
+    if (idxOrderNumber >= 0) summaryRow[idxOrderNumber] = "Grand Total (exported orders)";
+    if (idxTotal >= 0) summaryRow[idxTotal] = String(grandTotalAmt);
+    if (idxProfit >= 0) summaryRow[idxProfit] = String(grandProfitSum);
+
+    const csv = [headers.join(","), ...rows, summaryRow.map(escapeCsv).join(",")].join("\n");
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
@@ -1096,7 +1226,7 @@ const importOrdersCsv = async (req, res) => {
 
     const validStatuses = ORDER_STATUSES.filter((s) => s !== "session");
     const validPaymentStatuses = ['pending', 'paid', 'completed', 'failed', 'refunded', 'partial_refund', 'partial'];
-    const validPaymentMethods = ['stripe', 'otc', 'card', 'cash_on_delivery'];
+    const validPaymentMethods = ['stripe', 'otc', 'card', 'split', 'cash_on_delivery'];
 
     const safeParseJson = (value, fallback) => {
       try {
@@ -1248,6 +1378,9 @@ const importOrdersCsv = async (req, res) => {
       const row = rows[i];
 
       try {
+        if (String(row.orderId || "").trim() === "GRAND_TOTALS") {
+          continue;
+        }
         const orderNumber = String(row.orderNumber || "").trim();
         if (!orderNumber) throw new Error("orderNumber is required");
         if (seenOrderNumbers.has(orderNumber)) {
@@ -1309,7 +1442,10 @@ const importOrdersCsv = async (req, res) => {
           ? String(row.customerType || "").trim()
           : "new";
 
+        const importedReadableOrderId = String(row.orderId || row.orderNumber || "").trim();
         const updateDoc = {
+          orderId: importedReadableOrderId || undefined,
+          orderNumber,
           userId: resolvedUserId,
           addressId: resolvedAddressId,
           status,
@@ -1351,6 +1487,8 @@ const importOrdersCsv = async (req, res) => {
           stripeSessionId: String(row.stripeSessionId || ""),
           requestedPaymentAmount: Number(row.requestedPaymentAmount || 0),
           requestedPaymentAt: row.requestedPaymentAt ? new Date(row.requestedPaymentAt) : undefined,
+          stripeAmount: Number(row.stripeAmount ?? row.stripeamount ?? 0),
+          otcAmount: Number(row.otcAmount ?? row.otcamount ?? 0),
         };
 
         const rawOrderId = String(row.orderId || "").trim();
@@ -1366,6 +1504,7 @@ const importOrdersCsv = async (req, res) => {
               ...(rawOrderId && /^[a-fA-F0-9]{24}$/.test(rawOrderId)
                 ? { _id: new mongoose.Types.ObjectId(rawOrderId) }
                 : {}),
+              orderId: importedReadableOrderId || orderNumber,
               orderNumber,
               createdAt: row.createdAt ? new Date(row.createdAt) : undefined,
             },
@@ -2180,6 +2319,35 @@ const settingsResponse = (doc) => {
   smtpPassSet: Boolean(doc.smtpPass && String(doc.smtpPass).length > 0),
   smtpFromEmail: doc.smtpFromEmail || '',
   smtpFromName: doc.smtpFromName || 'Zippyyy',
+  marquee: {
+    enabled: Boolean(doc?.marquee?.enabled ?? true),
+    bgColor: String(doc?.marquee?.bgColor || '#e9aa42'),
+    textColor: String(doc?.marquee?.textColor || '#ffffff'),
+    speed: Number(doc?.marquee?.speed || 35),
+    slides:
+      Array.isArray(doc?.marquee?.slides) && doc.marquee.slides.length > 0
+        ? doc.marquee.slides.map((s) => String(s || '').trim()).filter(Boolean)
+        : [
+            '🥦 Fresh groceries delivered to your door – shop with ease 🥕',
+            '🥦 Free delivery on orders over $50 – order now! 🥕',
+            '🥦 Best quality, best prices – Zippyyy has it all 🥕',
+          ],
+  },
+  header: {
+    isFixed: Boolean(doc?.header?.isFixed ?? false),
+  },
+  heroBanner: {
+    image: normalizeStoredUploadsUrl(doc?.heroBanner?.image ? String(doc.heroBanner.image).trim() : ''),
+    overlayColor: String(doc?.heroBanner?.overlayColor || 'rgba(0,0,0,0.45)'),
+  },
+  socialLinks: {
+    facebook: String(doc?.socialLinks?.facebook || ''),
+    instagram: String(doc?.socialLinks?.instagram || ''),
+    linkedin: String(doc?.socialLinks?.linkedin || ''),
+    twitter: String(doc?.socialLinks?.twitter || ''),
+    snapchat: String(doc?.socialLinks?.snapchat || ''),
+    whatsapp: String(doc?.socialLinks?.whatsapp || ''),
+  },
 };
 };
 
@@ -2221,6 +2389,28 @@ const putAdminSettings = async (req, res) => {
     smtpPass: Joi.string().allow('').optional(),
     smtpFromEmail: Joi.string().allow('').max(320).optional(),
     smtpFromName: Joi.string().allow('').max(120).optional(),
+    marquee: Joi.object({
+      enabled: Joi.boolean().optional(),
+      bgColor: Joi.string().trim().max(32).optional(),
+      textColor: Joi.string().trim().max(32).optional(),
+      speed: Joi.number().min(8).max(120).optional(),
+      slides: Joi.array().items(Joi.string().trim().max(180)).min(1).max(12).optional(),
+    }).optional(),
+    header: Joi.object({
+      isFixed: Joi.boolean().optional(),
+    }).optional(),
+    heroBanner: Joi.object({
+      image: Joi.string().trim().max(2048).allow('', null).optional(),
+      overlayColor: Joi.string().trim().max(64).allow('', null).optional(),
+    }).optional(),
+    socialLinks: Joi.object({
+      facebook: Joi.string().trim().max(2048).allow('', null).optional(),
+      instagram: Joi.string().trim().max(2048).allow('', null).optional(),
+      linkedin: Joi.string().trim().max(2048).allow('', null).optional(),
+      twitter: Joi.string().trim().max(2048).allow('', null).optional(),
+      snapchat: Joi.string().trim().max(2048).allow('', null).optional(),
+      whatsapp: Joi.string().trim().max(2048).allow('', null).optional(),
+    }).optional(),
   });
   try {
     const raw = req.body || {};
@@ -2287,6 +2477,64 @@ const putAdminSettings = async (req, res) => {
     if (has('smtpFromName')) $set.smtpFromName = String(body.smtpFromName ?? '').trim();
     if (has('smtpPass') && String(body.smtpPass ?? '').length > 0) {
       $set.smtpPass = String(body.smtpPass);
+    }
+
+    if (has('marquee')) {
+      const enabled = body?.marquee?.enabled;
+      const bgColor = body?.marquee?.bgColor;
+      const textColor = body?.marquee?.textColor;
+      const speed = body?.marquee?.speed;
+      const slides = body?.marquee?.slides;
+      if (typeof enabled === 'boolean') $set['marquee.enabled'] = enabled;
+      if (bgColor !== undefined) $set['marquee.bgColor'] = String(bgColor || '').trim() || '#e9aa42';
+      if (textColor !== undefined) $set['marquee.textColor'] = String(textColor || '').trim() || '#ffffff';
+      if (speed !== undefined) $set['marquee.speed'] = Number(speed) || 35;
+      if (Array.isArray(slides)) {
+        const cleanedSlides = slides.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 12);
+        $set['marquee.slides'] = cleanedSlides.length
+          ? cleanedSlides
+          : [
+              '🥦 Fresh groceries delivered to your door – shop with ease 🥕',
+              '🥦 Free delivery on orders over $50 – order now! 🥕',
+              '🥦 Best quality, best prices – Zippyyy has it all 🥕',
+            ];
+      }
+    }
+
+    if (has('header') && body?.header && Object.prototype.hasOwnProperty.call(body.header, 'isFixed')) {
+      $set['header.isFixed'] = Boolean(body.header.isFixed);
+    }
+
+    if (has('heroBanner')) {
+      if (Object.prototype.hasOwnProperty.call(body.heroBanner || {}, 'image')) {
+        const v = normalizeStoredUploadsUrl(
+          body.heroBanner?.image == null ? '' : String(body.heroBanner.image).trim(),
+        );
+        if (v === BRANDING_HERO_BANNER_API_PATH) {
+          return res.status(400).json({
+            success: false,
+            message: 'Hero URL cannot be set to internal path. Use Upload hero banner endpoint.',
+          });
+        }
+        $set['heroBanner.image'] = v;
+        if (!v || v !== BRANDING_HERO_BANNER_API_PATH) {
+          $unset['heroBanner.imageBinary'] = 1;
+          $unset['heroBanner.imageContentType'] = 1;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(body.heroBanner || {}, 'overlayColor')) {
+        $set['heroBanner.overlayColor'] =
+          String(body.heroBanner.overlayColor || '').trim() || 'rgba(0,0,0,0.45)';
+      }
+    }
+
+    if (has('socialLinks') && body?.socialLinks) {
+      const keys = ['facebook', 'instagram', 'linkedin', 'twitter', 'snapchat', 'whatsapp'];
+      for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(body.socialLinks, key)) {
+          $set[`socialLinks.${key}`] = String(body.socialLinks[key] ?? '').trim();
+        }
+      }
     }
 
     if (Object.keys($set).length === 0 && Object.keys($unset).length === 0) {
@@ -2412,6 +2660,57 @@ const postAdminSettingsUploadFavicon = async (req, res) => {
     res.status(status).json({
       success: false,
       message: error.message || 'Failed to save favicon',
+    });
+  }
+};
+
+const postAdminSettingsUploadHeroBanner = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    let doc;
+    if (useMongoForBranding()) {
+      const buf = readBrandingFileBuffer(req.file);
+      if (!buf || !buf.length) {
+        return res.status(400).json({ success: false, message: 'No file data received' });
+      }
+      const mime = contentTypeFromFile(req.file);
+      unlinkBrandingDiskIfAny(req.file);
+      doc = await AppSettings.findOneAndUpdate(
+        {},
+        {
+          $set: {
+            'heroBanner.image': BRANDING_HERO_BANNER_API_PATH,
+            'heroBanner.imageBinary': Buffer.from(buf),
+            'heroBanner.imageContentType': mime,
+          },
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      );
+    } else {
+      const rawUrl = await finalizeBrandingUpload(req.file);
+      const url = normalizeStoredUploadsUrl(rawUrl);
+      doc = await AppSettings.findOneAndUpdate(
+        {},
+        {
+          $set: { 'heroBanner.image': url },
+          $unset: { 'heroBanner.imageBinary': 1, 'heroBanner.imageContentType': 1 },
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      );
+    }
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      Pragma: "no-cache",
+    });
+    res.json({ success: true, data: settingsResponse(doc) });
+  } catch (error) {
+    console.error('postAdminSettingsUploadHeroBanner error:', error);
+    const status = Number(error.statusCode) >= 400 && Number(error.statusCode) < 600 ? error.statusCode : 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Failed to save hero banner',
     });
   }
 };
@@ -2555,7 +2854,8 @@ const postEmailTemplatePreview = async (req, res) => {
       if (!sampleOrder) {
         sampleOrder = {
           _id: "507f1f77bcf86cd799439011",
-          orderNumber: "ORD-SAMPLE",
+          orderId: "ZPY-24APR-0001",
+          orderNumber: "ZPY-24APR-0001",
           status: "processing",
           totalAmount: 49.99,
           trackingNumber: "1Z999AA10123456784",
@@ -4328,11 +4628,13 @@ const uploadHomeSliderImage = async (req, res) => {
 // =========================
 // Products CSV Export/Import
 // =========================
+/** Column names match Product schema + import aliases (title→name, imageUrl→image, stock→quantity, costPrice→cost). */
 const PRODUCT_CSV_SAMPLE =
-  "\uFEFFtitle,description,price,comparePrice,category,stock,sku,imageUrl,status,badge,deal,dealPrice,tags\n" +
-  '"Organic Basmati Rice 5 lb","Aromatic long-grain rice ideal for daily meals.",12.99,,Dry Goods,120,BAS-RICE-5LB,"https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400",active,new,false,,"pantry,staples,rice"\n' +
-  '"Mediterranean Extra Virgin Olive Oil 1L","Cold-pressed olive oil for cooking and dressings.",18.99,24.99,American Sauces,45,OIL-EVO-1L,"https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400",active,sale,false,,"oil,cooking"\n' +
-  '"Small-Batch Coffee Beans 12 oz","Single-origin medium roast whole bean.",14.99,19.99,American Breakfast,80,COF-DEAL-12,"https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400",active,hot,true,9.99,"coffee,beverages"';
+  "\uFEFF" +
+  "name,description,price,comparePrice,salePrice,cost,category,quantity,sku,image,inStock,badge,isDeal,dealPrice,tags,unit,discount,adminPrice,dealId,nutritionInfoJson,status\n" +
+  '"Organic Oats 18 oz","Whole rolled oats for breakfast and baking.",4.99,0,0,2.10,"Dry Goods",200,OATS-18,"https://images.unsplash.com/photo-1517686469429-8bdb88b9e907?w=400",true,"",false,0,"breakfast,oats,organic",piece,0,,,{},"active"\n' +
+  '"Extra Virgin Olive Oil 500ml","Cold-pressed oil; storefront shows compare-at discount.",12.99,16.99,0,6.00,"American Sauces",60,EVOO-500,"https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400",true,"sale",false,0,"oil,cooking",piece,0,,,{},"active"\n' +
+  '"Small-Batch Coffee 12 oz","Featured deal — isDeal + dealPrice.",14.99,19.99,0,7.25,"American Breakfast",80,COFFEE-DEAL-12,"https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400",true,"hot",true,8.99,"coffee,deal,beverages",piece,0,,,{},"active"';
 
 const downloadProductsCsvSample = async (req, res) => {
   try {
@@ -4363,27 +4665,28 @@ const exportProductsCsv = async (req, res) => {
     };
 
     const headers = [
-      "title",
+      "name",
       "description",
       "price",
       "comparePrice",
       "salePrice",
+      "cost",
       "category",
-      "stock",
+      "quantity",
       "sku",
-      "imageUrl",
-      "status",
+      "image",
+      "inStock",
       "badge",
-      "deal",
+      "isDeal",
       "dealPrice",
       "tags",
-      "_id",
-      "dealId",
-      "cost",
       "unit",
       "discount",
-      "nutritionInfoJson",
       "adminPrice",
+      "dealId",
+      "nutritionInfoJson",
+      "status",
+      "_id",
       "isDisable",
       "isDeleted",
       "createdAt",
@@ -4395,6 +4698,16 @@ const exportProductsCsv = async (req, res) => {
       const nutritionInfoJson = JSON.stringify(p.nutritionInfo || {});
       const isDraft = Boolean(p.isDisable);
       const status = isDraft ? "draft" : "active";
+      const createdRaw = p.createdAt != null ? p.createdAt : p.date;
+      const updatedRaw = p.updatedAt;
+      const createdIso =
+        createdRaw == null || createdRaw === ""
+          ? ""
+          : new Date(typeof createdRaw === "number" ? createdRaw : createdRaw).toISOString();
+      const updatedIso =
+        updatedRaw == null || updatedRaw === ""
+          ? ""
+          : new Date(typeof updatedRaw === "number" ? updatedRaw : updatedRaw).toISOString();
 
       return [
         p.name,
@@ -4402,26 +4715,27 @@ const exportProductsCsv = async (req, res) => {
         Number(p.price || 0),
         Number(p.comparePrice || 0),
         Number(p.salePrice || 0),
+        Number(p.cost || 0),
         p.category,
         Number(p.quantity || 0),
         p.sku || "",
         p.image || "",
-        status,
+        Boolean(p.inStock),
         p.badge || "",
         Boolean(p.isDeal),
         Number(p.dealPrice || 0),
         tagsJoined,
-        p._id,
-        p.dealId || "",
-        Number(p.cost || 0),
         p.unit || "piece",
         Number(p.discount || 0),
-        nutritionInfoJson,
         p.adminPrice ?? "",
+        p.dealId || "",
+        nutritionInfoJson,
+        status,
+        p._id,
         Boolean(p.isDisable),
         Boolean(p.isDeleted),
-        p.createdAt ? new Date(p.createdAt).toISOString() : p.date || "",
-        p.updatedAt ? new Date(p.updatedAt).toISOString() : p.updatedAt || "",
+        createdIso,
+        updatedIso,
       ]
         .map(escapeCsv)
         .join(",");
@@ -4518,7 +4832,7 @@ const importProductsCsv = async (req, res) => {
     const successRows = [];
     const failedRows = [];
     const bulkOps = [];
-    const BATCH = 500;
+    const BATCH = 1000;
 
     const safeParseJson = (value, fallback) => {
       try {
@@ -4550,8 +4864,9 @@ const importProductsCsv = async (req, res) => {
         const image = String(
           csvPick(row, "imageurl", "image_url", "image") || ""
         ).trim();
+        if (!image) throw new Error("image (or imageUrl) is required");
         const quantity = Number(csvPick(row, "stock", "quantity", "qty") || 0);
-        const cost = Number(csvPick(row, "cost") || 0);
+        const cost = Number(csvPick(row, "cost", "costprice", "cost_price") || 0);
         const unit = String(csvPick(row, "unit") || "piece").trim() || "piece";
         const discount = Number(csvPick(row, "discount") || 0);
         const adminPriceRaw = csvPick(row, "adminprice", "admin_price");
@@ -4582,9 +4897,9 @@ const importProductsCsv = async (req, res) => {
           .trim()
           .toLowerCase();
         const inStock =
-          inStockRaw === "true"
+          inStockRaw === "true" || inStockRaw === "1" || inStockRaw === "yes"
             ? true
-            : inStockRaw === "false"
+            : inStockRaw === "false" || inStockRaw === "0" || inStockRaw === "no"
               ? false
               : quantity > 0;
 
@@ -4745,6 +5060,12 @@ router.post(
   uploadBrandingFaviconMulter,
   postAdminSettingsUploadFavicon,
 );
+router.post(
+  '/settings/upload-hero-banner',
+  adminAuth,
+  uploadBrandingHeroBannerMulter,
+  postAdminSettingsUploadHeroBanner,
+);
 router.post('/settings/smtp/verify', adminAuth, postSmtpVerify);
 router.post('/settings/smtp/test', adminAuth, postSmtpTestEmail);
 
@@ -4754,6 +5075,7 @@ router.post('/email-templates/preview', adminAuth, postEmailTemplatePreview);
 
 router.get('/orders', adminAuth, getOrders);
 router.get('/orders/export-csv', adminAuth, exportOrdersCsv);
+router.get('/orders/:id/invoice.pdf', adminAuth, getOrderInvoicePdf);
 router.get('/orders/:id', adminAuth, getAdminOrderById);
 router.post('/orders/import-csv', adminAuth, upload.single('file'), importOrdersCsv);
 router.patch('/orders/:id/cancel-payment-request', adminAuth, cancelPaymentRequest);

@@ -57,6 +57,7 @@ const AdminGeneralSettings = lazy(() => import('./pages/admin/AdminGeneralSettin
 const AdminProfileSettings = lazy(() => import('./pages/admin/AdminProfileSettings'));
 const AdminEmailSettings = lazy(() => import('./pages/admin/AdminEmailSettings'));
 const AdminEmailTemplates = lazy(() => import('./pages/admin/AdminEmailTemplates'));
+const AdminStorefrontSettings = lazy(() => import('./pages/admin/AdminStorefrontSettings'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminContacts = lazy(() => import('./pages/admin/AdminContacts'));
 
@@ -151,6 +152,7 @@ function App() {
                             <Route path="messages" element={<AdminMessages />} />
                             <Route path="settings/templates" element={<AdminEmailTemplates />} />
                             <Route path="settings/email" element={<AdminEmailSettings />} />
+                            <Route path="settings/storefront" element={<AdminStorefrontSettings />} />
                             <Route path="settings/general" element={<AdminGeneralSettings />} />
                             <Route path="settings/profile" element={<AdminProfileSettings />} />
                             <Route path="settings" element={<AdminSettings />} />

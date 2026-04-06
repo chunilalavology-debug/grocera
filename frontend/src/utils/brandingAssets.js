@@ -55,7 +55,7 @@ export function withAssetCacheBust(url, revision) {
   if (!url || /^data:/i.test(url)) return url;
   const rev = revision != null ? String(revision) : String(Date.now());
   try {
-    const u = new URL(url, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
+    const u = new URL(url, typeof window !== 'undefined' ? window.location.href : 'https://example.invalid');
     u.searchParams.set('v', rev);
     return u.toString();
   } catch {

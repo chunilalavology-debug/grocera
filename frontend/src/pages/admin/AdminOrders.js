@@ -50,6 +50,8 @@ export default function AdminOrders() {
           tax: order.taxAmount || 0,
           shipping: order.shippingAmount || 0,
           total: order.totalAmount || 0,
+          stripe: order.stripeAmount || 0,
+          otc: order.otcAmount || 0,
           remaining: order.remainingAmount || 0,
         },
         paymentMethod: order?.paymentMethod,
@@ -372,6 +374,11 @@ export default function AdminOrders() {
                         <td className="px-4 py-3 text-slate-600">{formatDateTime(order.timeline?.createdAt)}</td>
                         <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-900">
                           {formatCurrency(order.amounts?.total)}
+                          {Number(order.amounts?.stripe || 0) > 0 || Number(order.amounts?.otc || 0) > 0 ? (
+                            <p className="text-[11px] font-medium text-slate-500">
+                              Card {formatCurrency(order.amounts?.stripe)} | OTC {formatCurrency(order.amounts?.otc)}
+                            </p>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">
                           <AdminBadge variant={paymentVariant(order.paymentStatus)}>
@@ -504,7 +511,9 @@ export default function AdminOrders() {
                   Export orders
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Uses the same status and search as the table below. Leave dates empty to export that full filtered set.
+                  Uses the same status and search as the table below. Leave dates empty to export that full filtered set. Full export ends with a summary row (grand totals) and includes{' '}
+                  <span className="font-mono text-xs">lineItemsProfit</span> (selling price − product cost per line) plus{' '}
+                  <span className="font-mono text-xs">stripeAmount</span> / <span className="font-mono text-xs">otcAmount</span> when present.
                 </p>
               </div>
               <button

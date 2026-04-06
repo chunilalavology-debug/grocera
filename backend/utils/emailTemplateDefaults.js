@@ -2,7 +2,8 @@
  * Default seed content when DB templates are missing.
  * Variables: {{customerName}}, {{orderNumber}}, {{orderId}}, {{orderItemsHtml}}, {{totalAmount}},
  * {{shippingAddressHtml}}, {{status}}, {{statusLabel}}, {{statusMessage}}, {{trackingBlockHtml}},
- * {{storeName}}, {{contactName}}, {{contactEmail}}, {{queryType}}, {{contactSubject}}, {{contactMessage}}
+ * {{storeName}}, {{contactName}}, {{contactEmail}}, {{queryType}}, {{contactSubject}}, {{contactMessage}},
+ * {{paymentMethod}}, {{stripeAmount}}, {{otcAmount}}, {{paymentBreakdown}}
  */
 
 const wrap = (inner) => `
@@ -36,6 +37,21 @@ module.exports.TEMPLATE_DEFAULTS = [
     bodyHtml: wrap(`
       <p style="margin:0 0 12px;font-size:15px;color:#18181b;">New order <strong>#{{orderNumber}}</strong></p>
       <p style="margin:0 0 8px;font-size:13px;color:#52525b;"><strong>Customer:</strong> {{customerName}} &lt;{{customerEmail}}&gt;</p>
+      <div style="margin:16px 0;">{{orderItemsHtml}}</div>
+      <p style="margin:0;font-size:18px;font-weight:700;">Total: {{totalAmount}}</p>
+      <div style="margin-top:16px;">{{shippingAddressHtml}}</div>
+    `),
+  },
+  {
+    key: "order_admin_otc",
+    name: "New OTC/split order (admin)",
+    description: "Alert sent to admin inbox for OTC or split checkout orders.",
+    subject: "OTC order alert – #{{orderNumber}}",
+    bodyHtml: wrap(`
+      <p style="margin:0 0 12px;font-size:15px;color:#18181b;">New OTC/split order <strong>#{{orderNumber}}</strong></p>
+      <p style="margin:0 0 8px;font-size:13px;color:#52525b;"><strong>Customer:</strong> {{customerName}} &lt;{{customerEmail}}&gt;</p>
+      <p style="margin:0 0 8px;font-size:13px;color:#52525b;"><strong>Payment method:</strong> {{paymentMethod}}</p>
+      <p style="margin:0 0 8px;font-size:13px;color:#52525b;"><strong>Breakdown:</strong> {{paymentBreakdown}}</p>
       <div style="margin:16px 0;">{{orderItemsHtml}}</div>
       <p style="margin:0;font-size:18px;font-weight:700;">Total: {{totalAmount}}</p>
       <div style="margin-top:16px;">{{shippingAddressHtml}}</div>

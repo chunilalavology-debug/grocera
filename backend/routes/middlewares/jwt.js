@@ -85,6 +85,7 @@ function isPublicJwtPath(req) {
       `${A}/user/site-settings`,
       `${A}/user/site-branding/logo`,
       `${A}/user/site-branding/favicon`,
+      `${A}/user/site-branding/hero-banner`,
       `${A}/user/referral/discount`,
     ].map(normalizeJwtPathname),
   );
@@ -93,6 +94,7 @@ function isPublicJwtPath(req) {
   if (pathname === normalizeJwtPathname(`${A}/settings`) && m === "GET") return true;
 
   if (pathname === normalizeJwtPathname(`${A}/user/contactForm`) && m === "POST") return true;
+  if (pathname === normalizeJwtPathname(`${A}/shipping/get-rates`) && m === "POST") return true;
 
   /** Guest checkout — body must include shipping `address`; logged-in users send addressId + Bearer token */
   if (pathname === normalizeJwtPathname(`${A}/user/orderPayment`) && m === "POST") return true;

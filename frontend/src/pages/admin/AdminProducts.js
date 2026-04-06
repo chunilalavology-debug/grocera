@@ -439,6 +439,15 @@ function AdminProducts() {
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Products</h1>
             <p className="mt-1 text-sm text-slate-500">Manage your catalog, inventory, and pricing.</p>
+            <p className="mt-2 max-w-3xl text-xs text-slate-500">
+              Import/export uses the same columns as the database:{' '}
+              <span className="font-mono text-slate-600">
+                name, description, price, comparePrice, salePrice, cost, category, quantity, sku, image, inStock, badge,
+                isDeal, dealPrice, tags, unit, discount, adminPrice, dealId, nutritionInfoJson, status
+              </span>
+              . Aliases supported: <span className="font-mono">title</span>→name, <span className="font-mono">imageUrl</span>→image,{' '}
+              <span className="font-mono">stock</span>→quantity, <span className="font-mono">costPrice</span>→cost. Every row must include a non-empty image URL.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <AdminButton variant="secondary" size="md" type="button" onClick={handleDownloadSampleCsv}>

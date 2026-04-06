@@ -1,15 +1,22 @@
-const mongoose = require('mongoose');
-const { v4: uuid } = require('uuid');
+const mongoose = require("mongoose");
 
 // Production-ready Order Schema with comprehensive tracking
 const orderSchema = new mongoose.Schema({
   // Order Identification
+  orderId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+    trim: true,
+  },
+  /** Backward-compatible alias used across existing admin/front-end/email code paths. */
   orderNumber: {
     type: String,
     unique: true,
-    required: true,
+    sparse: true,
     index: true,
-    default: () => `ORD-${uuid().slice(0, 8).toUpperCase()}`
+    trim: true,
   },
 
   userId: {
@@ -113,9 +120,12 @@ const orderSchema = new mongoose.Schema({
 
   paymentMethod: {
     type: String,
-    enum: ['stripe', 'otc', 'card', 'cash_on_delivery'],
+    enum: ['stripe', 'otc', 'card', 'split', 'cash_on_delivery'],
     default: 'stripe'
   },
+
+  stripeAmount: { type: Number, default: 0, min: 0 },
+  otcAmount: { type: Number, default: 0, min: 0 },
 
   paymentCards: {
     name: String,
@@ -185,6 +195,9 @@ orderSchema.index({ userId: 1, status: 1, createdAt: -1 });
 orderSchema.index({ status: 1, paymentStatus: 1 });
 
 orderSchema.pre('save', function (next) {
+  if (!this.orderId && this.orderNumber) this.orderId = this.orderNumber;
+  if (!this.orderNumber && this.orderId) this.orderNumber = this.orderId;
+
   if (this.user && !this.userId) this.userId = this.user;
   if (this.userId && !this.user) this.user = this.userId;
 

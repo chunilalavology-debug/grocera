@@ -43,6 +43,7 @@ const NAV_ITEMS_AFTER_PRODUCTS = [
 ];
 
 const SETTINGS_SUBLINKS = [
+  { to: '/admin/settings/storefront', label: 'Storefront', end: true },
   { to: '/admin/settings/general', label: 'General', end: true },
   { to: '/admin/settings/profile', label: 'Profile', end: true },
   { to: '/admin/settings', label: 'Notifications & homepage', end: true },

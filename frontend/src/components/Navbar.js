@@ -55,7 +55,7 @@ function Navbar() {
   const { isAuthenticated, logout, isAdmin, isCoAdmin } = useAuth();
   const { itemCount } = useCart();
   const { wishlistCount, openDrawer: openWishlist } = useWishlist();
-  const { websiteName, websiteLogoSrc } = useSiteBranding();
+  const { websiteName, websiteLogoSrc, siteSettings } = useSiteBranding();
 
   /** From GET /user/getCategories (active only). Null = not loaded yet — keep static lists. */
   const [searchCategoryOptions, setSearchCategoryOptions] = useState(SEARCH_CATEGORIES);
@@ -158,22 +158,36 @@ function Navbar() {
     setCategoryFilter('');
   };
 
+  const marqueeSlides =
+    Array.isArray(siteSettings?.marquee?.slides) && siteSettings.marquee.slides.length > 0
+      ? siteSettings.marquee.slides
+      : [];
+  const marqueeLoopSlides = marqueeSlides.length > 0 ? [...marqueeSlides, ...marqueeSlides] : [];
+  const marqueeEnabled = Boolean(siteSettings?.marquee?.enabled) && marqueeSlides.length > 0;
+  const marqueeStyle = {
+    '--header-top-bg': siteSettings?.marquee?.bgColor || '#e9aa42',
+    '--header-top-text': siteSettings?.marquee?.textColor || '#ffffff',
+    '--header-top-text-hover': siteSettings?.marquee?.textColor || '#ffffff',
+  };
+  const marqueeDuration = `${Math.max(8, Number(siteSettings?.marquee?.speed || 35))}s`;
+
   return (
-    <header className="header-nest">
+    <header className={`header-nest${siteSettings?.header?.isFixed ? ' header-nest--sticky' : ''}`}>
       {/* ----- 1. Top bar (dark) ----- */}
-      <div className="header-top">
+      {marqueeEnabled ? (
+      <div className="header-top" style={marqueeStyle}>
         <div className="header-top__inner container">
           {/* Desktop: marquee only */}
           <div className="header-top__center header-top__desktop-only">
             <div className="header-top__marquee-wrap header-top__marquee--desktop">
               <div className="header-top__marquee">
-                <div className="header-top__marquee-inner header-top__marquee-inner--desktop">
-                  <span>🥦 Fresh groceries delivered to your door – shop with ease 🥕</span>
-                  <span>🥦 Free delivery on orders over $50 – order now! 🥕</span>
-                  <span>🥦 Best quality, best prices – Zippyyy has it all 🥕</span>
-                  <span>🥦 Fresh groceries delivered to your door – shop with ease 🥕</span>
-                  <span>🥦 Free delivery on orders over $50 – order now! 🥕</span>
-                  <span>🥦 Best quality, best prices – Zippyyy has it all 🥕</span>
+                <div
+                  className="header-top__marquee-inner header-top__marquee-inner--desktop"
+                  style={{ animationDuration: marqueeDuration }}
+                >
+                  {marqueeLoopSlides.map((slide, idx) => (
+                    <span key={`desktop-slide-${idx}`}>{slide}</span>
+                  ))}
                 </div>
               </div>
             </div>
@@ -181,14 +195,16 @@ function Navbar() {
           {/* Mobile: marquee only */}
           <div className="header-top__marquee-wrap header-top__mobile-only" aria-hidden="true">
             <div className="header-top__marquee">
-              <div className="header-top__marquee-inner">
-                <span>🥦 Hot deals this week – Free delivery on orders over $50 – Fresh groceries to your door 🥕</span>
-                <span>🥦 Hot deals this week – Free delivery on orders over $50 – Fresh groceries to your door 🥕</span>
+              <div className="header-top__marquee-inner" style={{ animationDuration: marqueeDuration }}>
+                {marqueeLoopSlides.map((slide, idx) => (
+                  <span key={`mobile-slide-${idx}`}>{slide}</span>
+                ))}
               </div>
             </div>
           </div>
         </div>
       </div>
+      ) : null}
 
       {/* ----- 2. Main bar (logo + browse, search, location, compare, wishlist, cart, account, support) ----- */}
       <div className="header-main">

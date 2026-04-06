@@ -16,6 +16,7 @@ import ScrollReveal from '../components/ScrollReveal';
 import StarRating from '../components/StarRating';
 import { getProductCardDiscountPercent } from '../utils/productDiscountDisplay';
 import { productCardBadgeFromApi } from '../utils/productCardBadge';
+import { filterProductsBySearch } from '../utils/fuzzyProductMatch';
 
 function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -69,6 +70,10 @@ function Products() {
   const [priceMax, setPriceMax] = useState('');
   const [sortBy, setSortBy] = useState('default');
   const [inStockOnly, setInStockOnly] = useState(false);
+  const minPriceNum = priceMin !== '' ? parseFloat(priceMin) : null;
+  const maxPriceNum = priceMax !== '' ? parseFloat(priceMax) : null;
+  const hasValidMin = minPriceNum != null && !Number.isNaN(minPriceNum) && minPriceNum >= 0;
+  const hasValidMax = maxPriceNum != null && !Number.isNaN(maxPriceNum) && maxPriceNum >= 0;
 
   const SITE_COLOR = '#3090cf';
   const STAR_GOLD = '#f5c542';
@@ -133,6 +138,8 @@ function Products() {
           ...(debouncedSearch && {
             search: debouncedSearch
           }),
+          ...(hasValidMin && { minPrice: minPriceNum }),
+          ...(hasValidMax && { maxPrice: maxPriceNum }),
           limit: perPage,
           cursor: cursorToUse
         }
@@ -179,7 +186,7 @@ function Products() {
     setCurrentPage(1);
     fetchPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional reset + page-1 fetch when filters change
-  }, [selectedCategory, selectedMain, debouncedSearch]);
+  }, [selectedCategory, selectedMain, debouncedSearch, minPriceNum, maxPriceNum]);
 
   // When switching between mobile/desktop, reset cursor pagination so perPage stays correct (6 on mobile, 12 on desktop)
   useEffect(() => {
@@ -194,10 +201,19 @@ function Products() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchTerm);
-    }, 500);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (searchTerm && searchTerm.trim()) next.set('search', searchTerm.trim());
+    else next.delete('search');
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchTerm, searchParams, setSearchParams]);
 
 
   const fetchCategories = async () => {
@@ -289,12 +305,9 @@ function Products() {
       ? mainTabSubcategories
       : getSubcategories(selectedMain);
 
-  const minPriceNum = priceMin !== '' ? parseFloat(priceMin) : null;
-  const maxPriceNum = priceMax !== '' ? parseFloat(priceMax) : null;
-  const hasValidMin = minPriceNum != null && !Number.isNaN(minPriceNum) && minPriceNum >= 0;
-  const hasValidMax = maxPriceNum != null && !Number.isNaN(maxPriceNum) && maxPriceNum >= 0;
+  const fuzzyMatchedProducts = filterProductsBySearch(products, debouncedSearch);
 
-  const filteredProducts = products
+  const filteredProducts = fuzzyMatchedProducts
     .filter((p) => {
       const price = p.hasDeal ? p.finalPrice : p.price;
       const numPrice = parseFloat(price);
@@ -592,8 +605,14 @@ function Products() {
         ) : filteredProducts.length === 0 ? (
           <div className="py-12 sm:py-20 text-center px-4">
             <div className="text-5xl sm:text-7xl mb-4 sm:mb-6 opacity-30">⏳</div>
-            <h3 className="text-xl sm:text-2xl font-bold text-gray-800">No products match your filters</h3>
-            <p className="text-gray-500 mt-2 text-sm sm:text-base">Try adjusting price, category or in-stock filter.</p>
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-800">
+              {debouncedSearch ? 'No results found' : 'No products match your filters'}
+            </h3>
+            <p className="text-gray-500 mt-2 text-sm sm:text-base">
+              {debouncedSearch
+                ? 'Try another keyword or clear some filters.'
+                : 'Try adjusting price, category or in-stock filter.'}
+            </p>
           </div>
         ) : (
           <>

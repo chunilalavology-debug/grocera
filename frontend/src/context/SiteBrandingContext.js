@@ -13,6 +13,32 @@ import { resolveBrandingAssetUrl, withAssetCacheBust } from '../utils/brandingAs
 const SiteBrandingContext = createContext(null);
 
 const DEFAULT_NAME = 'Zippyyy';
+const DEFAULT_SITE_SETTINGS = {
+  marquee: {
+    enabled: true,
+    bgColor: '#e9aa42',
+    textColor: '#ffffff',
+    speed: 35,
+    slides: [
+      '🥦 Fresh groceries delivered to your door – shop with ease 🥕',
+      '🥦 Free delivery on orders over $50 – order now! 🥕',
+      '🥦 Best quality, best prices – Zippyyy has it all 🥕',
+    ],
+  },
+  header: { isFixed: false },
+  heroBanner: {
+    image: '',
+    overlayColor: 'rgba(0,0,0,0.45)',
+  },
+  socialLinks: {
+    facebook: '',
+    instagram: '',
+    linkedin: '',
+    twitter: '',
+    snapchat: '',
+    whatsapp: '',
+  },
+};
 
 function defaultFaviconHref() {
   const base = typeof window !== 'undefined' ? window.location.origin : '';
@@ -56,6 +82,7 @@ export function SiteBrandingProvider({ children }) {
   const [websiteName, setWebsiteName] = useState(DEFAULT_NAME);
   const [websiteLogoUrl, setWebsiteLogoUrl] = useState('');
   const [websiteFaviconUrl, setWebsiteFaviconUrl] = useState('');
+  const [siteSettings, setSiteSettings] = useState(DEFAULT_SITE_SETTINGS);
   const [brandingRevision, setBrandingRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const revisionRef = useRef(0);
@@ -75,6 +102,33 @@ export function SiteBrandingProvider({ children }) {
         setWebsiteName(name);
         setWebsiteLogoUrl(resolveBrandingAssetUrl(rawLogo));
         setWebsiteFaviconUrl(resolveBrandingAssetUrl(rawFavicon));
+        setSiteSettings({
+          marquee: {
+            enabled: Boolean(d?.marquee?.enabled ?? true),
+            bgColor: String(d?.marquee?.bgColor || '#e9aa42'),
+            textColor: String(d?.marquee?.textColor || '#ffffff'),
+            speed: Number(d?.marquee?.speed || 35),
+            slides:
+              Array.isArray(d?.marquee?.slides) && d.marquee.slides.length > 0
+                ? d.marquee.slides.map((s) => String(s || '').trim()).filter(Boolean)
+                : DEFAULT_SITE_SETTINGS.marquee.slides,
+          },
+          header: {
+            isFixed: Boolean(d?.header?.isFixed ?? false),
+          },
+          heroBanner: {
+            image: resolveBrandingAssetUrl(String(d?.heroBanner?.image || '').trim()),
+            overlayColor: String(d?.heroBanner?.overlayColor || 'rgba(0,0,0,0.45)'),
+          },
+          socialLinks: {
+            facebook: String(d?.socialLinks?.facebook || ''),
+            instagram: String(d?.socialLinks?.instagram || ''),
+            linkedin: String(d?.socialLinks?.linkedin || ''),
+            twitter: String(d?.socialLinks?.twitter || ''),
+            snapchat: String(d?.socialLinks?.snapchat || ''),
+            whatsapp: String(d?.socialLinks?.whatsapp || ''),
+          },
+        });
         revisionRef.current += 1;
         setBrandingRevision(revisionRef.current);
       }
@@ -130,10 +184,11 @@ export function SiteBrandingProvider({ children }) {
       websiteLogoUrl,
       websiteLogoSrc,
       websiteFaviconUrl,
+      siteSettings,
       loading,
       refresh,
     }),
-    [websiteName, websiteLogoUrl, websiteLogoSrc, websiteFaviconUrl, loading, refresh],
+    [websiteName, websiteLogoUrl, websiteLogoSrc, websiteFaviconUrl, siteSettings, loading, refresh],
   );
 
   return (

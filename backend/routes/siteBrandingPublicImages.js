@@ -39,4 +39,19 @@ async function getSiteBrandingFavicon(_req, res) {
   }
 }
 
-module.exports = { getSiteBrandingLogo, getSiteBrandingFavicon };
+async function getSiteBrandingHeroBanner(_req, res) {
+  try {
+    const doc = await AppSettings.findOne()
+      .select("+heroBanner.imageBinary +heroBanner.imageContentType")
+      .lean();
+    const img = doc?.heroBanner?.imageBinary;
+    const ct = doc?.heroBanner?.imageContentType;
+    if (doc && sendBuffer(res, img, ct)) return;
+    return res.status(404).end();
+  } catch (e) {
+    console.error("getSiteBrandingHeroBanner", e);
+    return res.status(500).end();
+  }
+}
+
+module.exports = { getSiteBrandingLogo, getSiteBrandingFavicon, getSiteBrandingHeroBanner };

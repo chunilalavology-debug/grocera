@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import api from "../../../services/api";
 import { resolveBrandingAssetUrl } from "../../../utils/brandingAssets";
+import { coerceSlidesFromApi } from "../../../utils/homeSliderCoercion";
 
 /** Shown only when the API fails or returns no usable slides (no bundled marketing images). */
 const PLACEHOLDER_SLIDES = [
@@ -56,7 +57,7 @@ function HomeCustomSlider() {
         });
         if (cancelled) return;
         if (res?.success && res?.data && typeof res.data === "object") {
-          const nextSlides = Array.isArray(res.data.slides) ? res.data.slides : [];
+          const nextSlides = coerceSlidesFromApi(res.data.slides);
           const valid = nextSlides.filter(
             (s) => s && String(s.title || "").trim() && String(s.imageUrl || s.img || "").trim()
           );

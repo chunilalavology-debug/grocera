@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -93,11 +93,18 @@ export default function Checkout() {
     cvv: '',
     nameOnCard: ''
   });
+  const [splitCardAmount, setSplitCardAmount] = useState('');
 
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [showOtcPolicyModal, setShowOtcPolicyModal] = useState(false);
   const [otcPolicyAccepted, setOtcPolicyAccepted] = useState(false);
   const [otcPinVisible, setOtcPinVisible] = useState(false);
+  const onlyDigits = (v = '') => String(v).replace(/\D/g, '');
+  const onlyAlphaSpace = (v = '') => String(v).replace(/[^A-Za-z\s]/g, '').replace(/\s{2,}/g, ' ');
+  const safeMoney = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? +n.toFixed(2) : 0;
+  };
   const isVegetableCategory = (category = '') => {
     const c = String(category).toLowerCase();
     return c.includes('vegetable') || c === 'fresh vegetables' || c === 'vegetables';
@@ -218,17 +225,46 @@ export default function Checkout() {
     }
 
     if (paymentMethod === 'otc') {
-      if (!cardDetails.nameOnCard.trim()) {
+      const otcName = String(cardDetails.nameOnCard || '').trim();
+      if (!otcName) {
         toast.error("Please enter the name for OTC payment");
         return;
       }
-      if (!cardDetails.number) {
+      if (!/^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(otcName)) {
+        toast.error("Name must contain only letters and spaces.");
+        return;
+      }
+      const otcCardDigits = onlyDigits(cardDetails.number);
+      if (!otcCardDigits) {
         toast.error("Please enter your OTC card number to proceed.");
         return;
       }
       const pinDigits = String(cardDetails.cvv || "").replace(/\D/g, "");
       if (pinDigits.length < 3 || pinDigits.length > 12) {
         toast.error("Please enter your OTC PIN (3–12 digits)");
+        return;
+      }
+    }
+    if (paymentMethod === 'split') {
+      const otcName = String(cardDetails.nameOnCard || '').trim();
+      if (!otcName || !/^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(otcName)) {
+        toast.error("Split payment requires a valid OTC name (letters and spaces only).");
+        return;
+      }
+      const otcCardDigits = onlyDigits(cardDetails.number);
+      if (!otcCardDigits) {
+        toast.error("Please enter OTC card number for split payment.");
+        return;
+      }
+      const pinDigits = onlyDigits(cardDetails.cvv);
+      if (pinDigits.length < 3 || pinDigits.length > 12) {
+        toast.error("Please enter OTC PIN (3–12 digits) for split payment.");
+        return;
+      }
+      const splitValue = safeMoney(splitCardAmount);
+      const grandTotal = safeMoney(finalTotal);
+      if (splitValue <= 0 || splitValue >= grandTotal) {
+        toast.error("Card split amount must be greater than $0 and less than total.");
         return;
       }
     }
@@ -273,9 +309,18 @@ export default function Checkout() {
       }
 
       if (paymentMethod === 'otc') {
-        payload.cardNumber = cardDetails.number;
+        payload.cardNumber = onlyDigits(cardDetails.number);
         payload.pin = String(cardDetails.cvv || "").replace(/\D/g, "").slice(0, 12);
-        payload.name = cardDetails.nameOnCard;
+        payload.name = String(cardDetails.nameOnCard || "").trim();
+      }
+      if (paymentMethod === 'split') {
+        const paidByStripe = safeMoney(splitCardAmount);
+        const paidByOTC = safeMoney(finalTotal - paidByStripe);
+        payload.splitCardAmount = paidByStripe;
+        payload.splitOtcAmount = paidByOTC;
+        payload.cardNumber = onlyDigits(cardDetails.number);
+        payload.pin = onlyDigits(cardDetails.cvv).slice(0, 12);
+        payload.name = String(cardDetails.nameOnCard || "").trim();
       }
 
       const res = await api.post("/user/orderPayment", payload);
@@ -320,16 +365,18 @@ export default function Checkout() {
     const digitsInPhone = phone.replace(/\D/g, "");
 
     if (!name) errors.name = "Receiver's name is required.";
+    else if (!/^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(name))
+      errors.name = "Name must contain only letters and spaces.";
     if (!phone) errors.phone = "Phone number is required.";
-    else if (digitsInPhone.length < 10)
-      errors.phone = "Enter a valid phone number (at least 10 digits).";
+    else if (!/^\d{1,20}$/.test(digitsInPhone))
+      errors.phone = "Enter a valid phone number (digits only, up to 20).";
     if (!email) errors.email = "Email is required for order confirmation.";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "Enter a valid email address.";
     if (!fullAddress) errors.fullAddress = "Street address is required.";
     if (!city) errors.city = "City is required.";
     if (!pincode) errors.pincode = "ZIP / postal code is required.";
-    else if (!/^[A-Za-z0-9][A-Za-z0-9\s-]{2,}$/.test(pincode))
-      errors.pincode = "ZIP / postal code looks invalid.";
+    else if (!/^\d{3,12}$/.test(pincode))
+      errors.pincode = "ZIP must be digits only (3-12 digits).";
 
     const allowedTypes = ADDRESS_TYPE_OPTIONS.map((o) => o.value);
     if (!allowedTypes.includes(newAddress.addressType)) {
@@ -724,9 +771,39 @@ export default function Checkout() {
                       <p className="text-sm text-slate-500">Pay with OTC card number and PIN</p>
                     </div>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('split')}
+                    className={`w-full flex items-center gap-4 p-4 min-h-[52px] sm:min-h-0 text-left transition-colors ${paymentMethod === 'split' ? 'bg-blue-50 border-l-4 border-l-[#3090cf]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
+                  >
+                    <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${paymentMethod === 'split' ? 'border-[#3090cf] bg-white' : 'border-slate-300'}`}>
+                      {paymentMethod === 'split' && <span className="w-2 h-2 rounded-full bg-[#3090cf]" />}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-900">Split Payment</p>
+                      <p className="text-sm text-slate-500">Pay part by card and remaining by OTC</p>
+                    </div>
+                  </button>
                 </div>
 
-                {paymentMethod === 'otc' && otcPolicyAccepted && (
+                {paymentMethod === 'split' && (
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <PremiumInput
+                      label="Amount via Card (Stripe)"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="Enter amount"
+                      value={splitCardAmount}
+                      onChange={(e) => setSplitCardAmount(e.target.value)}
+                    />
+                    <p className="mt-2 text-xs text-slate-600">
+                      Remaining via OTC: <span className="font-semibold">${Math.max(0, safeMoney(finalTotal) - safeMoney(splitCardAmount)).toFixed(2)}</span>
+                    </p>
+                  </div>
+                )}
+
+                {(paymentMethod === 'otc' && otcPolicyAccepted) || paymentMethod === 'split' ? (
                   <div className="mt-6 space-y-4">
                     <div className="p-6 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
                       <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-2">OTC details</h4>
@@ -735,14 +812,14 @@ export default function Checkout() {
                       label="Name on Card"
                       placeholder="Full Name"
                       value={cardDetails.nameOnCard}
-                      onChange={(e) => setCardDetails({ ...cardDetails, nameOnCard: e.target.value })}
+                      onChange={(e) => setCardDetails({ ...cardDetails, nameOnCard: onlyAlphaSpace(e.target.value) })}
                     />
 
                     <PremiumInput
                       label="Card Number"
                       placeholder="0000 0000 0000 0000"
                       value={cardDetails.number}
-                      onChange={(e) => setCardDetails({ ...cardDetails, number: e.target.value })}
+                      onChange={(e) => setCardDetails({ ...cardDetails, number: onlyDigits(e.target.value).slice(0, 24) })}
                     />
 
                     <div className="flex flex-col group">
@@ -773,14 +850,13 @@ export default function Checkout() {
                           onClick={() => setOtcPinVisible((v) => !v)}
                           aria-label={otcPinVisible ? 'Hide PIN' : 'Show PIN'}
                         >
-                          {otcPinVisible ? <EyeOff size={20} strokeWidth={2} /> : <Eye size={20} strokeWidth={2} />}
+                          <Eye size={20} strokeWidth={2} />
                         </button>
                       </div>
-                      <p className="text-[11px] text-gray-400 mt-1.5 ml-1 font-medium">3–12 digits</p>
                     </div>
                   </div>
                   </div>
-                )}
+                ) : null}
               </div>
 
               <div className="mt-8 pt-6 border-t border-slate-100">
@@ -1054,7 +1130,9 @@ export default function Checkout() {
                   ? "Processing..."
                   : paymentMethod === 'card'
                     ? "Pay with Card"
-                    : "Place Order (OTC)"}
+                    : paymentMethod === 'split'
+                      ? "Pay Split (Card + OTC)"
+                      : "Place Order (OTC)"}
               </button>
 
               {!selectedAddressId && (
@@ -1118,7 +1196,7 @@ export default function Checkout() {
                     placeholder="Full name"
                     value={newAddress.name}
                     error={addressFieldErrors.name}
-                    onChange={(e) => updateNewAddress({ name: e.target.value })}
+                    onChange={(e) => updateNewAddress({ name: onlyAlphaSpace(e.target.value) })}
                   />
                   <PremiumInput
                     label="Phone Number"
@@ -1128,7 +1206,7 @@ export default function Checkout() {
                     placeholder="Mobile number"
                     value={newAddress.phone}
                     error={addressFieldErrors.phone}
-                    onChange={(e) => updateNewAddress({ phone: e.target.value })}
+                    onChange={(e) => updateNewAddress({ phone: onlyDigits(e.target.value).slice(0, 20) })}
                   />
                 </div>
 
@@ -1175,7 +1253,7 @@ export default function Checkout() {
                     placeholder="Zipcode"
                     value={newAddress.pincode}
                     error={addressFieldErrors.pincode}
-                    onChange={(e) => updateNewAddress({ pincode: e.target.value })}
+                    onChange={(e) => updateNewAddress({ pincode: onlyDigits(e.target.value).slice(0, 12) })}
                   />
                 </div>
 

@@ -9,7 +9,7 @@ function profileImageUrlNeedsAuthFetch(resolvedUrl) {
   const s = String(resolvedUrl || '').trim();
   if (!s || s.startsWith('blob:')) return false;
   try {
-    const u = new URL(s, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
+    const u = new URL(s, typeof window !== 'undefined' ? window.location.href : 'https://example.invalid');
     return u.pathname.endsWith('/admin/profile/avatar-image');
   } catch {
     return false;

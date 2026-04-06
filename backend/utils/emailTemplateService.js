@@ -76,14 +76,24 @@ function trackingBlockHtml(order) {
 function buildOrderTemplateVars(order, extra = {}) {
   const status = extra.status || order.status;
   const s = String(status || "").toLowerCase();
+  const stripeAmount = Number(order?.stripeAmount || 0);
+  const otcAmount = Number(order?.otcAmount || 0);
+  const paymentMethod = String(order?.paymentMethod || "card").toUpperCase();
+  const paymentBreakdown = otcAmount > 0 || stripeAmount > 0
+    ? `Card: ${formatMoney(stripeAmount)} | OTC: ${formatMoney(otcAmount)}`
+    : paymentMethod;
   return {
     storeName: process.env.STORE_NAME || "Zippyyy",
     customerName: getCustomerName(order),
     customerEmail: getCustomerEmail(order) || "—",
-    orderId: String(order._id || ""),
-    orderNumber: order.orderNumber || String(order._id || ""),
+    orderId: String(order.orderId || order.orderNumber || order._id || ""),
+    orderNumber: order.orderNumber || order.orderId || String(order._id || ""),
     orderItemsHtml: orderItemsHtmlTable(order),
     totalAmount: formatMoney(order.totalAmount),
+    paymentMethod,
+    stripeAmount: formatMoney(stripeAmount),
+    otcAmount: formatMoney(otcAmount),
+    paymentBreakdown,
     shippingAddressHtml: shippingAddressHtmlBlock(order),
     status: s,
     statusLabel: STATUS_LABELS[s] || status || "Updated",

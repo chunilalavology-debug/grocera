@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import axios from 'axios';
 import api from '../../services/api';
 import toast, { Toaster } from 'react-hot-toast';
-import { ArrowLeft, Loader2, Package } from 'lucide-react';
+import { ArrowLeft, FileText, Loader2, Package } from 'lucide-react';
 import { AdminBadge, AdminButton, AdminCard } from '../../components/admin/ui';
+import { getApiBaseUrl } from '../../config/apiBase';
 import { ORDER_STATUS_OPTIONS, orderStatusLabel, orderStatusBadgeVariant } from '../../constants/orderStatuses';
 
 function formatCurrency(value) {
@@ -54,6 +56,45 @@ export default function AdminOrderDetail() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const downloadInvoicePdf = async () => {
+    if (!order?._id) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(
+        `${getApiBaseUrl()}/admin/orders/${encodeURIComponent(order._id)}/invoice.pdf`,
+        {
+          responseType: 'blob',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      );
+      const ctype = res.headers['content-type'] || '';
+      if (ctype.includes('application/json')) {
+        const text = await res.data.text();
+        let msg = 'Could not download invoice';
+        try {
+          const j = JSON.parse(text);
+          if (j?.message) msg = j.message;
+        } catch {
+          /* ignore */
+        }
+        toast.error(msg);
+        return;
+      }
+      const blob = res.data;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${String(order.orderNumber || order._id).replace(/[^\w.-]+/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Invoice downloaded');
+    } catch (e) {
+      toast.error(e?.message || 'Could not download invoice');
+    }
+  };
 
   const updateOrderStatus = async (newStatus) => {
     if (!order?._id) return;
@@ -132,6 +173,10 @@ export default function AdminOrderDetail() {
             {(order.paymentStatus || 'pending').replace(/_/g, ' ')}
           </AdminBadge>
         </div>
+        <AdminButton variant="secondary" size="md" type="button" onClick={() => void downloadInvoicePdf()}>
+          <FileText className="h-4 w-4" />
+          Download invoice
+        </AdminButton>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -248,6 +293,12 @@ export default function AdminOrderDetail() {
           </span>
           <span className="text-base font-semibold text-[#008060]">
             Total {formatCurrency(order.totalAmount)}
+          </span>
+          <span className="text-slate-600">
+            Paid via Card <strong className="text-slate-900">{formatCurrency(order.stripeAmount)}</strong>
+          </span>
+          <span className="text-slate-600">
+            Paid via OTC <strong className="text-slate-900">{formatCurrency(order.otcAmount)}</strong>
           </span>
         </div>
         <p className="mt-3 text-xs text-slate-500">

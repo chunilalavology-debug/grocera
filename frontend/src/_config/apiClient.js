@@ -1,8 +1,8 @@
-// _config/apiClient.ts
 import axios from "axios";
+import { getApiBaseUrl } from "../config/apiBase";
 
-/** Base must match Cloudinary upload routes in backend app.js (`/api/v1/...`). */
-const BACKEND_URL = "http://localhost:5000/api/v1/";
+/** Cloudinary routes in `backend/app.js` are under `/api/v1/` (not the same prefix as `services/api.js` paths). */
+const BACKEND_URL = `${getApiBaseUrl().replace(/\/+$/, "")}/v1/`;
 
 
 /**
@@ -83,7 +83,7 @@ export const uploadFiles = async ({
       message = err.message;
     }
 
-    console.error("❌ Upload error:", message);
+    if (process.env.NODE_ENV === "development") console.error("Upload error:", message);
     throw new Error(message);
   }
 };

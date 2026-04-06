@@ -49,7 +49,15 @@ app.set("trust proxy", 1);
 const server = http.createServer(app);
 const Stripe = require("stripe");
 const { sendNewOrderEmails } = require("./utils/orderEmails");
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripeSecret = String(process.env.STRIPE_SECRET_KEY || "").trim();
+let stripe = null;
+if (stripeSecret) {
+  try {
+    stripe = new Stripe(stripeSecret);
+  } catch (e) {
+    console.error("Stripe initialization failed:", e.message);
+  }
+}
 const PORT = process.env.PORT || 5000;
 /** Set STRIPE_WEBHOOK_DEBUG=1 to log Stripe event handling (off in production by default). */
 const stripeWhLog = (...args) => {
@@ -170,14 +178,29 @@ app.get(`${API_END_POINT_V1}/health`, async (_req, res) => {
 
 /** Stripe / checkout: must stay before JWT (path is not under /api). */
 app.get("/verify-session/:id", async (req, res) => {
-  const session = await stripe.checkout.sessions.retrieve(req.params.id);
-  const order = await Order.findOne({
-    stripeSessionId: session.id,
-  });
-  res.json({
-    paid: session.payment_status === "paid",
-    orderNumber: order?.orderNumber,
-  });
+  if (!stripe) {
+    return res.status(503).json({
+      paid: false,
+      orderNumber: null,
+      error: "Stripe is not configured (missing STRIPE_SECRET_KEY).",
+    });
+  }
+  try {
+    const session = await stripe.checkout.sessions.retrieve(req.params.id);
+    const order = await Order.findOne({
+      stripeSessionId: session.id,
+    });
+    return res.json({
+      paid: session.payment_status === "paid",
+      orderNumber: order?.orderNumber,
+    });
+  } catch (e) {
+    return res.status(400).json({
+      paid: false,
+      orderNumber: null,
+      error: e.message || "Invalid session",
+    });
+  }
 });
 
 app.use(jwt.attachUserFromBearerForOrderPayment);
@@ -193,14 +216,18 @@ app.post(
     let event;
 
     try {
+      if (!stripe) {
+        console.error("Stripe webhook ignored: STRIPE_SECRET_KEY not set");
+        return res.status(200).json({ received: true, skipped: "stripe_not_configured" });
+      }
       const signature = req.headers['stripe-signature'];
+      const whSecret = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+      if (!whSecret) {
+        console.error("Stripe webhook ignored: STRIPE_WEBHOOK_SECRET not set");
+        return res.status(200).json({ received: true, skipped: "webhook_secret_not_configured" });
+      }
 
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        signature,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-
+      event = stripe.webhooks.constructEvent(req.body, signature, whSecret);
     } catch (err) {
       console.error("❌ Invalid webhook signature:", err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -437,8 +464,11 @@ async function markPaidAndSendMail(orderId, session, webhookReq) {
     "";
   const sessionEmail = sessionEmailRaw ? String(sessionEmailRaw).trim().toLowerCase() : "";
 
+  const currentOrder = await Order.findById(orderId).select("paymentMethod otcAmount");
+  const isSplit = String(currentOrder?.paymentMethod || "") === "split";
+  const splitOtcAmount = Number(currentOrder?.otcAmount || 0);
   const updatePayload = {
-    paymentStatus: "paid",
+    paymentStatus: isSplit && splitOtcAmount > 0 ? "partial" : "paid",
     status: "confirmed",
     stripePaymentIntentId: session.payment_intent,
     paidAt: new Date(),

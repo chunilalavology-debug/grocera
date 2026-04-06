@@ -50,7 +50,11 @@ async function renderCustomerNew(order) {
 
 async function renderAdminNew(order) {
   const vars = buildOrderTemplateVars(order);
-  const r = await renderTemplateKey("order_admin_new", vars);
+  const isOtcStyle =
+    String(order?.paymentMethod || "").toLowerCase() === "otc" ||
+    String(order?.paymentMethod || "").toLowerCase() === "split";
+  const adminTemplateKey = isOtcStyle ? "order_admin_otc" : "order_admin_new";
+  const r = await renderTemplateKey(adminTemplateKey, vars);
   if (r && r.html) return r;
   return {
     subject: `New order – #${order.orderNumber}`,

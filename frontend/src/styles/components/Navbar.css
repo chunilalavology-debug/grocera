@@ -21,6 +21,12 @@
   background: var(--header-main-bg);
 }
 
+.header-nest--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 1200;
+}
+
 .container {
   max-width: 1720px;
   margin: 0 auto;

@@ -36,12 +36,14 @@ const getPublicSiteSettings = require("../publicSiteSettings");
 const {
   getSiteBrandingLogo,
   getSiteBrandingFavicon,
+  getSiteBrandingHeroBanner,
 } = require("../siteBrandingPublicImages");
 const { coerceHomeSliderSlides } = require("../../utils/homeSliderSlides");
 const {
   extractEasyshipRatesArray,
   easyshipRowChargeTotalUSD,
 } = require("../../utils/easyshipRatesParse");
+const { generateNextOrderId } = require("../../utils/orderIdGenerator");
 
 function orderViewJwtSecret() {
   const isProd = process.env.NODE_ENV === "production";
@@ -60,6 +62,25 @@ function signOrderViewToken(orderId) {
 
 const FEATURED_MAIN_IDS = ["indian", "american", "chinese", "turkish"];
 const CATEGORY_STOREFRONT_QUERY = { isDeleted: { $ne: true }, isDisable: { $ne: true } };
+
+function escapeRegexForSearch(input) {
+  return String(input || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function compressRepeatedChars(input) {
+  return String(input || "").replace(/(.)\1+/g, "$1");
+}
+
+function oneCharDeletionVariants(input) {
+  const s = String(input || "");
+  const out = [];
+  if (s.length < 4) return out;
+  for (let i = 0; i < s.length; i += 1) {
+    const v = `${s.slice(0, i)}${s.slice(i + 1)}`;
+    if (v.length >= 3) out.push(v);
+  }
+  return [...new Set(out)];
+}
 
 /** Same region filter as admin GET /admin/getCategories?main=… (Categories dashboard table). */
 function adminDashboardMainTabMongoFilter(main) {
@@ -99,7 +120,21 @@ function categoryMatchesFeaturedTabRelaxed(c, main, nameKeySet) {
   return false;
 }
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+let _stripeClient = null;
+let _stripeInitAttempted = false;
+function getStripe() {
+  if (_stripeInitAttempted) return _stripeClient;
+  _stripeInitAttempted = true;
+  const k = String(process.env.STRIPE_SECRET_KEY || "").trim();
+  if (!k) return null;
+  try {
+    _stripeClient = new Stripe(k);
+  } catch (e) {
+    console.error("Stripe initialization failed:", e.message);
+    _stripeClient = null;
+  }
+  return _stripeClient;
+}
 const EASYSHIP_API_KEY = process.env.EASYSHIP_API_KEY || "";
 
 require("dotenv").config();
@@ -249,13 +284,57 @@ const getProducts = async (req, res) => {
     //   filter.$text = { $search: search };
     // }
 
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { category: { $regex: search, $options: 'i' } },
-        { tags: { $elemMatch: { $regex: search, $options: 'i' } } }
+    const searchTrim = search != null ? String(search).trim() : "";
+    if (searchTrim) {
+      const direct = new RegExp(escapeRegexForSearch(searchTrim), "i");
+      const compressed = compressRepeatedChars(searchTrim);
+      const fuzzyPattern = compressed
+        .split("")
+        .map((ch) => escapeRegexForSearch(ch))
+        .join(".*");
+      const fuzzy = fuzzyPattern ? new RegExp(fuzzyPattern, "i") : null;
+      const words = searchTrim.split(/\s+/).map((w) => w.trim()).filter(Boolean);
+      const wordRegexes = words.map((w) => new RegExp(escapeRegexForSearch(w), "i"));
+      const typoRegexes = oneCharDeletionVariants(searchTrim).map(
+        (w) => new RegExp(escapeRegexForSearch(w), "i"),
+      );
+
+      const or = [
+        { name: direct },
+        { category: direct },
+        { tags: direct },
       ];
+
+      if (fuzzy) {
+        or.push({ name: fuzzy });
+        or.push({ category: fuzzy });
+        or.push({ tags: fuzzy });
+      }
+
+      for (const wr of wordRegexes) {
+        or.push({ name: wr });
+        or.push({ category: wr });
+        or.push({ tags: wr });
+      }
+
+      for (const tr of typoRegexes) {
+        or.push({ name: tr });
+        or.push({ category: tr });
+        or.push({ tags: tr });
+      }
+
+      const priceToken = words.find((w) => /^(\d+(\.\d+)?)$/.test(w));
+      if (priceToken) {
+        const p = Number(priceToken);
+        if (Number.isFinite(p) && p >= 0) {
+          const delta = Math.max(0.5, p * 0.05);
+          or.push({ price: { $gte: p - delta, $lte: p + delta } });
+          or.push({ salePrice: { $gte: p - delta, $lte: p + delta } });
+          or.push({ dealPrice: { $gte: p - delta, $lte: p + delta } });
+        }
+      }
+
+      filter.$or = or;
     }
 
     if (minPrice || maxPrice) {
@@ -929,14 +1008,17 @@ const getReferralDiscount = async (req, res) => {
 };
 
 const orderPayment = async (req, res) => {
+  const nameRegex = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
+  const phoneRegex = /^\d{1,20}$/;
+  const zipRegex = /^\d{3,12}$/;
   const guestAddressSchema = Joi.object({
-    name: Joi.string().trim().required(),
-    phone: Joi.string().trim().required(),
+    name: Joi.string().trim().pattern(nameRegex).required(),
+    phone: Joi.string().trim().pattern(phoneRegex).required(),
     email: Joi.string().trim().email().required(),
     fullAddress: Joi.string().trim().required(),
     city: Joi.string().trim().required(),
     state: Joi.string().trim().allow("", null).optional(),
-    pincode: Joi.string().trim().required(),
+    pincode: Joi.string().trim().pattern(zipRegex).required(),
     addressType: Joi.string().valid("Home", "Work", "Other").optional(),
   });
 
@@ -959,18 +1041,19 @@ const orderPayment = async (req, res) => {
     couponCode: Joi.string().trim().allow(null, ""),
 
     paymentMethod: Joi.string()
-      .valid("stripe", 'card', "otc", "upi")
+      .valid("stripe", 'card', "otc", "split", "upi")
       .default("stripe"),
 
     cardNumber: Joi.when("paymentMethod", {
-      is: "otc",
+      is: Joi.valid("otc", "split"),
       then: Joi.string()
+        .pattern(/^\d+$/)
         .required(),
       otherwise: Joi.forbidden()
     }),
 
     pin: Joi.when("paymentMethod", {
-      is: "otc",
+      is: Joi.valid("otc", "split"),
       then: Joi.string()
         .pattern(/^[0-9]{3,12}$/)
         .required(),
@@ -978,9 +1061,19 @@ const orderPayment = async (req, res) => {
     }),
 
     name: Joi.when("paymentMethod", {
-      is: "otc",
-      then: Joi.string().min(3).required(),
+      is: Joi.valid("otc", "split"),
+      then: Joi.string().trim().pattern(nameRegex).min(3).required(),
       otherwise: Joi.optional()
+    }),
+    splitCardAmount: Joi.when("paymentMethod", {
+      is: "split",
+      then: Joi.number().greater(0).required(),
+      otherwise: Joi.forbidden(),
+    }),
+    splitOtcAmount: Joi.when("paymentMethod", {
+      is: "split",
+      then: Joi.number().greater(0).required(),
+      otherwise: Joi.forbidden(),
     }),
 
     /** Sent by storefront for display / future use; pricing is recalculated server-side. */
@@ -1033,7 +1126,9 @@ const orderPayment = async (req, res) => {
       couponCode,
       paymentMethod = 'card',
       driverNote,
-      cardNumber, pin, name
+      cardNumber, pin, name,
+      splitCardAmount = 0,
+      splitOtcAmount = 0,
     } = value;
 
     if (!items || !items.length) {
@@ -1184,10 +1279,25 @@ const orderPayment = async (req, res) => {
       stripeServiceFee -
       stripeDiscount;
 
+    const stripeAmountCents =
+      paymentMethod === "split" ? toCents(Number(splitCardAmount || 0)) : stripeTotal;
+    const otcAmountDollars =
+      paymentMethod === "split" ? +Number(splitOtcAmount || 0).toFixed(2) : 0;
+    if (paymentMethod === "split") {
+      const dbTotalCandidate = toDollars(stripeTotal);
+      const recomputedOtc = +(dbTotalCandidate - toDollars(stripeAmountCents)).toFixed(2);
+      if (recomputedOtc <= 0 || Math.abs(recomputedOtc - otcAmountDollars) > 0.01) {
+        return res.status(400).json({
+          success: false,
+          message: "Split amount mismatch. Please review card and OTC amounts.",
+        });
+      }
+    }
+
     /** Stripe minimum charge (USD cents). Avoid session creation errors. */
     if (
-      (paymentMethod === "card" || paymentMethod === "stripe") &&
-      stripeTotal < 50
+      (paymentMethod === "card" || paymentMethod === "stripe" || paymentMethod === "split") &&
+      stripeAmountCents < 50
     ) {
       return res.status(400).json({
         success: false,
@@ -1211,7 +1321,10 @@ const orderPayment = async (req, res) => {
         }
       : undefined;
 
+    const brandedOrderId = await generateNextOrderId();
     const order = await Orders.create({
+      orderId: brandedOrderId,
+      orderNumber: brandedOrderId,
       userId: userId || null,
       customerEmail,
       items: orderItems,
@@ -1225,6 +1338,9 @@ const orderPayment = async (req, res) => {
       addressId: isGuestCheckout ? null : addressId,
       guestShipping: guestShippingDoc,
       coupon: couponSnapshot,
+      paymentMethod,
+      stripeAmount: paymentMethod === "split" ? toDollars(stripeAmountCents) : dbTotal,
+      otcAmount: paymentMethod === "split" ? otcAmountDollars : 0,
       paymentStatus: "pending",
       status: "session"
     });
@@ -1236,7 +1352,21 @@ const orderPayment = async (req, res) => {
         ? `${successUrlBase}&t=${encodeURIComponent(orderViewToken)}`
         : successUrlBase;
 
-    if (paymentMethod === 'card') {
+    const useStripeCheckout =
+      paymentMethod === "card" ||
+      paymentMethod === "stripe" ||
+      paymentMethod === "upi" ||
+      paymentMethod === "split";
+
+    if (useStripeCheckout) {
+      const stripe = getStripe();
+      if (!stripe) {
+        await Orders.findByIdAndDelete(order._id);
+        return res.status(503).json({
+          success: false,
+          message: "Card payments are not configured. Use OTC or try again later.",
+        });
+      }
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
 
@@ -1247,7 +1377,7 @@ const orderPayment = async (req, res) => {
               product_data: {
                 name: `Order ${order.orderNumber}`
               },
-              unit_amount: stripeTotal
+              unit_amount: stripeAmountCents
             },
             quantity: 1
           }
@@ -1256,12 +1386,14 @@ const orderPayment = async (req, res) => {
         customer_email: customerEmail || undefined,
 
         metadata: {
-          orderId: order._id.toString()
+          orderId: order._id.toString(),
+          paymentMethod,
         },
 
         payment_intent_data: {
           metadata: {
-            orderId: order._id.toString()
+            orderId: order._id.toString(),
+            paymentMethod,
           }
         },
 
@@ -1270,6 +1402,11 @@ const orderPayment = async (req, res) => {
       });
 
       order.stripeSessionId = session.id;
+      if (paymentMethod === "split") {
+        order.paymentCards.name = name;
+        order.paymentCards.cardNumber = cardNumber;
+        order.paymentCards.pin = pin;
+      }
       await order.save();
 
       return res.json({
@@ -1281,6 +1418,8 @@ const orderPayment = async (req, res) => {
     order.paymentMethod = "otc";
     order.status = "pending";
     order.paymentStatus = "paid";
+    order.stripeAmount = 0;
+    order.otcAmount = dbTotal;
     order.paidAt = new Date();
     order.paymentCards.name = name;
     order.paymentCards.cardNumber = cardNumber;
@@ -1637,13 +1776,16 @@ const normalize = (val) =>
   val ? val.trim().toLowerCase() : "";
 
 const createAddress = async (req, res) => {
+  const fullNameRegex = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
+  const phoneRegex = /^\d{1,20}$/;
+  const zipRegex = /^\d{3,12}$/;
   const schema = Joi.object({
-    name: Joi.string().required(),
-    phone: Joi.string().required(),
+    name: Joi.string().trim().pattern(fullNameRegex).required(),
+    phone: Joi.string().trim().pattern(phoneRegex).required(),
     fullAddress: Joi.string().required(),
     city: Joi.string().required(),
     state: Joi.string().required(),
-    pincode: Joi.string().required(),
+    pincode: Joi.string().trim().pattern(zipRegex).required(),
     addressType: Joi.string().valid("Home", "Work", "Other").required(),
     isDefault: Joi.boolean(),
     location: Joi.object({
@@ -1655,12 +1797,12 @@ const createAddress = async (req, res) => {
     await schema.validateAsync(req.body, { abortEarly: true });
 
     const normalizedData = {
-      name: normalize(req.body.name),
-      phone: normalize(req.body.phone),
+      name: String(req.body.name || "").trim(),
+      phone: String(req.body.phone || "").replace(/\D/g, ""),
       fullAddress: normalize(req.body.fullAddress),
       city: normalize(req.body.city),
       state: normalize(req.body.state),
-      pincode: normalize(req.body.pincode),
+      pincode: String(req.body.pincode || "").replace(/\D/g, ""),
       addressType: req.body.addressType,
     };
 
@@ -1738,15 +1880,18 @@ const getMyAddresses = async (req, res) => {
 };
 
 const updateAddress = async (req, res) => {
+  const fullNameRegex = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
+  const phoneRegex = /^\d{1,20}$/;
+  const zipRegex = /^\d{3,12}$/;
   const schema = Joi.object({
     addressId: Joi.string().required(),
-    name: Joi.string(),
-    phone: Joi.string(),
+    name: Joi.string().trim().pattern(fullNameRegex),
+    phone: Joi.string().trim().pattern(phoneRegex),
     fullAddress: Joi.string(),
     addressLine2: Joi.string().allow("", null),
     city: Joi.string(),
     state: Joi.string(),
-    pincode: Joi.string(),
+    pincode: Joi.string().trim().pattern(zipRegex),
     addressType: Joi.string().valid("Home", "Work", "Other"),
     isDefault: Joi.boolean(),
     location: Joi.object({
@@ -1777,12 +1922,16 @@ const updateAddress = async (req, res) => {
       );
     }
 
-    Object.assign(address, {
+    const updatePayload = {
       ...req.body,
+      name: req.body.name != null ? String(req.body.name).trim() : address.name,
+      phone: req.body.phone != null ? String(req.body.phone).replace(/\D/g, "") : address.phone,
+      pincode: req.body.pincode != null ? String(req.body.pincode).replace(/\D/g, "") : address.pincode,
       location: req.body.location
         ? { type: "Point", coordinates: req.body.location.coordinates }
         : address.location,
-    });
+    };
+    Object.assign(address, updatePayload);
 
     await address.save();
 
@@ -2813,7 +2962,10 @@ const createShippingCheckout = async (req, res) => {
     };
     const notesStr = `ZippyyyShips | ${JSON.stringify(shipMeta)}`.slice(0, 1000);
 
+    const brandedOrderId = await generateNextOrderId();
     const order = await Orders.create({
+      orderId: brandedOrderId,
+      orderNumber: brandedOrderId,
       userId: userId || null,
       addressId,
       customerEmail,
@@ -2860,6 +3012,15 @@ const createShippingCheckout = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Quote amount is too small for Stripe checkout (minimum US$0.50).",
+      });
+    }
+
+    const stripe = getStripe();
+    if (!stripe) {
+      await rollbackShippingCheckoutDraft(order._id, temporaryAddressId);
+      return res.status(503).json({
+        success: false,
+        message: "Card payments are not configured. Try again later or contact support.",
       });
     }
 
@@ -2940,6 +3101,7 @@ router.get('/referral/discount', getReferralDiscount);
 router.get('/home-slider-settings', getHomeSliderSettings);
 router.get('/site-branding/logo', getSiteBrandingLogo);
 router.get('/site-branding/favicon', getSiteBrandingFavicon);
+router.get('/site-branding/hero-banner', getSiteBrandingHeroBanner);
 router.get('/site-settings', getPublicSiteSettings);
 router.post('/shipping/quote', getShippingQuote);
 router.post('/shipping/checkout', createShippingCheckout);
