@@ -2764,31 +2764,16 @@ const getShippingQuote = async (req, res) => {
     const easyRates = easyshipResult?.rates || [];
     const easyCheapest = easyshipResult?.cheapest || null;
 
-    let ratesPayload = [];
-    let internalOnly = true;
-
-    if (easyRates.length) {
-      internalOnly = false;
-      ratesPayload = easyRates.map((r) => shippingQuoteRateJson(r, false));
-    } else {
-      const bq = computeShippingQuote(value);
-      if (!bq || bq <= 0) {
-        setCatalogNoCacheHeaders(res);
-        return res.status(400).json({ success: false, message: "Invalid shipping inputs" });
-      }
-      const synthetic = {
-        total: bq,
-        courierName: "ZippyyyShips",
-        serviceName: "Standard (estimate)",
-        easyshipRateId: "",
-        minDeliveryDays: null,
-        maxDeliveryDays: null,
-        availableHandoverOptions: [],
-        minimumPickupFee: 0,
-        insuranceFee: 0,
-      };
-      ratesPayload = [shippingQuoteRateJson(synthetic, true)];
+    if (!easyRates.length) {
+      setCatalogNoCacheHeaders(res);
+      return res.status(502).json({
+        success: false,
+        message: "Live Easyship rates are currently unavailable. Please verify EASYSHIP_API_KEY and try again.",
+        code: "EASYSHIP_RATES_UNAVAILABLE",
+      });
     }
+
+    const ratesPayload = easyRates.map((r) => shippingQuoteRateJson(r, false));
 
     const first = ratesPayload[0];
     const quoteAmount = first?.quoteAmount ?? 0;
@@ -2809,7 +2794,7 @@ const getShippingQuote = async (req, res) => {
         carrier: first.carrier,
         serviceName: first.serviceName,
         easyshipRateId: first.easyshipRateId,
-        source: internalOnly ? "internal" : "easyship",
+        source: "easyship",
         deliverySummary: first.deliverySummary,
         handoverSummary: first.handoverSummary,
         minDeliveryDays: first.minDeliveryDays,

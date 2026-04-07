@@ -82,42 +82,13 @@ function computeSavingsLabel(base: number, markupMult: number, listMult: number)
 type ParcelDims = { length: number; width: number; height: number };
 
 /**
- * Very thin presets (envelopes) + high weight: Easyship often returns only one carrier/service.
- * Nudge toward a small-parcel height so parcel-grade options (USPS / UPS / FedEx) are quoted.
- * Checkout uses the same dims so the selected rate stays valid.
+ * Keep user-entered package dimensions unchanged so Easyship responses match dashboard quotes exactly.
  */
-function effectiveParcelDimsForRates(dims: ParcelDims, weightLb: number): { dims: ParcelDims; adjusted: boolean } {
-  const L = Number(dims.length);
-  const W = Number(dims.width);
-  const H = Number(dims.height);
-  const wt = Number(weightLb);
-  if (![L, W, H, wt].every((n) => Number.isFinite(n) && n > 0)) {
-    return { dims, adjusted: false };
-  }
-  const thinnest = Math.min(L, W, H);
-  let l = L;
-  let w = W;
-  let h = H;
-  let adjusted = false;
-
-  if (thinnest <= 1 && wt >= 8) {
-    const targetH = wt >= 35 ? 12 : wt >= 20 ? 10 : 8;
-    if (h < targetH) {
-      h = targetH;
-      adjusted = true;
-    }
-  } else if (thinnest <= 2 && wt >= 25) {
-    const targetH = 8;
-    if (h < targetH) {
-      h = targetH;
-      adjusted = true;
-    }
-  }
-
-  const round2 = (n: number) => Math.round(n * 100) / 100;
+function effectiveParcelDimsForRates(dims: ParcelDims): { dims: ParcelDims; adjusted: boolean } {
+  const round2 = (n: number) => Math.round(Number(n || 0) * 100) / 100;
   return {
-    dims: { length: round2(l), width: round2(w), height: round2(h) },
-    adjusted,
+    dims: { length: round2(dims.length), width: round2(dims.width), height: round2(dims.height) },
+    adjusted: false,
   };
 }
 
@@ -169,9 +140,9 @@ type SavedAddressBook = {
   contact: { name: string; phone: string; email: string };
 };
 
-type Step = "zips" | "dimensions" | "weight" | "quotes" | "details" | "checkout";
-const STEPS: Step[] = ["zips", "dimensions", "weight", "quotes", "details", "checkout"];
-const STEP_LABELS = ["ZIP", "Box", "Weight", "Quote", "Details", "Pay"];
+type Step = "zips" | "dimensions" | "weight" | "details" | "quotes" | "checkout";
+const STEPS: Step[] = ["zips", "dimensions", "weight", "details", "quotes", "checkout"];
+const STEP_LABELS = ["ZIP", "Box", "Weight", "Details", "Quote", "Pay"];
 
 const QuoteEngine = () => {
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -302,7 +273,7 @@ const QuoteEngine = () => {
 
   const parcelDimsForApi = useMemo(() => {
     if (!dims) return null;
-    return effectiveParcelDimsForRates(dims, Number(weight) || 0);
+    return effectiveParcelDimsForRates(dims);
   }, [dims, weight]);
 
   const calculatePrice = (base: number) => Math.ceil(base * pricing.markupMultiplier);
@@ -387,7 +358,7 @@ const QuoteEngine = () => {
   const fetchRates = async (options?: { force?: boolean }) => {
     if (!dims || !Number(weight)) return;
 
-    const { dims: apiDims } = effectiveParcelDimsForRates(dims, Number(weight));
+    const { dims: apiDims } = effectiveParcelDimsForRates(dims);
 
     const quoteKey = JSON.stringify({
       fromZip: fromZip.trim(),
@@ -411,9 +382,15 @@ const QuoteEngine = () => {
 
     try {
       const declared = Number(declaredCustomsValue) || 50;
+      const quoteFromAddress = fromAddress
+        ? toEasyshipAddress(fromAddress, fromContact)
+        : zipOnlyAddress(fromZip, shipCountryAlpha2, effectiveQuoteFromState || undefined);
+      const quoteToAddress = toAddress
+        ? toEasyshipAddress(toAddress, toContact)
+        : zipOnlyAddress(toZip, shipCountryAlpha2, effectiveQuoteToState || undefined);
       const body: Record<string, unknown> = {
-        from: zipOnlyAddress(fromZip, shipCountryAlpha2, effectiveQuoteFromState || undefined),
-        to: zipOnlyAddress(toZip, shipCountryAlpha2, effectiveQuoteToState || undefined),
+        from: quoteFromAddress,
+        to: quoteToAddress,
         parcel: {
           length: apiDims.length,
           width: apiDims.width,
@@ -433,19 +410,21 @@ const QuoteEngine = () => {
       }
 
       if (USE_GROCERA_QUOTES) {
-        const fromSt = effectiveQuoteFromState.length === 2 ? effectiveQuoteFromState : "CA";
-        const toSt = effectiveQuoteToState.length === 2 ? effectiveQuoteToState : "NY";
-        const fromCity = usCityFromZip(fromZip.trim()) || "City";
-        const toCity = usCityFromZip(toZip.trim()) || "City";
+        const fromSt = String(quoteFromAddress.state || "").trim() || (effectiveQuoteFromState.length === 2 ? effectiveQuoteFromState : "CA");
+        const toSt = String(quoteToAddress.state || "").trim() || (effectiveQuoteToState.length === 2 ? effectiveQuoteToState : "NY");
+        const fromCity = String(quoteFromAddress.city || "").trim() || usCityFromZip(fromZip.trim()) || "City";
+        const toCity = String(quoteToAddress.city || "").trim() || usCityFromZip(toZip.trim()) || "City";
+        const originLine1 = String(quoteFromAddress.address_line_1 || "").trim() || "100 Sender Ave";
+        const destinationLine1 = String(quoteToAddress.address_line_1 || "").trim() || "100 Main St";
         const gPayload: Record<string, unknown> = {
           length: apiDims.length,
           width: apiDims.width,
           height: apiDims.height,
           weight: Number(weight),
-          destinationZip: toZip.trim(),
-          destinationAddress: `100 Main St, ${toCity}, ${toSt}`,
-          originZip: fromZip.trim(),
-          originAddress: `100 Sender Ave, ${fromCity}, ${fromSt}`,
+          destinationZip: String(quoteToAddress.postal_code || toZip || "").trim(),
+          destinationAddress: `${destinationLine1}, ${toCity}, ${toSt}`,
+          originZip: String(quoteFromAddress.postal_code || fromZip || "").trim(),
+          originAddress: `${originLine1}, ${fromCity}, ${fromSt}`,
           destinationResidential: setAsResidential,
           addInsurance: wantInsurance,
           insuranceDeclaredValue: wantInsurance ? Number(insuredAmount) || declared : declared,
@@ -533,7 +512,7 @@ const QuoteEngine = () => {
     if (!selectedRateObj || !fromAddress || !toAddress || !dims || !Number(weight)) return;
     setCheckoutError(null);
 
-    const { dims: checkoutDims } = effectiveParcelDimsForRates(dims, Number(weight));
+    const { dims: checkoutDims } = effectiveParcelDimsForRates(dims);
 
     if (USE_GROCERA_CHECKOUT) {
       const token = getStorefrontAuthToken();
