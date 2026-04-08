@@ -25,6 +25,10 @@ export const SelectedRateSchema = z.object({
   /** Easyship v2024+ courier service UUID (from rate `courier_service.id`). */
   courier_service_id: z.string().uuid().optional(),
   shipment_charge_total: z.number().nonnegative(),
+  /** Easyship live amount before commission. */
+  original_rate: z.number().nonnegative().optional(),
+  /** Amount after commission. */
+  final_rate: z.number().nonnegative().optional(),
   shipment_charge_total_currency: z.string().min(3).max(3),
   easyship_rate_id: z.string().optional(),
   min_delivery_time: z.number().nullable().optional(),

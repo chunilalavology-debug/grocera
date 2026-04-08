@@ -40,9 +40,6 @@ const corsAllowedOrigins = new Set(
 let cachedItemCategories = null;
 let cachedItemCategoriesAt = 0;
 
-const quoteCache = new Map();
-const quoteInflight = new Map();
-
 app.use(
   cors({
     origin(origin, callback) {
@@ -68,9 +65,14 @@ app.get("/", (_req, res) => {
 });
 
 function sendShipsHealth(_req, res) {
+  const easyshipMode = getEasyshipMode();
+  const easyshipBaseUrl = easyshipMode === "sandbox" ? "https://public-api-sandbox.easyship.com" : "https://public-api.easyship.com";
   res.json({
     ok: true,
     easyshipConfigured: Boolean(env.EASYSHIP_API_KEY),
+    easyshipMode,
+    easyshipBaseUrl,
+    commissionPercent: env.ZIPPYYY_COMMISSION_PERCENT,
     stripeConfigured: Boolean(env.STRIPE_SECRET_KEY),
     stripeWebhookConfigured: Boolean(env.STRIPE_WEBHOOK_SECRET),
   });
@@ -81,28 +83,24 @@ app.get("/health", sendShipsHealth);
 
 app.post("/api/quotes", async (req, res) => {
   if (!easyship) return res.status(501).json({ error: "EASYSHIP_NOT_CONFIGURED" });
+  const easyshipMode = getEasyshipMode();
+  if (easyshipMode === "sandbox" && !env.EASYSHIP_ALLOW_SANDBOX) {
+    return res.status(400).json({
+      error: "EASYSHIP_SANDBOX_KEY_NOT_ALLOWED",
+      message:
+        "Sandbox Easyship key detected. Use a live key (prod_...) or set EASYSHIP_ALLOW_SANDBOX=1 for test environments.",
+    });
+  }
   const parsed = QuoteRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   try {
-    const cacheKey = stableHash(parsed.data);
     const pricingMeta = {
-      markupMultiplier: env.ZIPPYYY_MARKUP_MULTIPLIER,
+      // Final rate already includes backend commission; frontend must not add extra markup.
+      markupMultiplier: 1,
       listPriceMultiplier: env.ZIPPYYY_LIST_PRICE_MULTIPLIER,
+      commissionPercent: env.ZIPPYYY_COMMISSION_PERCENT,
     };
-
-    const cached = quoteCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < 30_000) {
-      return res.json({ rates: cached.rates, pricing: pricingMeta, cached: true });
-    }
-
-    const inflight = quoteInflight.get(cacheKey);
-    if (inflight) {
-      const rates = await inflight;
-      return res.json({ rates, pricing: pricingMeta, deduped: true });
-    }
-
-    const p = (async () => {
     const cats = await getItemCategories();
     const chosen = cats?.[0];
     const hsCode = chosen?.hs_code ? String(chosen.hs_code) : "49019900";
@@ -180,17 +178,20 @@ app.post("/api/quotes", async (req, res) => {
 
     const result = await easyship.requestRates(payload);
     const rates = normalizeEasyshipRates(result);
-    quoteCache.set(cacheKey, { at: Date.now(), rates });
-    return rates;
-    })();
-
-    quoteInflight.set(cacheKey, p);
-    try {
-      const rates = await p;
-      res.json({ rates, pricing: pricingMeta });
-    } finally {
-      quoteInflight.delete(cacheKey);
-    }
+    res.json({
+      rates,
+      pricing: pricingMeta,
+      live: true,
+      easyshipMode,
+      requestedAt: new Date().toISOString(),
+      requestEcho: {
+        from: payload.origin_address,
+        to: payload.destination_address,
+        parcel: payload.parcels?.[0]?.box,
+        total_actual_weight: payload.parcels?.[0]?.total_actual_weight,
+        set_as_residential: payload.set_as_residential === true,
+      },
+    });
   } catch (e) {
     const status = e.status ?? null;
     const details = e.details;
@@ -251,8 +252,10 @@ app.post("/api/checkout/session", async (req, res) => {
     const { draft, selectedRate, promotionCode } = parsed.data;
 
     // Server-side price confirmation (trust but verify)
-    const markedUpTotal = selectedRate.shipment_charge_total * env.ZIPPYYY_MARKUP_MULTIPLIER;
-    const amountCents = Math.round(markedUpTotal * 100) + env.ZIPPYYY_FEE_CENTS;
+    const payableRate = Number(
+      selectedRate.final_rate ?? selectedRate.shipment_charge_total ?? selectedRate.original_rate ?? 0,
+    );
+    const amountCents = Math.round(payableRate * 100) + env.ZIPPYYY_FEE_CENTS;
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
       return res.status(400).json({ error: "INVALID_AMOUNT" });
     }
@@ -443,10 +446,13 @@ async function findActivePromotionCodeByCode(stripe, customerCode) {
 }
 
 function normalizeEasyshipRates(result) {
+  const commissionMultiplier = 1 + Number(env.ZIPPYYY_COMMISSION_PERCENT || 0) / 100;
+  const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
   const rates = extractEasyshipRatesArray(result);
   return rates
     .map((r) => {
-      const total = easyshipRowChargeTotalUSD(r);
+      const original = round2(easyshipRowChargeTotalUSD(r));
+      const final = round2(original * commissionMultiplier);
       const ric = r?.rates_in_origin_currency;
       const currency =
         (typeof r?.shipment_charge_total_currency === "string" && r.shipment_charge_total_currency) ||
@@ -460,7 +466,10 @@ function normalizeEasyshipRates(result) {
         courier_service_name:
           r?.courier_service_name || r?.service_name || cs?.name || r?.full_description || "",
         courier_service_id: r?.courier_service_id || cs?.id || r?.courier_id || undefined,
-        shipment_charge_total: total,
+        original_rate: original,
+        final_rate: final,
+        // Backward compatible field used by UI + checkout payload; now reflects commission-inclusive final amount.
+        shipment_charge_total: final,
         shipment_charge_total_currency: currency,
         easyship_rate_id: r?.easyship_rate_id || r?.rate_id || r?.id || cs?.id || "",
         min_delivery_time: r?.min_delivery_time ?? null,
@@ -477,12 +486,20 @@ function normalizeEasyshipRates(result) {
         raw: r,
       };
     })
-    .filter((r) => r.shipment_charge_total > 0);
+    .filter((r) => r.original_rate > 0 && r.final_rate > 0);
 }
 
 function lbToKg(lb) {
   // Easyship rate items use metric weight in docs; convert lb -> kg.
   return Math.max(0.01, Number(lb) * 0.45359237);
+}
+
+function getEasyshipMode() {
+  const key = String(env.EASYSHIP_API_KEY || "").trim().toLowerCase();
+  if (!key) return "none";
+  if (key.startsWith("sand_")) return "sandbox";
+  if (key.startsWith("prod_")) return "production";
+  return "production";
 }
 
 function stableHash(obj) {
