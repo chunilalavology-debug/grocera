@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { Globe, ImageIcon, Sparkles, Save, Trash2, Upload } from 'lucide-react';
 import { AdminButton, AdminCard, AdminPageShell } from '../../components/admin/ui';
 import { useSiteBranding } from '../../context/SiteBrandingContext';
-import { resolveBrandingAssetUrl } from '../../utils/brandingAssets';
+import { resolveBrandingAssetUrl, withAssetCacheBust } from '../../utils/brandingAssets';
 
 function revokeIfBlob(url) {
   if (url && String(url).startsWith('blob:')) {
@@ -27,6 +27,7 @@ export default function AdminGeneralSettings() {
   const [websiteName, setWebsiteName] = useState('Zippyyy');
   const [websiteLogoUrl, setWebsiteLogoUrl] = useState('');
   const [websiteFaviconUrl, setWebsiteFaviconUrl] = useState('');
+  const [assetRevision, setAssetRevision] = useState(Date.now());
 
   const [logoPreview, setLogoPreview] = useState('');
   const [faviconPreview, setFaviconPreview] = useState('');
@@ -68,6 +69,7 @@ export default function AdminGeneralSettings() {
     setWebsiteName(data.websiteName || 'Zippyyy');
     setWebsiteLogoUrl(resolveBrandingAssetUrl(data.websiteLogoUrl || ''));
     setWebsiteFaviconUrl(resolveBrandingAssetUrl(data.websiteFaviconUrl || ''));
+    setAssetRevision(Date.now());
   };
 
   const saveWebsiteName = async () => {
@@ -198,8 +200,8 @@ export default function AdminGeneralSettings() {
     }
   };
 
-  const displayLogo = logoPreview || websiteLogoUrl || null;
-  const displayFavicon = faviconPreview || websiteFaviconUrl || null;
+  const displayLogo = logoPreview || withAssetCacheBust(websiteLogoUrl, assetRevision) || null;
+  const displayFavicon = faviconPreview || withAssetCacheBust(websiteFaviconUrl, assetRevision) || null;
 
   return (
     <AdminPageShell
@@ -321,6 +323,14 @@ export default function AdminGeneralSettings() {
                   <strong>Cloudinary</strong> (set <code className="text-[11px]">CLOUDINARY_*</code> env vars on the API
                   project) — local <code className="text-[11px]">/uploads</code> URLs break after deploy.
                 </p>
+                {websiteLogoUrl ? (
+                  <p className="text-xs text-slate-500 break-all">
+                    Current live logo:{' '}
+                    <a className="text-[#008060] hover:underline" href={websiteLogoUrl} target="_blank" rel="noreferrer">
+                      {websiteLogoUrl}
+                    </a>
+                  </p>
+                ) : null}
               </div>
             </div>
           </AdminCard>
@@ -390,6 +400,14 @@ export default function AdminGeneralSettings() {
                 <p className="text-xs text-slate-500">
                   Small square icons work best. Invalid types or oversized files are rejected by the server.
                 </p>
+                {websiteFaviconUrl ? (
+                  <p className="text-xs text-slate-500 break-all">
+                    Current live favicon:{' '}
+                    <a className="text-[#008060] hover:underline" href={websiteFaviconUrl} target="_blank" rel="noreferrer">
+                      {websiteFaviconUrl}
+                    </a>
+                  </p>
+                ) : null}
               </div>
             </div>
           </AdminCard>

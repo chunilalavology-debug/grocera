@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { Layout, Megaphone, ImageIcon, Save, Trash2, Upload, Copy } from 'lucide-react';
 import api from '../../services/api';
 import { AdminButton, AdminCard, AdminPageShell } from '../../components/admin/ui';
-import { resolveBrandingAssetUrl } from '../../utils/brandingAssets';
+import { resolveBrandingAssetUrl, withAssetCacheBust } from '../../utils/brandingAssets';
 import { useSiteBranding } from '../../context/SiteBrandingContext';
 
 const DEFAULT_SLIDES = [
@@ -37,6 +37,7 @@ export default function AdminStorefrontSettings() {
   const [headerIsFixed, setHeaderIsFixed] = useState(false);
   const [heroImage, setHeroImage] = useState('');
   const [heroOverlayColor, setHeroOverlayColor] = useState('rgba(0,0,0,0.45)');
+  const [heroRevision, setHeroRevision] = useState(Date.now());
   const [socialLinks, setSocialLinks] = useState(EMPTY_SOCIALS);
 
   const load = useCallback(async () => {
@@ -57,6 +58,7 @@ export default function AdminStorefrontSettings() {
         setHeaderIsFixed(Boolean(d?.header?.isFixed ?? false));
         setHeroImage(resolveBrandingAssetUrl(String(d?.heroBanner?.image || '').trim()));
         setHeroOverlayColor(String(d?.heroBanner?.overlayColor || 'rgba(0,0,0,0.45)'));
+        setHeroRevision(Date.now());
         setSocialLinks({
           facebook: String(d?.socialLinks?.facebook || ''),
           instagram: String(d?.socialLinks?.instagram || ''),
@@ -174,13 +176,17 @@ export default function AdminStorefrontSettings() {
             subtitle="Top announcement strip settings."
             action={<Megaphone className="h-5 w-5 text-[#008060]" />}
           >
-            <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-              <input
-                type="checkbox"
-                checked={marqueeEnabled}
-                onChange={(e) => setMarqueeEnabled(e.target.checked)}
-              />
-              Enable marquee
+            <label className="inline-flex items-center gap-3 cursor-pointer group">
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={marqueeEnabled}
+                  onChange={(e) => setMarqueeEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-12 h-6 bg-slate-200 rounded-full peer peer-checked:bg-[#008060] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-inner"></div>
+              </div>
+              <span className="text-sm font-medium text-slate-700 group-hover:text-[#008060]">Enable marquee</span>
             </label>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <div>
@@ -262,7 +268,7 @@ export default function AdminStorefrontSettings() {
           >
             <div className="grid gap-4 md:grid-cols-[200px,1fr]">
               <div className="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-200 bg-slate-50">
-                {heroImage ? <img src={heroImage} alt="" className="h-full w-full object-cover" /> : <span className="text-xs text-slate-400">No hero image</span>}
+                {heroImage ? <img src={withAssetCacheBust(heroImage, heroRevision)} alt="" className="h-full w-full object-cover" /> : <span className="text-xs text-slate-400">No hero image</span>}
               </div>
               <div className="space-y-3">
                 <input
@@ -286,6 +292,14 @@ export default function AdminStorefrontSettings() {
                   <label className="admin-label">Image URL (optional)</label>
                   <input className="admin-field" value={heroImage} onChange={(e) => setHeroImage(e.target.value)} placeholder="https://..." />
                 </div>
+                {heroImage ? (
+                  <p className="text-xs text-slate-500 break-all">
+                    Current live hero image:{' '}
+                    <a className="text-[#008060] hover:underline" href={heroImage} target="_blank" rel="noreferrer">
+                      {heroImage}
+                    </a>
+                  </p>
+                ) : null}
                 <div>
                   <label className="admin-label">Overlay color (rgba)</label>
                   <input className="admin-field" value={heroOverlayColor} onChange={(e) => setHeroOverlayColor(e.target.value)} placeholder="rgba(0,0,0,0.45)" />

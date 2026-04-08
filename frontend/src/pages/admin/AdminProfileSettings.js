@@ -429,6 +429,14 @@ export default function AdminProfileSettings() {
                     </AdminButton>
                   )}
                 </div>
+                {resolvedProfileUrl ? (
+                  <p className="text-xs text-slate-500 break-all">
+                    Current live profile image:{' '}
+                    <a className="text-[#008060] hover:underline" href={resolvedProfileUrl} target="_blank" rel="noreferrer">
+                      {resolvedProfileUrl}
+                    </a>
+                  </p>
+                ) : null}
               </div>
             </div>
 

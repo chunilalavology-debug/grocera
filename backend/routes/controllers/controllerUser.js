@@ -1009,6 +1009,7 @@ const getReferralDiscount = async (req, res) => {
 
 const orderPayment = async (req, res) => {
   const nameRegex = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
+  const cityRegex = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
   const phoneRegex = /^\d{1,20}$/;
   const zipRegex = /^\d{3,12}$/;
   const guestAddressSchema = Joi.object({
@@ -1016,7 +1017,7 @@ const orderPayment = async (req, res) => {
     phone: Joi.string().trim().pattern(phoneRegex).required(),
     email: Joi.string().trim().email().required(),
     fullAddress: Joi.string().trim().required(),
-    city: Joi.string().trim().required(),
+    city: Joi.string().trim().pattern(cityRegex).required(),
     state: Joi.string().trim().allow("", null).optional(),
     pincode: Joi.string().trim().pattern(zipRegex).required(),
     addressType: Joi.string().valid("Home", "Work", "Other").optional(),
@@ -1777,13 +1778,14 @@ const normalize = (val) =>
 
 const createAddress = async (req, res) => {
   const fullNameRegex = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
+  const cityRegex = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
   const phoneRegex = /^\d{1,20}$/;
   const zipRegex = /^\d{3,12}$/;
   const schema = Joi.object({
     name: Joi.string().trim().pattern(fullNameRegex).required(),
     phone: Joi.string().trim().pattern(phoneRegex).required(),
     fullAddress: Joi.string().required(),
-    city: Joi.string().required(),
+    city: Joi.string().trim().pattern(cityRegex).required(),
     state: Joi.string().required(),
     pincode: Joi.string().trim().pattern(zipRegex).required(),
     addressType: Joi.string().valid("Home", "Work", "Other").required(),
@@ -1881,6 +1883,7 @@ const getMyAddresses = async (req, res) => {
 
 const updateAddress = async (req, res) => {
   const fullNameRegex = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
+  const cityRegex = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
   const phoneRegex = /^\d{1,20}$/;
   const zipRegex = /^\d{3,12}$/;
   const schema = Joi.object({
@@ -1889,7 +1892,7 @@ const updateAddress = async (req, res) => {
     phone: Joi.string().trim().pattern(phoneRegex),
     fullAddress: Joi.string(),
     addressLine2: Joi.string().allow("", null),
-    city: Joi.string(),
+    city: Joi.string().trim().pattern(cityRegex),
     state: Joi.string(),
     pincode: Joi.string().trim().pattern(zipRegex),
     addressType: Joi.string().valid("Home", "Work", "Other"),

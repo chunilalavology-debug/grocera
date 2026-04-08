@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import api from "../../services/api";
 import { AdminButton } from "../../components/admin/ui";
 import { coerceSlidesFromApi } from "../../utils/homeSliderCoercion";
+import { resolveBrandingAssetUrl } from "../../utils/brandingAssets";
 
 const createDefaultSlide = () => ({
   title: "",
@@ -66,6 +67,12 @@ function normalizeSlide(raw) {
     buttonLink: rest.buttonLink != null ? String(rest.buttonLink) : "/products",
     isActive: rest.isActive !== false,
   };
+}
+
+function slidePreviewUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  return resolveBrandingAssetUrl(raw) || raw;
 }
 
 export default function AdminSliderSettings() {
@@ -380,7 +387,7 @@ export default function AdminSliderSettings() {
                   >
                     <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
                       {summary.hasImage ? (
-                        <img src={slide.imageUrl} alt="" className="h-full w-full object-cover" />
+                        <img src={slidePreviewUrl(slide.imageUrl)} alt="" className="h-full w-full object-cover" />
                       ) : (
                         <div className="flex h-full items-center justify-center text-[10px] text-slate-400 px-1 text-center">
                           No image
@@ -522,7 +529,7 @@ export default function AdminSliderSettings() {
                           </div>
                           {summary.hasImage ? (
                             <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white max-w-xs">
-                              <img src={slide.imageUrl} alt="" className="max-h-40 w-full object-contain" />
+                              <img src={slidePreviewUrl(slide.imageUrl)} alt="" className="max-h-40 w-full object-contain" />
                             </div>
                           ) : null}
                         </Field>

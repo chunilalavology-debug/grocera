@@ -374,6 +374,8 @@ export default function Checkout() {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "Enter a valid email address.";
     if (!fullAddress) errors.fullAddress = "Street address is required.";
     if (!city) errors.city = "City is required.";
+    else if (!/^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(city))
+      errors.city = "City must contain only letters and spaces.";
     if (!pincode) errors.pincode = "ZIP / postal code is required.";
     else if (!/^\d{3,12}$/.test(pincode))
       errors.pincode = "ZIP must be digits only (3-12 digits).";
@@ -1236,7 +1238,7 @@ export default function Checkout() {
                     placeholder="City"
                     value={newAddress.city}
                     error={addressFieldErrors.city}
-                    onChange={(e) => updateNewAddress({ city: e.target.value })}
+                    onChange={(e) => updateNewAddress({ city: onlyAlphaSpace(e.target.value) })}
                   />
                   <PremiumInput
                     label="State"
