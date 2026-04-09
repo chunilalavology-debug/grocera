@@ -45,7 +45,6 @@ const AdminAlert = (order) => {
         <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border: 1px solid #d4d4d4; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
             <tr>
                 <td style="padding: 40px 40px 20px 40px; text-align: center;">
-                    <div style="height:36px;width:120px;margin:0 auto 12px;background:#e5e5e5;border-radius:6px;line-height:36px;font-size:10px;color:#737373;">LOGO</div>
                     <h1 style="margin: 0; font-size: 24px; color: #1a1a1a; letter-spacing: 0.5px;">New order</h1>
                     <div style="width: 50px; height: 2px; background: #008060; margin: 15px auto;"></div>
                     <p style="font-family: Arial, sans-serif; font-size: 14px; color: #666; margin-top: 10px;">Order <strong>#${order.orderNumber}</strong></p>

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import './ComingSoonPage.css';
 
 /**
- * @param {{ mode?: 'site' | 'zippy', headline?: string, message?: string, subscriptionEnabled?: boolean, websiteName?: string }} props
+ * @param {{ mode?: 'site' | 'zippy', headline?: string, message?: string, subscriptionEnabled?: boolean, websiteName?: string, backTo?: string, backLabel?: string }} props
  */
 export default function ComingSoonPage({
   mode = 'site',
@@ -12,6 +14,8 @@ export default function ComingSoonPage({
   message = "Zippy Ships is coming soon. We're working hard to bring fast and reliable shipping to you.",
   subscriptionEnabled = true,
   websiteName = 'Zippyyy',
+  backTo = '/',
+  backLabel = 'Back to store',
 }) {
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -42,6 +46,12 @@ export default function ComingSoonPage({
 
   return (
     <div className="coming-soon">
+      <div className="coming-soon__topbar">
+        <Link to={backTo || '/'} className="coming-soon__back-btn">
+          <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+          <span>{backLabel}</span>
+        </Link>
+      </div>
       <div className="coming-soon__card">
         <div className="coming-soon__pulse" aria-hidden />
         <p className="coming-soon__eyebrow">{websiteName}</p>

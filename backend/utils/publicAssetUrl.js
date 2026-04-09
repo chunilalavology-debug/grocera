@@ -35,4 +35,38 @@ function resolvePublicAssetUrl(rawPathOrUrl, opts = {}) {
   return `${base}${path}`;
 }
 
-module.exports = { resolvePublicAssetUrl, firstOrigin };
+/**
+ * Public base for API routes that serve assets (e.g. GET /api/user/site-branding/logo).
+ * Uses EMAIL_ASSET_BASE_URL, API_PUBLIC_URL, or PUBLIC_API_URL only — not FRONTEND_URL
+ * (split deploys serve /user/* on the API host, not the React host).
+ */
+function publicApiAssetRootFromEnv() {
+  const apiSeg = String(process.env.API_END_POINT_V1 || "/api").replace(/\/+$/, "") || "/api";
+  const raw =
+    firstOrigin(process.env.EMAIL_ASSET_BASE_URL) ||
+    firstOrigin(process.env.API_PUBLIC_URL) ||
+    firstOrigin(process.env.PUBLIC_API_URL);
+  if (!raw) return "";
+  const base = raw.replace(/\/+$/, "");
+  if (/\/api$/i.test(base)) return base;
+  return `${base}${apiSeg.startsWith("/") ? "" : "/"}${apiSeg}`.replace(/\/+$/, "");
+}
+
+/**
+ * Absolute logo URL for emails, PDF fetch, etc. Ensures /user/site-branding/logo is prefixed with .../api.
+ */
+function resolveStoreLogoUrlForOutbound(rawPathOrUrl) {
+  const raw = String(rawPathOrUrl || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const apiRoot = publicApiAssetRootFromEnv();
+  if (apiRoot) return resolvePublicAssetUrl(raw, { requestBaseUrl: apiRoot });
+  return resolvePublicAssetUrl(raw, {});
+}
+
+module.exports = {
+  resolvePublicAssetUrl,
+  firstOrigin,
+  publicApiAssetRootFromEnv,
+  resolveStoreLogoUrlForOutbound,
+};

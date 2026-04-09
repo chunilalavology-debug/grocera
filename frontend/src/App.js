@@ -124,6 +124,8 @@ function App() {
           "We're working hard to bring fast and reliable shipping to you.",
         subscriptionEnabled: zippyComingSoon?.subscriptionEnabled !== false,
         websiteName: 'Zippy Ships',
+        backTo: '/',
+        backLabel: 'Back to store',
     };
 
     if (zippyComingSoon === undefined && isShipsEmbed) {

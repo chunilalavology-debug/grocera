@@ -35,6 +35,104 @@
   margin: 0 auto;
 }
 
+/* Hero band — gradient + glass period control */
+.admin-overview__hero {
+  margin: -0.5rem -0.75rem 1.75rem;
+  padding: 1.75rem 1.25rem 1.5rem;
+  border-radius: 16px;
+  background: linear-gradient(
+    125deg,
+    #0f172a 0%,
+    #164e63 38%,
+    var(--admin-primary, #2878b3) 78%,
+    #38bdf8 100%
+  );
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-overview__hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 100% 0%, rgba(255, 255, 255, 0.12), transparent 55%);
+  pointer-events: none;
+}
+
+.admin-overview__hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .admin-overview__hero-inner {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+.admin-overview__hero-copy .admin-overview__title {
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.admin-overview__hero-copy .admin-overview__subtitle {
+  color: rgba(255, 255, 255, 0.88);
+  max-width: 36rem;
+}
+
+.admin-overview__hero-copy .admin-overview__subtitle strong {
+  color: #fff;
+}
+
+.admin-overview__hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.admin-overview__period--hero .admin-overview__period-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.admin-overview__period--hero .admin-overview__period-tabs {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+}
+
+.admin-overview__period--hero .admin-overview__period-tab {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.admin-overview__period--hero .admin-overview__period-tab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.admin-overview__period--hero .admin-overview__period-tab--active {
+  background: #fff;
+  color: var(--admin-primary, #2878b3);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+}
+
+@media (min-width: 768px) {
+  .admin-overview__hero {
+    margin: 0 0 1.75rem;
+  }
+}
+
 /* Accent tokens (overview only; keeps brand blue as anchor) */
 .admin-overview {
   --dash-revenue: #2878b3;
@@ -151,13 +249,26 @@
   align-items: flex-start;
   gap: 1rem;
   padding: 1.25rem 1.15rem;
-  background: #fff;
+  background: linear-gradient(165deg, #ffffff 0%, #f8fafc 100%);
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
   transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
   position: relative;
   overflow: hidden;
+}
+
+.admin-overview-kpi--revenue {
+  background: linear-gradient(145deg, #ffffff 0%, #eff6ff 55%, #e0f2fe 100%);
+}
+.admin-overview-kpi--profit {
+  background: linear-gradient(145deg, #ffffff 0%, #f5f3ff 55%, #ede9fe 100%);
+}
+.admin-overview-kpi--orders {
+  background: linear-gradient(145deg, #ffffff 0%, #fff7ed 55%, #ffedd5 100%);
+}
+.admin-overview-kpi--inventory {
+  background: linear-gradient(145deg, #ffffff 0%, #eef2ff 55%, #e0e7ff 100%);
 }
 
 .admin-overview-kpi::before {
@@ -264,11 +375,106 @@
 }
 
 .admin-overview__section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 1rem;
   font-weight: 600;
   color: #0f172a;
   margin: 0 0 1rem 0;
   letter-spacing: -0.01em;
+}
+
+.admin-overview__section-title--card {
+  margin-bottom: 0.35rem;
+}
+
+.admin-overview__section-icon {
+  color: var(--admin-primary, #2878b3);
+  flex-shrink: 0;
+}
+
+/* Glance strip — compact gradient cards */
+.admin-overview__stat-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+
+@media (min-width: 900px) {
+  .admin-overview__stat-strip {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.admin-overview-strip-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1rem;
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.admin-overview-strip-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+
+.admin-overview-strip-card--mail {
+  background: linear-gradient(135deg, #fdf4ff 0%, #fae8ff 45%, #f5d0fe 100%);
+  color: #701a75;
+}
+
+.admin-overview-strip-card--users {
+  background: linear-gradient(135deg, #ecfeff 0%, #cffafe 50%, #a5f3fc 100%);
+  color: #0e7490;
+}
+
+.admin-overview-strip-card--voucher {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #fde68a 100%);
+  color: #92400e;
+}
+
+.admin-overview-strip-card--fulfill {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #bbf7d0 100%);
+  color: #166534;
+  cursor: default;
+}
+
+.admin-overview-strip-card--fulfill:hover {
+  transform: none;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+}
+
+.admin-overview-strip-card__value {
+  display: block;
+  font-size: 1.375rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.admin-overview-strip-card__label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.88;
+  margin-top: 0.125rem;
+}
+
+.admin-overview-strip-card__chev {
+  margin-left: auto;
+  opacity: 0.45;
+}
+
+.admin-overview-strip-card div {
+  min-width: 0;
 }
 
 .admin-overview__actions {
@@ -358,6 +564,34 @@
   height: fit-content;
   position: sticky;
   top: 1.5rem;
+}
+
+.admin-overview-card--accent {
+  border-color: #c6d9eb;
+  background: linear-gradient(165deg, #ffffff 0%, #f0f7fc 55%, #f8fafc 100%);
+  box-shadow: 0 8px 28px rgba(40, 120, 179, 0.12);
+}
+
+.admin-overview-card__hint {
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.admin-overview-summary__divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+  margin: 0.35rem 0 0.65rem;
+}
+
+.admin-overview-card__links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
 }
 
 .admin-overview-summary {

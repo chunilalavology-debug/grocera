@@ -64,7 +64,6 @@ const OrderConform = (order) => {
         <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.05);">
             <tr>
                 <td style="background-color: #f8fafc; padding: 32px 20px; text-align: center; border-bottom: 1px solid #e2e8f0;">
-                    <div style="height:40px;width:140px;margin:0 auto 16px;background:#e2e8f0;border-radius:8px;line-height:40px;font-size:11px;color:#64748b;">YOUR LOGO</div>
                     <div style="background-color: #008060; color: #ffffff; width: 56px; height: 56px; line-height: 56px; border-radius: 50%; font-size: 26px; margin: 0 auto 12px auto;">✓</div>
                     <h1 style="margin: 0; color: #1a1a1a; font-size: 26px; letter-spacing: -0.5px;">Order confirmed</h1>
                     <p style="color: #666; font-size: 16px; margin-top: 8px;">Hi ${cname}, thank you for your order.</p>

@@ -1,4 +1,4 @@
-const { resolvePublicAssetUrl } = require("./publicAssetUrl");
+const { resolveStoreLogoUrlForOutbound } = require("./publicAssetUrl");
 
 const SHELL_MARKER = 'data-zippyyy-email-shell="1"';
 
@@ -111,7 +111,7 @@ async function loadEmailBrandingContext(extra = {}) {
   const support =
     String(doc?.contactFormToEmailPrimary || doc?.adminMail || doc?.smtpFromEmail || process.env.SUPPORT_EMAIL || "").trim() ||
     "";
-  const logoAbs = resolvePublicAssetUrl(String(doc?.websiteLogoUrl || "").trim(), {});
+  const logoAbs = resolveStoreLogoUrlForOutbound(String(doc?.websiteLogoUrl || "").trim());
   return {
     storeName,
     storeLogoUrl: logoAbs,

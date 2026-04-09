@@ -1,31 +1,23 @@
 const PDFDocument = require("pdfkit");
-const https = require("https");
-const http = require("http");
 
-function fetchUrlBuffer(url) {
-  return new Promise((resolve, reject) => {
-    const u = String(url || "").trim();
-    if (!/^https?:\/\//i.test(u)) {
-      resolve(null);
-      return;
-    }
-    const lib = u.startsWith("https") ? https : http;
-    const req = lib.get(u, { timeout: 12000 }, (res) => {
-      if (res.statusCode && res.statusCode >= 400) {
-        res.resume();
-        resolve(null);
-        return;
-      }
-      const chunks = [];
-      res.on("data", (c) => chunks.push(c));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
+async function fetchUrlBuffer(url) {
+  const u = String(url || "").trim();
+  if (!/^https?:\/\//i.test(u)) return null;
+  try {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 12_000);
+    const res = await fetch(u, {
+      signal: ac.signal,
+      redirect: "follow",
+      headers: { Accept: "image/*,*/*;q=0.8" },
     });
-    req.on("error", () => resolve(null));
-    req.on("timeout", () => {
-      req.destroy();
-      resolve(null);
-    });
-  });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const ab = await res.arrayBuffer();
+    return Buffer.from(ab);
+  } catch {
+    return null;
+  }
 }
 
 function money(n) {
@@ -39,13 +31,18 @@ function safeText(s, max = 500) {
 
 /**
  * @param {object} order — populated lean order (items.product, addressId, userId, guestShipping)
- * @param {{ websiteName?: string, websiteLogoUrl?: string }} branding — logo URL should be absolute (http/https) for fetch
+ * @param {{
+ *   websiteName?: string,
+ *   websiteLogoUrl?: string,
+ *   logoBuffer?: Buffer | null,
+ * }} branding — prefer logoBuffer (Mongo upload); else fetch absolute http(s) websiteLogoUrl
  * @returns {Promise<Buffer>}
  */
 async function buildOrderInvoicePdfBuffer(order, branding = {}) {
   const storeName =
     String(branding.websiteName || process.env.STORE_NAME || "Zippyyy").trim() || "Zippyyy";
   const logoUrl = String(branding.websiteLogoUrl || "").trim();
+  const fromDb = branding.logoBuffer;
 
   const doc = new PDFDocument({ size: "LETTER", margin: 48, info: { Title: `Invoice ${order.orderNumber || ""}` } });
   const chunks = [];
@@ -56,7 +53,9 @@ async function buildOrderInvoicePdfBuffer(order, branding = {}) {
   const border = "#e2e8f0";
 
   let logoBuf = null;
-  if (logoUrl) {
+  if (Buffer.isBuffer(fromDb) && fromDb.length > 0) {
+    logoBuf = fromDb;
+  } else if (logoUrl) {
     logoBuf = await fetchUrlBuffer(logoUrl);
   }
 
