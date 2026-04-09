@@ -72,6 +72,16 @@ async function getPublicSiteSettings(req, res) {
           snapchat: String(doc?.socialLinks?.snapchat || ""),
           whatsapp: String(doc?.socialLinks?.whatsapp || ""),
         },
+        comingSoon: {
+          siteWideEnabled: Boolean(doc?.comingSoon?.siteWideEnabled),
+          zippyShipsPageEnabled: Boolean(doc?.comingSoon?.zippyShipsPageEnabled),
+          headline:
+            doc?.comingSoon?.headline != null && String(doc.comingSoon.headline).trim() !== ""
+              ? String(doc.comingSoon.headline).trim()
+              : "Zippy Ships is coming soon",
+          message: String(doc?.comingSoon?.message || ""),
+          subscriptionEnabled: doc?.comingSoon?.subscriptionEnabled !== false,
+        },
       },
     });
   } catch (e) {

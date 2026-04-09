@@ -37,8 +37,13 @@ if (fs.existsSync(logsDir)) {
     );
 }
 
+const isProd = process.env.NODE_ENV === "production";
+const logLevel =
+    String(process.env.LOG_LEVEL || "").trim() ||
+    (isProd ? "warn" : "info");
+
 const logger = winston.createLogger({
-    level: "info",
+    level: logLevel,
     format: combine(
         timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
         errors({ stack: true }),
@@ -47,8 +52,8 @@ const logger = winston.createLogger({
     transports,
 });
 
-// Dev: colorized console. Production on Vercel (or if file logs unavailable): console for runtime output.
-if (process.env.NODE_ENV !== "production") {
+// Dev: colorized console. Production serverless / no file logs: stderr errors only (set LOG_LEVEL=info to verbose).
+if (!isProd) {
     logger.add(
         new winston.transports.Console({
             format: combine(colorize(), logFormat),
@@ -57,6 +62,7 @@ if (process.env.NODE_ENV !== "production") {
 } else if (isVercel || transports.length === 0) {
     logger.add(
         new winston.transports.Console({
+            level: String(process.env.LOG_LEVEL || "").trim() || "error",
             format: combine(logFormat),
         })
     );

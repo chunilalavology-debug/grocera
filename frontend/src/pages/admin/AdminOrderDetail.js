@@ -127,7 +127,7 @@ export default function AdminOrderDetail() {
   if (loading) {
     return (
       <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-slate-500">
-        <Loader2 className="h-10 w-10 animate-spin text-[#008060]" />
+        <Loader2 className="h-10 w-10 animate-spin text-[#2878b3]" />
         <p className="text-sm font-medium">Loading order…</p>
       </div>
     );
@@ -159,7 +159,7 @@ export default function AdminOrderDetail() {
         <div className="flex flex-wrap items-center gap-3">
           <Link
             to="/admin/orders"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition-colors hover:text-[#008060]"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition-colors hover:text-[#2878b3]"
           >
             <ArrowLeft className="h-4 w-4" />
             Orders
@@ -203,7 +203,7 @@ export default function AdminOrderDetail() {
               <input
                 value={trackingNumberInput}
                 onChange={(e) => setTrackingNumberInput(e.target.value)}
-                className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                 placeholder="Tracking number"
               />
             </div>
@@ -212,7 +212,7 @@ export default function AdminOrderDetail() {
               <input
                 value={carrierInput}
                 onChange={(e) => setCarrierInput(e.target.value)}
-                className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                 placeholder="Carrier"
               />
             </div>
@@ -220,7 +220,7 @@ export default function AdminOrderDetail() {
           <div className="mt-4">
             <label className="mb-1 block text-xs font-semibold uppercase text-slate-500">Order status</label>
             <select
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
               value={order.status}
               onChange={(e) => updateOrderStatus(e.target.value)}
             >
@@ -291,7 +291,7 @@ export default function AdminOrderDetail() {
           <span className="text-slate-600">
             Shipping <strong className="text-slate-900">{formatCurrency(order.shippingAmount)}</strong>
           </span>
-          <span className="text-base font-semibold text-[#008060]">
+          <span className="text-base font-semibold text-[#2878b3]">
             Total {formatCurrency(order.totalAmount)}
           </span>
           <span className="text-slate-600">

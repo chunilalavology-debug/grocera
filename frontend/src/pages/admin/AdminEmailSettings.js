@@ -130,16 +130,21 @@ export default function AdminEmailSettings() {
       title="Email & SMTP"
       description="Notification addresses and outgoing mail (WooCommerce-style). Order and contact emails use these settings and your saved templates."
       actions={
-        <Link to="/admin/settings/templates" className="admin-btn admin-btn--secondary text-sm py-2 px-3">
-          Email templates
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to="/admin/settings/email-center"
+            className="admin-btn admin-btn--secondary text-sm py-2 px-3"
+          >
+            Notifications &amp; templates
+          </Link>
+        </div>
       }
       noPadding
     >
       <div className="border-b border-slate-100 px-5 py-3 sm:px-6">
         <Link
           to="/admin/settings"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-[#008060]"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-[#2878b3]"
         >
           <ArrowLeft className="h-4 w-4" />
           All settings
@@ -152,7 +157,7 @@ export default function AdminEmailSettings() {
         <div className="space-y-0 divide-y divide-slate-100">
           <section className="p-5 sm:p-6">
             <div className="mb-6 flex items-start gap-3">
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#ecfdf5] text-[#008060]">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f2fa] text-[#2878b3]">
                 <Mail className="h-5 w-5" strokeWidth={2} />
               </span>
               <div>

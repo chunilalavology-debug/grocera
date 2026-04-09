@@ -174,7 +174,7 @@ export default function AdminStorefrontSettings() {
           <AdminCard
             title="Marquee"
             subtitle="Top announcement strip settings."
-            action={<Megaphone className="h-5 w-5 text-[#008060]" />}
+            action={<Megaphone className="h-5 w-5 text-[#2878b3]" />}
           >
             <label className="inline-flex items-center gap-3 cursor-pointer group">
               <div className="relative">
@@ -184,9 +184,9 @@ export default function AdminStorefrontSettings() {
                   onChange={(e) => setMarqueeEnabled(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-12 h-6 bg-slate-200 rounded-full peer peer-checked:bg-[#008060] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-inner"></div>
+                <div className="w-12 h-6 bg-slate-200 rounded-full peer peer-checked:bg-[#2878b3] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-inner"></div>
               </div>
-              <span className="text-sm font-medium text-slate-700 group-hover:text-[#008060]">Enable marquee</span>
+              <span className="text-sm font-medium text-slate-700 group-hover:text-[#2878b3]">Enable marquee</span>
             </label>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <div>
@@ -295,7 +295,7 @@ export default function AdminStorefrontSettings() {
                 {heroImage ? (
                   <p className="text-xs text-slate-500 break-all">
                     Current live hero image:{' '}
-                    <a className="text-[#008060] hover:underline" href={heroImage} target="_blank" rel="noreferrer">
+                    <a className="text-[#2878b3] hover:underline" href={heroImage} target="_blank" rel="noreferrer">
                       {heroImage}
                     </a>
                   </p>

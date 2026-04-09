@@ -125,7 +125,7 @@
 }
 
 .admin-sidebar__brand-link:hover {
-  color: var(--admin-primary, #008060);
+  color: var(--admin-primary, #2878b3);
 }
 
 .admin-sidebar__brand-icon {
@@ -134,14 +134,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--admin-primary-soft, #ecfdf5);
+  background: var(--admin-primary-soft, #e8f2fa);
   border-radius: 10px;
-  color: var(--admin-primary, #008060);
+  color: var(--admin-primary, #2878b3);
 }
 
 .admin-sidebar__brand-link:hover .admin-sidebar__brand-icon {
-  background: #d1fae5;
-  color: var(--admin-primary-hover, #006e52);
+  background: var(--admin-primary-soft-strong, #c9e2f4);
+  color: var(--admin-primary-hover, #1f6396);
 }
 
 .admin-sidebar__close {
@@ -212,13 +212,13 @@
 }
 
 .admin-sidebar__link--active {
-  background: var(--admin-primary-soft, #ecfdf5);
-  color: var(--admin-primary, #008060);
+  background: var(--admin-primary-soft, #e8f2fa);
+  color: var(--admin-primary, #2878b3);
 }
 
 .admin-sidebar__link--active:hover {
-  background: #d1fae5;
-  color: var(--admin-primary-hover, #006e52);
+  background: var(--admin-primary-soft-strong, #c9e2f4);
+  color: var(--admin-primary-hover, #1f6396);
 }
 
 .admin-sidebar__link-icon {
@@ -233,8 +233,8 @@
 }
 
 .admin-sidebar__link--active .admin-sidebar__link-icon {
-  background: #d1fae5;
-  color: var(--admin-primary, #008060);
+  background: var(--admin-primary-soft-strong, #c9e2f4);
+  color: var(--admin-primary, #2878b3);
 }
 
 .admin-sidebar__link-text {
@@ -273,8 +273,8 @@
 }
 
 .admin-sidebar__store-link:hover {
-  background: var(--admin-primary-soft, #ecfdf5);
-  color: var(--admin-primary, #008060);
+  background: var(--admin-primary-soft, #e8f2fa);
+  color: var(--admin-primary, #2878b3);
 }
 
 .admin-sidebar__user {
@@ -293,8 +293,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--admin-primary-soft, #ecfdf5);
-  color: var(--admin-primary, #008060);
+  background: var(--admin-primary-soft, #e8f2fa);
+  color: var(--admin-primary, #2878b3);
   font-size: 0.875rem;
   font-weight: 700;
   border-radius: 8px;
@@ -365,9 +365,9 @@
 }
 
 .admin-sidebar__logout-link:hover {
-  background: var(--admin-primary-soft, #ecfdf5);
-  border-color: #a7f3d0;
-  color: var(--admin-primary, #008060);
+  background: var(--admin-primary-soft, #e8f2fa);
+  border-color: var(--admin-primary-border, #a3cce8);
+  color: var(--admin-primary, #2878b3);
 }
 
 /* Body (content area) */
@@ -461,8 +461,8 @@
 }
 
 .admin-topbar__store-link:hover {
-  background: var(--admin-primary-soft, #ecfdf5);
-  color: var(--admin-primary, #008060);
+  background: var(--admin-primary-soft, #e8f2fa);
+  color: var(--admin-primary, #2878b3);
 }
 
 .admin-topbar__user {
@@ -505,8 +505,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--admin-primary-soft, #ecfdf5);
-  color: var(--admin-primary, #008060);
+  background: var(--admin-primary-soft, #e8f2fa);
+  color: var(--admin-primary, #2878b3);
   font-size: 0.875rem;
   font-weight: 700;
   border-radius: 8px;
@@ -663,7 +663,7 @@
 
 .admin-sidebar__group-toggle--within {
   background: #f8fafc;
-  color: var(--admin-primary, #008060);
+  color: var(--admin-primary, #2878b3);
   font-weight: 600;
 }
 
@@ -720,7 +720,7 @@
 }
 
 .admin-sidebar__sublink--active {
-  background: #ecfdf5;
-  color: #065f46;
+  background: var(--admin-primary-soft, #e8f2fa);
+  color: var(--admin-primary-text-on-soft, #164e72);
   font-weight: 600;
 }

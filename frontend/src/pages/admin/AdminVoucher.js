@@ -18,7 +18,7 @@ const useSearch = (initial, delay) => {
 
 const StatCard = ({ title, value, icon }) => (
     <div className="admin-stat-card">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-lg" aria-hidden>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-sky-100 bg-sky-50 text-lg" aria-hidden>
             {icon}
         </div>
         <div className="min-w-0">
@@ -270,7 +270,7 @@ export default function AdminVoucher() {
                         <input
                             type="search"
                             placeholder="Search by code…"
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                             value={searchTerm}
                             onChange={handleSearchChange}
                             aria-label="Search vouchers"
@@ -300,7 +300,7 @@ export default function AdminVoucher() {
                                 vouchers.map(v => (
                                     <tr key={v._id} className="hover:bg-slate-50/80">
                                         <td className="px-4 py-3">
-                                            <span className="inline-block rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 font-mono text-xs font-semibold text-emerald-900">
+                                            <span className="inline-block rounded-md border border-sky-200 bg-sky-50 px-2 py-1 font-mono text-xs font-semibold text-sky-900">
                                                 {v.code}
                                             </span>
                                         </td>

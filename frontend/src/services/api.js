@@ -43,6 +43,7 @@ api.interceptors.request.use(
         path === "/user/categories" ||
         path === "/user/products" ||
         path === "/settings" ||
+        path === "/settings/zippy-coming-soon" ||
         path === "/user/site-settings" ||
         path === "/user/home-slider-settings" ||
         path === "/admin/home-slider-settings")

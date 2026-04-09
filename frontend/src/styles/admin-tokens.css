@@ -1,14 +1,18 @@
 /**
- * Admin dashboard — Inter, 8px-ish rhythm, Shopify-style primary green.
+ * Admin dashboard — Inter, 8px-ish rhythm, brand primary blue.
  * Scoped so the storefront :root theme is unchanged.
  */
 .admin-layout,
 .admin-design-scope {
   --admin-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  /* Shopify admin–style green (matches AdminButton primary) */
-  --admin-primary: #008060;
-  --admin-primary-hover: #006e52;
-  --admin-primary-soft: #ecfdf5;
+  --admin-primary: #2878b3;
+  --admin-primary-hover: #1f6396;
+  --admin-primary-active: #1a547f;
+  --admin-primary-soft: #e8f2fa;
+  --admin-primary-soft-strong: #c9e2f4;
+  --admin-primary-text-on-soft: #164e72;
+  --admin-primary-border: #a3cce8;
+  --admin-focus-ring: rgba(40, 120, 179, 0.22);
   --admin-text: #0f172a;
   --admin-text-muted: #64748b;
   --admin-border: #e2e8f0;
@@ -25,13 +29,13 @@
   --admin-title-page-size: 1.5rem;
   --admin-h2-size: 1rem;
   --admin-h3-size: 0.9375rem;
-  /** Soft card elevation (Shopify-like, not heavy) */
+  /** Soft card elevation */
   --admin-shadow-card: 0 1px 0 rgba(0, 0, 0, 0.04), 0 1px 2px rgba(15, 23, 42, 0.05);
   --admin-shadow-card-hover: 0 4px 14px rgba(15, 23, 42, 0.07);
 
   /* Legacy variable names used by admin/*.css files */
-  --primary-color: #008060;
-  --primary-gradient: linear-gradient(135deg, #008060 0%, #006e52 100%);
+  --primary-color: #2878b3;
+  --primary-gradient: linear-gradient(135deg, #2878b3 0%, #1f6396 100%);
   --text-dark: #0f172a;
   --text-medium: #64748b;
   --border-color: #e2e8f0;
@@ -96,8 +100,8 @@
 
 .admin-badge--primary {
   background: var(--admin-primary-soft);
-  color: var(--admin-primary);
-  border-color: #a7f3d0;
+  color: var(--admin-primary-text-on-soft);
+  border-color: var(--admin-primary-border);
 }
 
 /* React Quill inside admin */
@@ -144,7 +148,7 @@
   background: var(--admin-primary);
   color: #fff;
   border-color: var(--admin-primary);
-  box-shadow: 0 1px 2px rgba(0, 128, 96, 0.18);
+  box-shadow: 0 1px 2px rgba(40, 120, 179, 0.22);
 }
 
 .admin-btn--primary:hover:not(:disabled) {
@@ -165,13 +169,13 @@
 
 .admin-btn--soft {
   background: var(--admin-primary-soft);
-  color: var(--admin-primary);
-  border-color: #a7f3d0;
+  color: var(--admin-primary-text-on-soft);
+  border-color: var(--admin-primary-border);
 }
 
 .admin-btn--soft:hover:not(:disabled) {
-  background: #d1fae5;
-  border-color: #6ee7b7;
+  background: var(--admin-primary-soft-strong);
+  border-color: #7eb8db;
 }
 
 /* —— Surfaces (match Products page KPI + main card) —— */
@@ -260,7 +264,7 @@
 .admin-textarea:focus {
   outline: none;
   border-color: var(--admin-primary);
-  box-shadow: 0 0 0 3px rgba(0, 128, 96, 0.15);
+  box-shadow: 0 0 0 3px var(--admin-focus-ring);
 }
 
 .admin-field:disabled,
@@ -286,7 +290,7 @@
 .admin-select:focus {
   outline: none;
   border-color: var(--admin-primary);
-  box-shadow: 0 0 0 3px rgba(0, 128, 96, 0.15);
+  box-shadow: 0 0 0 3px var(--admin-focus-ring);
 }
 
 /* Page title inside shell (optional alternative to Tailwind) */

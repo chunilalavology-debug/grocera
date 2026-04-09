@@ -270,7 +270,7 @@ export default function AdminOrders() {
             <input
               type="search"
               placeholder="Order #, email, name, or ID (server search)"
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm shadow-sm placeholder:text-slate-400 focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm shadow-sm placeholder:text-slate-400 focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
               value={searchTerm}
               onChange={handleSearchChange}
               aria-label="Search orders"
@@ -278,20 +278,20 @@ export default function AdminOrders() {
           </div>
           <input
             type="date"
-            className="h-10 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 shadow-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+            className="h-10 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 shadow-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             aria-label="From date"
           />
           <input
             type="date"
-            className="h-10 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 shadow-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+            className="h-10 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 shadow-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             aria-label="To date"
           />
           <select
-            className="h-10 min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+            className="h-10 min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           >
@@ -361,7 +361,7 @@ export default function AdminOrders() {
                         className="cursor-pointer transition-colors hover:bg-slate-50/90"
                       >
                         <td className="px-4 py-3">
-                          <span className="font-semibold text-[#008060]">{order.orderNumber || order.orderId}</span>
+                          <span className="font-semibold text-[#2878b3]">{order.orderNumber || order.orderId}</span>
                           <p className="text-xs font-mono text-slate-400">{String(order.orderId).slice(-8)}</p>
                           <p className="text-xs text-slate-500">{order.itemsCount} items</p>
                         </td>
@@ -394,7 +394,7 @@ export default function AdminOrders() {
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                             <select
                               aria-label="Change order status"
-                              className="h-9 min-w-[140px] rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800 focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                              className="h-9 min-w-[140px] rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800 focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                               value={order.status}
                               onChange={(e) => patchOrderStatus(order.orderId, e.target.value, e)}
                             >
@@ -457,7 +457,7 @@ export default function AdminOrders() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-semibold text-[#008060]">{order.orderNumber || order.orderId}</p>
+                    <p className="font-semibold text-[#2878b3]">{order.orderNumber || order.orderId}</p>
                     <p className="text-xs text-slate-500">{formatDateTime(order.timeline?.createdAt)}</p>
                   </div>
                   <AdminBadge variant={orderStatusBadgeVariant(order.status)}>{orderStatusLabel(order.status)}</AdminBadge>
@@ -531,7 +531,7 @@ export default function AdminOrders() {
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">From date</label>
                   <input
                     type="date"
-                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                     value={exportModalFrom}
                     onChange={(e) => setExportModalFrom(e.target.value)}
                   />
@@ -540,7 +540,7 @@ export default function AdminOrders() {
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">To date</label>
                   <input
                     type="date"
-                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                     value={exportModalTo}
                     onChange={(e) => setExportModalTo(e.target.value)}
                   />
@@ -599,7 +599,7 @@ export default function AdminOrders() {
                 <button
                   type="button"
                   onClick={() => setIsDetailsVisible(!isDetailsVisible)}
-                  className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#008060] hover:underline"
+                  className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#2878b3] hover:underline"
                 >
                   {isDetailsVisible ? 'Hide sensitive' : 'Reveal sensitive'}
                 </button>

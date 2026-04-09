@@ -1,6 +1,7 @@
 const EmailTemplate = require("../db/models/EmailTemplate");
 const { TEMPLATE_DEFAULTS } = require("./emailTemplateDefaults");
 const { getCustomerName, getCustomerEmail } = require("./orderEmailUtils");
+const { loadEmailBrandingContext } = require("./emailShell");
 
 const STATUS_LABELS = {
   pending: "Pending",
@@ -32,6 +33,14 @@ const STATUS_MESSAGES = {
   failed: "There was an issue with your order. Please contact support if you need help.",
 };
 
+function escapeHtmlForEmail(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function formatMoney(n) {
   return `$${Number(n || 0).toFixed(2)}`;
 }
@@ -55,7 +64,6 @@ function orderItemsHtmlTable(order) {
     .map((item) => {
       const name = item.productName || item.product?.name || "Product";
       const qty = item.quantity ?? 0;
-      const price = formatMoney(item.price);
       const line = formatMoney(Number(item.price || 0) * Number(qty || 0));
       return `<tr><td style="padding:8px 0;border-bottom:1px solid #f4f4f5;font-size:14px;">${name} × ${qty}</td><td style="padding:8px 0;border-bottom:1px solid #f4f4f5;text-align:right;font-size:14px;">${line}</td></tr>`;
     })
@@ -79,9 +87,10 @@ function buildOrderTemplateVars(order, extra = {}) {
   const stripeAmount = Number(order?.stripeAmount || 0);
   const otcAmount = Number(order?.otcAmount || 0);
   const paymentMethod = String(order?.paymentMethod || "card").toUpperCase();
-  const paymentBreakdown = otcAmount > 0 || stripeAmount > 0
-    ? `Card: ${formatMoney(stripeAmount)} | OTC: ${formatMoney(otcAmount)}`
-    : paymentMethod;
+  const paymentBreakdown =
+    otcAmount > 0 || stripeAmount > 0
+      ? `Card: ${formatMoney(stripeAmount)} | OTC: ${formatMoney(otcAmount)}`
+      : paymentMethod;
   return {
     storeName: process.env.STORE_NAME || "Zippyyy",
     customerName: getCustomerName(order),
@@ -112,6 +121,16 @@ function applyVariables(templateStr, vars) {
     return v === undefined || v === null ? "" : String(v);
   });
   return out;
+}
+
+/**
+ * Merge branding + aliases for preview or send (store fields from DB win over vars).
+ */
+async function mergeTemplateVars(vars = {}) {
+  const branding = await loadEmailBrandingContext();
+  const merged = { ...vars, ...branding };
+  if (!merged.userName) merged.userName = merged.customerName || merged.contactName || "";
+  return merged;
 }
 
 /**
@@ -151,23 +170,44 @@ async function getTemplateByKey(key) {
   return doc;
 }
 
-async function renderTemplateKey(key, vars) {
+async function renderTemplateKey(key, vars = {}) {
   const doc = await getTemplateByKey(key);
   if (!doc || doc.isActive === false) return null;
+  const merged = await mergeTemplateVars(vars);
   return {
-    subject: applyVariables(doc.subject, vars),
-    html: applyVariables(doc.bodyHtml, vars),
+    subject: applyVariables(doc.subject, merged),
+    html: applyVariables(doc.bodyHtml, merged),
   };
 }
 
 function buildContactTemplateVars({ name, email, queryType, subject, message }) {
   return {
     storeName: process.env.STORE_NAME || "Zippyyy",
-    contactName: name || "",
-    contactEmail: email || "",
-    queryType: queryType || "—",
-    contactSubject: subject || "",
-    contactMessage: String(message || "").replace(/\n/g, "<br/>"),
+    contactName: escapeHtmlForEmail(name || ""),
+    contactEmail: escapeHtmlForEmail(email || ""),
+    queryType: escapeHtmlForEmail(queryType || "—"),
+    contactSubject: escapeHtmlForEmail(subject || ""),
+    contactMessage: escapeHtmlForEmail(String(message || "")).replace(/\n/g, "<br/>"),
+  };
+}
+
+function buildMessageReplyTemplateVars({ contactName, originalSubject, originalMessage, adminReply }) {
+  const subj = escapeHtmlForEmail(originalSubject || "");
+  const orig = escapeHtmlForEmail(String(originalMessage || "")).replace(/\n/g, "<br/>");
+  const reply = escapeHtmlForEmail(String(adminReply || "")).replace(/\n/g, "<br/>");
+  return {
+    storeName: process.env.STORE_NAME || "Zippyyy",
+    contactName: escapeHtmlForEmail(contactName || "Customer"),
+    adminReplyHtml: reply,
+    originalThreadHtml: `<p style="margin:0 0 8px;"><em>${subj}</em></p><div style="margin:0;">${orig}</div>`,
+  };
+}
+
+function buildAuthResetTemplateVars({ userName, resetLink }) {
+  return {
+    storeName: process.env.STORE_NAME || "Zippyyy",
+    userName: escapeHtmlForEmail(userName || "there"),
+    resetLink: String(resetLink || "").trim(),
   };
 }
 
@@ -176,8 +216,11 @@ module.exports = {
   getTemplateByKey,
   renderTemplateKey,
   applyVariables,
+  mergeTemplateVars,
   buildOrderTemplateVars,
   buildContactTemplateVars,
+  buildMessageReplyTemplateVars,
+  buildAuthResetTemplateVars,
   STATUS_LABELS,
   STATUS_MESSAGES,
   TEMPLATE_DEFAULTS,

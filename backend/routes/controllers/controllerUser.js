@@ -1,9 +1,19 @@
 const express = require("express");
 const router = express.Router();
 const Joi = require("joi");
-const { Products, Subscription, Voucher, ContactUs, Orders, User, HomeSliderSettings, AppSettings } = require("../../db");
+const {
+  Products,
+  Subscription,
+  Voucher,
+  ContactUs,
+  Orders,
+  User,
+  HomeSliderSettings,
+  AppSettings,
+  ComingSoonSubscriber,
+} = require("../../db");
 const Stripe = require("stripe");
-const { default: sendMail } = require("../../utils/sendEmail");
+const { sendTransactionalEmailIfEnabled } = require("../../utils/emailService");
 const userSellRateLimiter = require("../middlewares/rateLimit");
 const Product = require("../../db/models/Product");
 const Address = require("../../db/models/Address");
@@ -11,6 +21,12 @@ const Order = require("../../db/models/Order");
 const redisClient = require("../services/serviceRedis-cli");
 const { setKeyWithTime, getKey } = require("../services/serviceRedis");
 const { default: mongoose } = require("mongoose");
+const {
+  resolveOrderLineUnitPrice,
+  computeVoucherDiscountAmount,
+  validateVoucherForSubtotal,
+} = require("../../utils/orderCheckoutPricing");
+const { recordVoucherRedemptionOnce } = require("../../utils/voucherRedemption");
 const Category = require("../../db/models/categories");
 const {
   escapeRegex,
@@ -44,6 +60,7 @@ const {
   easyshipRowChargeTotalUSD,
 } = require("../../utils/easyshipRatesParse");
 const { generateNextOrderId } = require("../../utils/orderIdGenerator");
+const logger = require("../middlewares/logger");
 
 function orderViewJwtSecret() {
   const isProd = process.env.NODE_ENV === "production";
@@ -172,24 +189,13 @@ const applyVoucher = async ({
   paymentMethod,
   userVoucherUsageCount,
 }) => {
-  const now = new Date();
-
   const voucher = await Voucher.findOne({
-    code: new RegExp(`^${code}$`, "i"),
-    isActive: true,
-    isDeleted: false,
-    startAt: { $lte: now },
-    endAt: { $gte: now },
+    code: new RegExp(`^${escapeRegex(String(code || "").trim())}$`, "i"),
+    isDeleted: { $ne: true },
   });
 
-  if (!voucher) throw "Invalid or expired voucher";
-
-  if (
-    voucher.totalUsageLimit &&
-    voucher.usedCount >= voucher.totalUsageLimit
-  ) {
-    throw "Voucher usage limit reached";
-  }
+  const baseErr = validateVoucherForSubtotal(voucher, cartTotal);
+  if (baseErr) throw baseErr;
 
   if (
     voucher.perUserLimit &&
@@ -207,27 +213,18 @@ const applyVoucher = async ({
 
   if (
     voucher.productIds?.length &&
-    !productIds.some(id =>
-      voucher.productIds.map(p => p.toString()).includes(id.toString())
+    !productIds.some((id) =>
+      voucher.productIds.map((p) => p.toString()).includes(id.toString()),
     )
   ) {
     throw "Voucher not applicable on selected products";
   }
 
-  let discount = 0;
-
-  if (voucher.discountType === "PERCENT") {
-    discount = (cartTotal * voucher.discountValue) / 100;
-    if (voucher.maxDiscountAmount) {
-      discount = Math.min(discount, voucher.maxDiscountAmount);
-    }
-  } else {
-    discount = voucher.discountValue;
-  }
+  const discount = computeVoucherDiscountAmount(voucher, cartTotal);
 
   return {
     voucherId: voucher._id,
-    discount: Math.round(discount),
+    discount: +discount.toFixed(2),
   };
 };
 
@@ -879,67 +876,19 @@ const validateCoupon = async (req, res) => {
     const { code, subtotal } = value;
 
     const coupon = await Voucher.findOne({
-      code: code.toUpperCase(),
-      isActive: true,
-      isDeleted: false
+      code: new RegExp(`^${escapeRegex(String(code).trim())}$`, "i"),
+      isDeleted: { $ne: true },
     });
 
-    if (!coupon) {
+    const vErr = validateVoucherForSubtotal(coupon, subtotal);
+    if (vErr) {
       return res.status(400).json({
         success: false,
-        message: "Invalid coupon code"
+        message: vErr,
       });
     }
 
-    const now = new Date();
-
-    if (coupon.startAt && coupon.startAt > now) {
-      return res.status(400).json({
-        success: false,
-        message: "Coupon not started yet"
-      });
-    }
-
-    if (coupon.endAt && coupon.endAt < now) {
-      return res.status(400).json({
-        success: false,
-        message: "Coupon expired"
-      });
-    }
-
-    if (
-      coupon.totalUsageLimit &&
-      coupon.usedCount >= coupon.totalUsageLimit
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Coupon usage limit reached"
-      });
-    }
-
-    if (coupon.minPurchase && subtotal < coupon.minPurchase) {
-      return res.status(400).json({
-        success: false,
-        message: `Minimum order should be $${coupon.minPurchase}`
-      });
-    }
-
-    let discountAmount = 0;
-
-    if (coupon.discountType === "percentage") {
-      discountAmount = (subtotal * coupon.discountValue) / 100;
-
-      if (coupon.maxDiscountAmount) {
-        discountAmount = Math.min(
-          discountAmount,
-          coupon.maxDiscountAmount
-        );
-      }
-    } else {
-      discountAmount = coupon.discountValue;
-    }
-
-    discountAmount = +discountAmount.toFixed(2);
+    const discountAmount = computeVoucherDiscountAmount(coupon, subtotal);
 
     return res.status(200).json({
       success: true,
@@ -948,8 +897,8 @@ const validateCoupon = async (req, res) => {
         code: coupon.code,
         discountType: coupon.discountType,
         discountValue: coupon.discountValue,
-        discountAmount
-      }
+        discountAmount,
+      },
     });
 
   } catch (err) {
@@ -1167,7 +1116,9 @@ const orderPayment = async (req, res) => {
     const products = await Product.find({
       _id: { $in: productIds },
       isDeleted: { $ne: true },
-    }).lean();
+    })
+      .populate("dealId")
+      .lean();
 
     let stripeSubtotal = 0;
     let dbSubtotal = 0;
@@ -1175,6 +1126,7 @@ const orderPayment = async (req, res) => {
     let serviceFee = 5
     const TAX_RATE = 0.08875;
     let couponSnapshot = null;
+    const pricingNow = new Date();
 
     const orderItems = items.map(item => {
       const product = products.find(
@@ -1183,7 +1135,7 @@ const orderPayment = async (req, res) => {
 
       if (!product) throw new Error("Product not found");
 
-      const unitPrice = product.price;
+      const unitPrice = resolveOrderLineUnitPrice(product, pricingNow);
       const unitPriceCents = Math.round(unitPrice * 100);
       const quantity = item.quantity;
 
@@ -1202,46 +1154,33 @@ const orderPayment = async (req, res) => {
       };
     });
 
-    if (couponCode) {
+    const codeTrim = couponCode != null ? String(couponCode).trim() : "";
+    if (codeTrim) {
       const coupon = await Voucher.findOne({
-        code: couponCode,
-        isActive: true,
+        code: new RegExp(`^${escapeRegex(codeTrim)}$`, "i"),
         isDeleted: { $ne: true },
-      });
+      }).lean();
 
-      if (!coupon) {
+      const vMsg = validateVoucherForSubtotal(coupon, dbSubtotal, pricingNow);
+      if (vMsg) {
         return res.status(400).json({
           success: false,
-          message: "Invalid or expired coupon"
+          message: vMsg,
         });
       }
 
-      if (coupon.discountType === "percentage") {
-        discountAmount = (dbSubtotal * coupon.discountValue) / 100;
-
-        if (coupon.maxDiscountAmount) {
-          discountAmount = Math.min(discountAmount, coupon.maxDiscountAmount);
-        }
-      } else {
-        discountAmount = coupon.discountValue;
-      }
-
-      discountAmount = +discountAmount.toFixed(2);
-      if (discountAmount > dbSubtotal) {
-        discountAmount = dbSubtotal;
-      }
-
+      discountAmount = computeVoucherDiscountAmount(coupon, dbSubtotal);
       couponSnapshot = {
         couponId: coupon._id,
         code: coupon.code,
         discountType: coupon.discountType,
         discountValue: coupon.discountValue,
-        discountAmount
+        discountAmount,
       };
     }
 
     // Apply referral discount only for signed-in users (not guest checkout)
-    if (!couponCode && userId) {
+    if (!codeTrim && userId) {
       const user = await User.findById(userId).select('referralDiscountEligible').lean();
       const eligible = Boolean(user?.referralDiscountEligible);
       if (eligible) {
@@ -1256,6 +1195,18 @@ const orderPayment = async (req, res) => {
             discountAmount: referralDiscount,
           };
         }
+      }
+    }
+
+    const clientDiscRaw = value.discountAmount;
+    if (clientDiscRaw != null && clientDiscRaw !== "") {
+      const cd = Number(clientDiscRaw);
+      if (Number.isFinite(cd) && Math.abs(cd - discountAmount) > 0.02) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Discount no longer matches the current cart. Refresh checkout and try again.",
+        });
       }
     }
 
@@ -1428,6 +1379,12 @@ const orderPayment = async (req, res) => {
 
     await order.save();
 
+    try {
+      await recordVoucherRedemptionOnce(order._id);
+    } catch (vrErr) {
+      console.error("OTC recordVoucherRedemptionOnce:", vrErr?.message || vrErr);
+    }
+
     setImmediate(() => {
       try {
         const { sendNewOrderEmails } = require("../../utils/orderEmails");
@@ -1543,17 +1500,10 @@ const contactForm = async (req, res) => {
         } catch (e) {
           console.error("contact_form_admin template:", e.message);
         }
-        const adminMailOptions = {
-          to: contactInboxEmail,
-          subject: adminSubject,
-          html: adminHtml,
-        };
 
         const ackHtml = buildContactAutoAcknowledgmentHtml(name, replyTplTrim || null);
-        const userMailOptions = {
-          to: email,
-          subject: "Thank you for contacting Zippyyy",
-          html: `
+        let userSubject = "Thank you for contacting Zippyyy";
+        let userHtml = `
             <div style="font-family: system-ui, sans-serif; max-width: 560px; line-height: 1.5; color: #1e293b;">
               ${ackHtml}
               <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
@@ -1561,12 +1511,34 @@ const contactForm = async (req, res) => {
               <p style="margin: 0 0 4px;"><em>${escapeHtml(subject)}</em></p>
               <p style="margin: 0; white-space: pre-wrap;">${escapeHtml(message).replace(/\n/g, "<br>")}</p>
             </div>
-          `,
-        };
+          `;
+        try {
+          const custRendered = await renderTemplateKey("contact_customer_ack", cvars);
+          if (custRendered && custRendered.html) {
+            userSubject = custRendered.subject || userSubject;
+            userHtml = `${custRendered.html}
+              <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
+              <p style="margin:0 0 8px;font-size:13px;color:#64748b;"><strong>Your message (for your records)</strong></p>
+              <p style="margin:0 0 4px;"><em>${escapeHtml(subject)}</em></p>
+              <p style="margin:0;white-space:pre-wrap;">${escapeHtml(message).replace(/\n/g, "<br>")}</p>`;
+          }
+        } catch (e) {
+          console.error("contact_customer_ack template:", e?.message || e);
+        }
 
         await Promise.all([
-          sendMail(adminMailOptions),
-          sendMail(userMailOptions)
+          sendTransactionalEmailIfEnabled({
+            emailType: "contactFormAdmin",
+            to: contactInboxEmail,
+            subject: adminSubject,
+            html: adminHtml,
+          }),
+          sendTransactionalEmailIfEnabled({
+            emailType: "contactFormCustomerAck",
+            to: email,
+            subject: userSubject,
+            html: userHtml,
+          }),
         ]);
 
       } catch (emailError) {
@@ -1584,6 +1556,43 @@ const contactForm = async (req, res) => {
     }
     console.error('Contact form submission error:', error);
     res.status(500).json({ success: false, message: 'Server error submitting contact form' });
+  }
+};
+
+const postComingSoonSubscribe = async (req, res) => {
+  try {
+    const schema = Joi.object({
+      email: Joi.string().trim().email().max(320).required(),
+      source: Joi.string().trim().valid("site_wide", "zippy_ships").optional(),
+    });
+    const body = await schema.validateAsync(req.body || {}, { abortEarly: true });
+    const settings = await AppSettings.findOne().select("comingSoon.subscriptionEnabled").lean();
+    if (settings?.comingSoon?.subscriptionEnabled === false) {
+      return res.status(403).json({ success: false, message: "Email signup is disabled." });
+    }
+    const emailNorm = String(body.email).trim().toLowerCase();
+    const source = body.source === "zippy_ships" ? "zippy_ships" : "site_wide";
+    await ComingSoonSubscriber.findOneAndUpdate(
+      { email: emailNorm, source },
+      { $setOnInsert: { email: emailNorm, source } },
+      { upsert: true, new: true },
+    );
+    return res.json({
+      success: true,
+      message: "Thanks — we will notify you when we launch.",
+    });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    if (error && error.code === 11000) {
+      return res.json({
+        success: true,
+        message: "You are already on the list.",
+      });
+    }
+    console.error("postComingSoonSubscribe error:", error);
+    return res.status(500).json({ success: false, message: "Could not save your email." });
   }
 };
 
@@ -2670,14 +2679,13 @@ const requestEasyshipRates = async (body) => {
 
   if (String(process.env.EASYSHIP_RATES_DEBUG || "").trim() === "1") {
     const umbrellas = new Set(mapped.map((x) => String(x.courierName || "").split(/\s+/)[0]));
-    console.info(
-      "[Easyship rates]",
-      JSON.stringify({
+    logger.info(
+      `[Easyship rates] ${JSON.stringify({
         rawRows: list.length,
         pricedRows: mapped.length,
         umbrellaPrefixes: [...umbrellas].slice(0, 12),
         cheapest: mapped[0] ? { carrier: mapped[0].courierName, total: mapped[0].total } : null,
-      }),
+      })}`,
     );
   }
 
@@ -2761,13 +2769,49 @@ const getShippingQuote = async (req, res) => {
     try {
       easyshipResult = await requestEasyshipRates(value);
     } catch (e) {
-      console.error("Easyship quote fallback:", e.message);
+      logger.warn(`Easyship quote fallback: ${e?.message || e}`);
     }
 
     const easyRates = easyshipResult?.rates || [];
     const easyCheapest = easyshipResult?.cheapest || null;
 
     if (!easyRates.length) {
+      const baseInternal = computeShippingQuote(value);
+      if (baseInternal > 0) {
+        const synthetic = {
+          total: baseInternal,
+          courierName: "ZippyyyShips",
+          serviceName: "Estimated rate (carrier live rates unavailable)",
+          easyshipRateId: "",
+          minDeliveryDays: 3,
+          maxDeliveryDays: 7,
+          minimumPickupFee: 0,
+          insuranceFee: 0,
+        };
+        const ratesPayload = [shippingQuoteRateJson(synthetic, true)];
+        const first = ratesPayload[0];
+        setCatalogNoCacheHeaders(res);
+        return res.json({
+          success: true,
+          data: {
+            quoteAmount: first.quoteAmount,
+            quoteAmountBase: first.quoteAmountBase,
+            markupMultiplier: getShippingQuoteMarkupMultiplier(),
+            currency: "USD",
+            rates: ratesPayload,
+            carrier: first.carrier,
+            serviceName: first.serviceName,
+            easyshipRateId: "",
+            source: "estimate",
+            deliverySummary: first.deliverySummary,
+            handoverSummary: first.handoverSummary,
+            minDeliveryDays: first.minDeliveryDays,
+            maxDeliveryDays: first.maxDeliveryDays,
+            minimumPickupFee: first.minimumPickupFee,
+            insuranceFee: first.insuranceFee,
+          },
+        });
+      }
       setCatalogNoCacheHeaders(res);
       return res.status(502).json({
         success: false,
@@ -3091,6 +3135,7 @@ router.get('/site-branding/logo', getSiteBrandingLogo);
 router.get('/site-branding/favicon', getSiteBrandingFavicon);
 router.get('/site-branding/hero-banner', getSiteBrandingHeroBanner);
 router.get('/site-settings', getPublicSiteSettings);
+router.post('/coming-soon/subscribe', userSellRateLimiter, postComingSoonSubscribe);
 router.post('/shipping/quote', getShippingQuote);
 router.post('/shipping/checkout', createShippingCheckout);
 

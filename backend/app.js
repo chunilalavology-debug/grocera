@@ -48,7 +48,10 @@ const app = express();
 app.set("trust proxy", 1);
 const server = http.createServer(app);
 const Stripe = require("stripe");
+const Joi = require("joi");
 const { sendNewOrderEmails } = require("./utils/orderEmails");
+const { recordVoucherRedemptionOnce } = require("./utils/voucherRedemption");
+const AppSettings = require("./db/models/AppSettings");
 const stripeSecret = String(process.env.STRIPE_SECRET_KEY || "").trim();
 let stripe = null;
 if (stripeSecret) {
@@ -360,15 +363,96 @@ app.post(
 );
 
 app.use(express.json({ limit: "10mb" }));
+const { comingSoonApiGate } = require("./routes/middlewares/comingSoonApiGate");
+app.use(comingSoonApiGate);
 for (const [route, controller] of Object.entries(controllers)) {
   app.use(`${API_END_POINT_V1}/${route}`, controller);
 }
 
 const getPublicSiteSettings = require("./routes/publicSiteSettings");
 const putSiteBrandingSettings = require("./routes/putSiteBrandingSettings");
+const { invalidateComingSoonCache } = require("./routes/middlewares/comingSoonApiGate");
 const { authorize } = require("./routes/middlewares/rbacMiddleware");
 app.get(`${API_END_POINT_V1}/settings`, getPublicSiteSettings);
 app.put(`${API_END_POINT_V1}/settings`, authorize(["admin"]), putSiteBrandingSettings);
+app.get(`${API_END_POINT_V1}/settings/zippy-coming-soon`, async (_req, res) => {
+  try {
+    const doc = await AppSettings.findOne().select("comingSoon").lean();
+    const payload = {
+      enabled: Boolean(doc?.comingSoon?.zippyShipsPageEnabled),
+      headline:
+        doc?.comingSoon?.headline != null && String(doc.comingSoon.headline).trim() !== ""
+          ? String(doc.comingSoon.headline).trim()
+          : "Zippy Ships is coming soon",
+      message:
+        doc?.comingSoon?.message != null && String(doc.comingSoon.message).trim() !== ""
+          ? String(doc.comingSoon.message).trim()
+          : "We're working hard to bring fast and reliable shipping to you.",
+      subscriptionEnabled: doc?.comingSoon?.subscriptionEnabled !== false,
+    };
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+    return res.json({ success: true, data: payload });
+  } catch (error) {
+    console.error("get zippy-coming-soon error:", error);
+    return res.status(500).json({ success: false, message: "Failed to load Zippy Ships setting" });
+  }
+});
+app.post(`${API_END_POINT_V1}/settings/zippy-coming-soon`, authorize(["admin"]), async (req, res) => {
+  try {
+    const schema = Joi.object({
+      enabled: Joi.boolean().required(),
+      headline: Joi.string().trim().max(200).allow("").optional(),
+      message: Joi.string().trim().max(2000).allow("").optional(),
+      subscriptionEnabled: Joi.boolean().optional(),
+    });
+    const body = await schema.validateAsync(req.body || {}, { abortEarly: true });
+    const headline = String(body.headline ?? "").trim() || "Zippy Ships is coming soon";
+    const message =
+      String(body.message ?? "").trim() ||
+      "We're working hard to bring fast and reliable shipping to you.";
+    const doc = await AppSettings.findOneAndUpdate(
+      {},
+      {
+        $set: {
+          "comingSoon.zippyShipsPageEnabled": Boolean(body.enabled),
+          "comingSoon.headline": headline,
+          "comingSoon.message": message,
+          "comingSoon.subscriptionEnabled": body.subscriptionEnabled !== false,
+          "comingSoon.siteWideEnabled": false,
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    ).lean();
+    invalidateComingSoonCache();
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+    return res.json({
+      success: true,
+      message: "Zippy Ships coming soon setting saved",
+      data: {
+        enabled: Boolean(doc?.comingSoon?.zippyShipsPageEnabled),
+        headline: String(doc?.comingSoon?.headline || "Zippy Ships is coming soon"),
+        message: String(
+          doc?.comingSoon?.message || "We're working hard to bring fast and reliable shipping to you.",
+        ),
+        subscriptionEnabled: doc?.comingSoon?.subscriptionEnabled !== false,
+      },
+    });
+  } catch (error) {
+    if (error.isJoi) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    console.error("post zippy-coming-soon error:", error);
+    return res.status(500).json({ success: false, message: "Failed to save Zippy Ships setting" });
+  }
+});
 
 cloudinary.config({
   cloud_name: CLOUDNARY_CLOUD_NAME,
@@ -583,6 +667,11 @@ async function markPaidAndSendMail(orderId, session, webhookReq) {
   }
 
   if (order) {
+    try {
+      await recordVoucherRedemptionOnce(order._id);
+    } catch (vrErr) {
+      console.error("recordVoucherRedemptionOnce:", vrErr?.message || vrErr);
+    }
     setImmediate(() => {
       sendNewOrderEmails(order._id).catch((e) => console.error("sendNewOrderEmails:", e?.message || e));
     });

@@ -82,6 +82,9 @@ const orderSchema = new mongoose.Schema({
     discountAmount: Number,
   },
 
+  /** Prevents double-counting voucher.usedCount on replayed webhooks */
+  voucherRedemptionRecorded: { type: Boolean, default: false },
+
   status: {
     type: String,
     enum: [
@@ -173,6 +176,15 @@ const orderSchema = new mongoose.Schema({
   refundAmount: { type: Number, default: 0, min: 0 },
   refundDate: Date,
   emailSent: Boolean,
+  /** Set when admin new-order notification is sent or intentionally skipped (toggle off). */
+  adminNewOrderEmailHandled: { type: Boolean, default: false },
+  /**
+   * Milestone buckets for customer status emails: processing | shipped | delivered | cancelled.
+   * Prevents duplicate emails when multiple internal statuses map to the same bucket.
+   */
+  emailedOrderStatusBuckets: { type: [String], default: [] },
+  /** Exact order.status values a customer notification was already sent for (primary dedupe). */
+  emailedOrderStatuses: { type: [String], default: [] },
   refundReason: String
 }, {
   timestamps: true,

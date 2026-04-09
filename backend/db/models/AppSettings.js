@@ -91,6 +91,35 @@ const appSettingsSchema = new mongoose.Schema(
       apiKeyIv: { type: String, default: '', select: false },
       apiKeyTag: { type: String, default: '', select: false },
     },
+
+    /**
+     * Transactional order emails (admin toggles). Defaults ON for backward compatibility.
+     */
+    emailNotifications: {
+      orderConfirmationUser: { type: Boolean, default: true },
+      orderStatusProcessing: { type: Boolean, default: true },
+      orderStatusShipped: { type: Boolean, default: true },
+      orderStatusDelivered: { type: Boolean, default: true },
+      orderStatusCancelled: { type: Boolean, default: true },
+      adminNewOrder: { type: Boolean, default: true },
+      contactFormAdmin: { type: Boolean, default: true },
+      contactFormCustomerAck: { type: Boolean, default: true },
+      passwordReset: { type: Boolean, default: true },
+      messageAdminReply: { type: Boolean, default: true },
+      /** Per order.status customer emails, e.g. { shipped: true, delivered: false } */
+      orderStatusEmail: { type: mongoose.Schema.Types.Mixed, default: {} },
+    },
+
+    /**
+     * Site-wide maintenance / launch mode + Zippy Ships teaser page.
+     */
+    comingSoon: {
+      siteWideEnabled: { type: Boolean, default: false },
+      zippyShipsPageEnabled: { type: Boolean, default: false },
+      headline: { type: String, trim: true, maxlength: 200, default: 'Zippy Ships is coming soon' },
+      message: { type: String, trim: true, maxlength: 2000, default: '' },
+      subscriptionEnabled: { type: Boolean, default: true },
+    },
   },
   { timestamps: true }
 );

@@ -209,7 +209,7 @@ export default function AdminGeneralSettings() {
       description={
         <span>
           Store name, logo, and favicon appear on the storefront and browser tab. Notification inboxes live under{' '}
-          <Link to="/admin/settings" className="font-semibold text-[#008060] hover:underline">
+          <Link to="/admin/settings" className="font-semibold text-[#2878b3] hover:underline">
             Notifications &amp; homepage
           </Link>
           .
@@ -224,7 +224,7 @@ export default function AdminGeneralSettings() {
             title="Website name"
             subtitle="Shown in the browser title bar and across the storefront header."
             action={
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ecfdf5] text-[#008060]">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#e8f2fa] text-[#2878b3]">
                 <Globe className="h-5 w-5" strokeWidth={2} aria-hidden />
               </span>
             }
@@ -326,7 +326,7 @@ export default function AdminGeneralSettings() {
                 {websiteLogoUrl ? (
                   <p className="text-xs text-slate-500 break-all">
                     Current live logo:{' '}
-                    <a className="text-[#008060] hover:underline" href={websiteLogoUrl} target="_blank" rel="noreferrer">
+                    <a className="text-[#2878b3] hover:underline" href={websiteLogoUrl} target="_blank" rel="noreferrer">
                       {websiteLogoUrl}
                     </a>
                   </p>
@@ -403,7 +403,7 @@ export default function AdminGeneralSettings() {
                 {websiteFaviconUrl ? (
                   <p className="text-xs text-slate-500 break-all">
                     Current live favicon:{' '}
-                    <a className="text-[#008060] hover:underline" href={websiteFaviconUrl} target="_blank" rel="noreferrer">
+                    <a className="text-[#2878b3] hover:underline" href={websiteFaviconUrl} target="_blank" rel="noreferrer">
                       {websiteFaviconUrl}
                     </a>
                   </p>

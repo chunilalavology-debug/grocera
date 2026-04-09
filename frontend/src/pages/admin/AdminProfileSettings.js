@@ -251,7 +251,7 @@ export default function AdminProfileSettings() {
       description={
         <span>
           Your display name, password, and profile photo for the admin experience. Store branding is under{' '}
-          <Link to="/admin/settings/general" className="font-semibold text-[#008060] hover:underline">
+          <Link to="/admin/settings/general" className="font-semibold text-[#2878b3] hover:underline">
             General
           </Link>
           .
@@ -266,7 +266,7 @@ export default function AdminProfileSettings() {
             title="Profile"
             subtitle="Name shown in the admin header and sidebar."
             action={
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ecfdf5] text-[#008060]">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#e8f2fa] text-[#2878b3]">
                 <User className="h-5 w-5" strokeWidth={2} aria-hidden />
               </span>
             }
@@ -300,7 +300,7 @@ export default function AdminProfileSettings() {
             title="Password"
             subtitle="At least 8 characters with uppercase, lowercase, and a number."
             action={
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ecfdf5] text-[#008060]">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#e8f2fa] text-[#2878b3]">
                 <Lock className="h-5 w-5" strokeWidth={2} aria-hidden />
               </span>
             }
@@ -387,7 +387,7 @@ export default function AdminProfileSettings() {
             title="Profile photo"
             subtitle="Upload a JPG, PNG, or WebP from your computer. Shown in the sidebar and top bar."
             action={
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ecfdf5] text-[#008060]">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#e8f2fa] text-[#2878b3]">
                 <ImageIcon className="h-5 w-5" strokeWidth={2} aria-hidden />
               </span>
             }
@@ -432,7 +432,7 @@ export default function AdminProfileSettings() {
                 {resolvedProfileUrl ? (
                   <p className="text-xs text-slate-500 break-all">
                     Current live profile image:{' '}
-                    <a className="text-[#008060] hover:underline" href={resolvedProfileUrl} target="_blank" rel="noreferrer">
+                    <a className="text-[#2878b3] hover:underline" href={resolvedProfileUrl} target="_blank" rel="noreferrer">
                       {resolvedProfileUrl}
                     </a>
                   </p>

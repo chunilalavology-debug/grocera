@@ -6,6 +6,32 @@ const { normalizeStoredUploadsUrl } = require("../../utils/brandingPublicUrl");
 const Cart = require("../../db/models/Cart");
 const { connectDB } = require("../../lib/db");
 const userSellRateLimiter = require("../middlewares/rateLimit");
+const jwt = require("jsonwebtoken");
+const { renderTemplateKey, buildAuthResetTemplateVars } = require("../../utils/emailTemplateService");
+const { sendTransactionalEmailIfEnabled } = require("../../utils/emailService");
+
+function passwordResetAppBaseUrl(req) {
+  const fromEnv =
+    String(process.env.FRONTEND_URL || process.env.CLIENT_URL || "")
+      .split(",")[0]
+      .trim()
+      .replace(/\/+$/, "") || "";
+  if (fromEnv) return fromEnv;
+  const origin = String(req.get("origin") || "").trim().replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(origin)) return origin;
+  const proto = (req.protocol || "https").replace(/:+$/, "");
+  const host = req.get("host") || "";
+  if (!host) return "";
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
+function generatePasswordResetToken(user) {
+  return jwt.sign(
+    { id: String(user._id), type: "RESET_PASSWORD" },
+    process.env.JWT_SECRET_KEY,
+    { expiresIn: "1h" },
+  );
+}
 
 const formatJoiErrors = (error) => {
   if (!error.details) return '';
@@ -430,17 +456,46 @@ const sendForgetPasswordMail = async (req, res) => {
       message: "This Email Address account not found! Please Check Email Address or Register First!",
     });
 
-    const resetToken = generateResetToken(user);
-    const resetLink = `https://zippyyy.com/reset-password?token=${resetToken}`;
+    const resetToken = generatePasswordResetToken(user);
+    const base = passwordResetAppBaseUrl(req);
+    if (!base) {
+      console.error("passwordResetAppBaseUrl: set FRONTEND_URL for reset links");
+      return res.status(500).json({
+        success: false,
+        message: "Server configuration error. Ask the administrator to set FRONTEND_URL.",
+      });
+    }
+    const resetLink = `${base}/reset-password?token=${encodeURIComponent(resetToken)}`;
+    const displayName =
+      [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
+      String(user.name || "").trim() ||
+      "there";
 
-    const html = forgetPwdTemp({
-      name: user?.name,
-      resetLink,
-    });
+    let subject = "Reset your password";
+    let html;
+    try {
+      const rendered = await renderTemplateKey(
+        "auth_password_reset",
+        buildAuthResetTemplateVars({ userName: displayName, resetLink }),
+      );
+      if (rendered && rendered.html) {
+        subject = rendered.subject || subject;
+        html = rendered.html;
+      }
+    } catch (e) {
+      console.error("auth_password_reset template:", e?.message || e);
+    }
+    if (!html) {
+      return res.status(500).json({
+        success: false,
+        message: "Password reset email template is unavailable.",
+      });
+    }
 
-    await sendMail({
+    await sendTransactionalEmailIfEnabled({
+      emailType: "passwordReset",
       to: email,
-      subject: "Reset Your Zippyyy Account Password",
+      subject,
       html,
     });
 

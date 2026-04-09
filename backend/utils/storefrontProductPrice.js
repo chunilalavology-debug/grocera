@@ -73,11 +73,16 @@ function applyDealIdToPricing(product, deal) {
 
   if (deal && deal.isActive !== false) {
     let candidate = Number.POSITIVE_INFINITY;
-    if (deal.dealType === 'FLAT') {
+    if (deal.dealType === "FLAT" || deal.dealType === "Fixed") {
       candidate = Math.max(0, listAnchor - (Number(deal.discountValue) || 0));
-    } else if (deal.dealType === 'PERCENT' || deal.dealType === 'Percentage') {
+    } else if (
+      deal.dealType === "PERCENT" ||
+      deal.dealType === "Percentage" ||
+      deal.dealType === "percentage"
+    ) {
       candidate = Math.max(0, listAnchor * (1 - (Number(deal.discountValue) || 0) / 100));
     }
+    // BOGO and unknown types: keep finalPrice from CSV/sale path (no extra reduction here)
     if (Number.isFinite(candidate)) {
       finalPrice = Math.min(finalPrice, candidate);
     }

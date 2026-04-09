@@ -4,3 +4,4 @@ export { AdminCard } from './AdminCard';
 export { ConfirmModal } from './ConfirmModal';
 export { AdminTableSkeleton } from './AdminTableSkeleton';
 export { AdminPageShell } from '../AdminPageShell';
+export { ToggleSwitch } from './ToggleSwitch';

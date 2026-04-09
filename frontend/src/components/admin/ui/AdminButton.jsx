@@ -11,7 +11,7 @@ const sizes = {
 
 const variants = {
   primary:
-    'bg-[#008060] text-white shadow-sm hover:bg-[#006e52] focus-visible:ring-[#008060] active:scale-[0.98]',
+    'bg-[#2878b3] text-white shadow-sm hover:bg-[#1f6396] focus-visible:ring-[#2878b3] active:scale-[0.98]',
   secondary:
     'bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 focus-visible:ring-slate-400',
   ghost: 'bg-transparent text-slate-600 hover:bg-slate-100 focus-visible:ring-slate-300 border border-transparent',

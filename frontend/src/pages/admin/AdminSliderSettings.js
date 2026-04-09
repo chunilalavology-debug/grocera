@@ -398,7 +398,7 @@ export default function AdminSliderSettings() {
                       <div className="font-medium text-slate-900 truncate">{summary.title}</div>
                       <div className="text-xs text-slate-500 mt-0.5">
                         {summary.active ? (
-                          <span className="text-emerald-700">Active on site</span>
+                          <span className="text-sky-700">Active on site</span>
                         ) : (
                           <span className="text-slate-500">Hidden on site</span>
                         )}

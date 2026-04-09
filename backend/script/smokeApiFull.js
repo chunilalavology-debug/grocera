@@ -6,8 +6,10 @@
  *   API_BASE=https://api.example.com/api node script/smokeApiFull.js
  *   ADMIN_TOKEN="Bearer ..." USER_TOKEN="Bearer ..." SHIPPING_PROXY_TEST_API_KEY="zippy_..." node script/smokeApiFull.js
  *
- * Outputs:
+ * Outputs (gitignored):
  *   script/reports/smoke-api-full-report.json
+ *
+ * Note: Restart the API after deploying so shipping quote uses the latest handler (estimate fallback when Easyship is off).
  */
 const fs = require("fs");
 const path = require("path");

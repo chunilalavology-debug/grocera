@@ -151,7 +151,7 @@ export default function AdminEmailTemplates() {
       <div className="border-b border-slate-100 px-5 py-3 sm:px-6">
         <Link
           to="/admin/settings/email"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-[#008060]"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-[#2878b3]"
         >
           <ArrowLeft className="h-4 w-4" />
           Email &amp; SMTP
@@ -171,7 +171,7 @@ export default function AdminEmailTemplates() {
                   onClick={() => setSelectedKey(t.key)}
                   className={`rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                     selectedKey === t.key
-                      ? 'bg-white text-[#008060] shadow-sm ring-1 ring-slate-200/80'
+                      ? 'bg-white text-[#2878b3] shadow-sm ring-1 ring-slate-200/80'
                       : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
                   }`}
                 >
@@ -208,7 +208,7 @@ export default function AdminEmailTemplates() {
                     key={v}
                     type="button"
                     onClick={() => insertVar(v)}
-                    className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[10px] text-slate-600 transition-colors hover:border-[#008060]/40 hover:bg-emerald-50/50"
+                    className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[10px] text-slate-600 transition-colors hover:border-[#2878b3]/40 hover:bg-sky-50/50"
                   >
                     {v}
                   </button>

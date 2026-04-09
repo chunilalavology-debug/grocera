@@ -314,8 +314,8 @@ function AdminDeals() {
       label: 'Live on page',
       val: dealStatsOnPage.active,
       icon: CheckCircle,
-      accent: 'text-emerald-600',
-      bg: 'bg-emerald-50',
+      accent: 'text-sky-700',
+      bg: 'bg-sky-50',
     },
     {
       label: 'Scheduled (page)',
@@ -569,7 +569,7 @@ function AdminDeals() {
                 setPage(1);
               }}
               onKeyDown={onSearchKeyDown}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
               aria-label="Search deals"
             />
           </div>
@@ -579,7 +579,7 @@ function AdminDeals() {
             <select
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value)}
-              className="h-10 w-full min-w-[180px] appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm font-medium text-slate-700 shadow-sm transition-colors focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20 sm:w-auto"
+              className="h-10 w-full min-w-[180px] appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm font-medium text-slate-700 shadow-sm transition-colors focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20 sm:w-auto"
               aria-label="Sort deals"
             >
               {SORT_OPTIONS.map((o) => (
@@ -632,9 +632,9 @@ function AdminDeals() {
         </div>
 
         {selectedIds.size > 0 ? (
-          <div className="flex flex-wrap items-center gap-2 border-b border-emerald-200/60 bg-gradient-to-r from-emerald-50/90 to-teal-50/50 px-4 py-3 sm:px-6">
-            <LayoutGrid className="h-4 w-4 text-emerald-700" />
-            <span className="text-sm font-semibold text-emerald-900">{selectedIds.size} selected</span>
+          <div className="flex flex-wrap items-center gap-2 border-b border-sky-200/60 bg-gradient-to-r from-sky-50/90 to-blue-50/50 px-4 py-3 sm:px-6">
+            <LayoutGrid className="h-4 w-4 text-sky-700" />
+            <span className="text-sm font-semibold text-sky-900">{selectedIds.size} selected</span>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <AdminButton variant="secondary" size="sm" onClick={() => firstSelectedDeal && openModal(firstSelectedDeal)} disabled={!firstSelectedDeal}>
                 <Pencil className="h-4 w-4" />
@@ -674,7 +674,7 @@ function AdminDeals() {
             <input
               ref={masterCheckboxRef}
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-[#008060] focus:ring-[#008060]/30"
+              className="h-4 w-4 rounded border-slate-300 text-[#2878b3] focus:ring-[#2878b3]/30"
               checked={allOnPageSelected && idsOnPage.length > 0}
               onChange={toggleMaster}
               aria-label="Select all on this page"
@@ -768,7 +768,7 @@ function AdminDeals() {
                           <td className="px-4 py-3">
                             <input
                               type="checkbox"
-                              className="h-4 w-4 rounded border-slate-300 text-[#008060] focus:ring-[#008060]/30"
+                              className="h-4 w-4 rounded border-slate-300 text-[#2878b3] focus:ring-[#2878b3]/30"
                               checked={sel}
                               onChange={() => toggleRow(deal._id)}
                               aria-label={`Select ${deal.dealName}`}
@@ -789,7 +789,7 @@ function AdminDeals() {
                             <button
                               type="button"
                               onClick={() => openModal(deal)}
-                              className="text-left font-semibold text-slate-900 hover:text-[#008060] transition-colors"
+                              className="text-left font-semibold text-slate-900 hover:text-[#2878b3] transition-colors"
                             >
                               {deal.dealName || '—'}
                             </button>
@@ -834,7 +834,7 @@ function AdminDeals() {
                               <button
                                 type="button"
                                 onClick={() => openModal(deal)}
-                                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#008060]"
+                                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#2878b3]"
                                 title="Edit"
                               >
                                 <Pencil className="h-4 w-4" />
@@ -880,7 +880,7 @@ function AdminDeals() {
                 >
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 rounded border-slate-300 text-[#008060]"
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-[#2878b3]"
                     checked={sel}
                     onChange={() => toggleRow(deal._id)}
                   />
@@ -894,7 +894,7 @@ function AdminDeals() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <button type="button" onClick={() => openModal(deal)} className="font-semibold text-slate-900 hover:text-[#008060] text-left">
+                    <button type="button" onClick={() => openModal(deal)} className="font-semibold text-slate-900 hover:text-[#2878b3] text-left">
                       {deal.dealName}
                     </button>
                     <p className="mt-1 text-xs text-slate-500">{formatDiscountLine(deal)}</p>
@@ -982,7 +982,7 @@ function AdminDeals() {
                   value={formData.dealName}
                   onChange={handleInputChange}
                   required
-                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                   placeholder="e.g. Summer fruit sale"
                 />
               </div>
@@ -996,7 +996,7 @@ function AdminDeals() {
                     name="dealType"
                     value={formData.dealType}
                     onChange={handleInputChange}
-                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                   >
                     <option value="PERCENT">Percentage off</option>
                     <option value="FLAT">Fixed amount off</option>
@@ -1014,7 +1014,7 @@ function AdminDeals() {
                     value={formData.discountValue}
                     onChange={handleInputChange}
                     required={formData.dealType !== 'BOGO'}
-                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                     placeholder={formData.dealType === 'BOGO' ? '0 for BOGO' : 'e.g. 15'}
                   />
                 </div>
@@ -1056,7 +1056,7 @@ function AdminDeals() {
                     value={formData.startAt}
                     onChange={handleInputChange}
                     required
-                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                   />
                 </div>
                 <div>
@@ -1070,13 +1070,13 @@ function AdminDeals() {
                     value={formData.endAt}
                     onChange={handleInputChange}
                     required
-                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                   />
                 </div>
               </div>
               <div className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-3">
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
-                  <input type="checkbox" name="isActive" checked={formData.isActive} onChange={handleInputChange} className="rounded border-slate-300 text-[#008060]" />
+                  <input type="checkbox" name="isActive" checked={formData.isActive} onChange={handleInputChange} className="rounded border-slate-300 text-[#2878b3]" />
                   Deal is active
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
@@ -1085,7 +1085,7 @@ function AdminDeals() {
                     name="showOnProductPage"
                     checked={formData.showOnProductPage}
                     onChange={handleInputChange}
-                    className="rounded border-slate-300 text-[#008060]"
+                    className="rounded border-slate-300 text-[#2878b3]"
                   />
                   Show on product page
                 </label>

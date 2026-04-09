@@ -340,8 +340,8 @@ export default function AdminUsers() {
       label: 'Active',
       val: stats.activeUsers,
       icon: UserCheck,
-      accent: 'text-emerald-600',
-      bg: 'bg-emerald-50',
+      accent: 'text-sky-700',
+      bg: 'bg-sky-50',
     },
     {
       label: 'Inactive',
@@ -415,7 +415,7 @@ export default function AdminUsers() {
             <select
               value={editRole}
               onChange={(e) => setEditRole(e.target.value)}
-              className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+              className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
             >
               {ROLE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -457,7 +457,7 @@ export default function AdminUsers() {
           </div>
           <button
             type="button"
-            className="inline-flex min-h-[36px] items-center justify-center gap-2 rounded-lg bg-[#008060] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#006e52] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#008060] focus-visible:ring-offset-2"
+            className="inline-flex min-h-[36px] items-center justify-center gap-2 rounded-lg bg-[#2878b3] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#1f6396] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2878b3] focus-visible:ring-offset-2"
             onClick={() =>
               toast('New customers sign up on the storefront. To promote someone to admin, change their role after they have an account.', {
                 icon: 'ℹ️',
@@ -481,7 +481,7 @@ export default function AdminUsers() {
                 setPage(1);
               }}
               onKeyDown={onSearchKeyDown}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
               aria-label="Search users"
             />
           </div>
@@ -491,7 +491,7 @@ export default function AdminUsers() {
             <select
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value)}
-              className="h-10 w-full min-w-[180px] appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm font-medium text-slate-700 shadow-sm transition-colors focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20 sm:w-auto"
+              className="h-10 w-full min-w-[180px] appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm font-medium text-slate-700 shadow-sm transition-colors focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20 sm:w-auto"
               aria-label="Sort users"
             >
               {SORT_OPTIONS.map((o) => (
@@ -523,7 +523,7 @@ export default function AdminUsers() {
                     setFilterRole(e.target.value);
                     setPage(1);
                   }}
-                  className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                  className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                 >
                   <option value="all">All roles</option>
                   <option value="customer">User</option>
@@ -536,7 +536,7 @@ export default function AdminUsers() {
                     setFilterStatus(e.target.value);
                     setPage(1);
                   }}
-                  className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20"
+                  className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20"
                 >
                   <option value="all">All</option>
                   <option value="active">Active</option>
@@ -572,9 +572,9 @@ export default function AdminUsers() {
         </div>
 
         {selectedIds.size > 0 ? (
-          <div className="flex flex-wrap items-center gap-2 border-b border-emerald-200/60 bg-gradient-to-r from-emerald-50/90 to-teal-50/50 px-4 py-3 sm:px-6">
-            <LayoutGrid className="h-4 w-4 text-emerald-700" />
-            <span className="text-sm font-semibold text-emerald-900">{selectedIds.size} selected</span>
+          <div className="flex flex-wrap items-center gap-2 border-b border-sky-200/60 bg-gradient-to-r from-sky-50/90 to-blue-50/50 px-4 py-3 sm:px-6">
+            <LayoutGrid className="h-4 w-4 text-sky-700" />
+            <span className="text-sm font-semibold text-sky-900">{selectedIds.size} selected</span>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <AdminButton
                 variant="secondary"
@@ -610,7 +610,7 @@ export default function AdminUsers() {
             <input
               ref={masterCheckboxRef}
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-[#008060] focus:ring-[#008060]/30"
+              className="h-4 w-4 rounded border-slate-300 text-[#2878b3] focus:ring-[#2878b3]/30"
               checked={allOnPageSelected && selectableIds.length > 0}
               onChange={toggleMaster}
               aria-label="Select all on this page"
@@ -702,7 +702,7 @@ export default function AdminUsers() {
                             <input
                               type="checkbox"
                               disabled={isSelf}
-                              className="h-4 w-4 rounded border-slate-300 text-[#008060] focus:ring-[#008060]/30 disabled:opacity-40"
+                              className="h-4 w-4 rounded border-slate-300 text-[#2878b3] focus:ring-[#2878b3]/30 disabled:opacity-40"
                               checked={sel}
                               onChange={() => toggleRow(u._id)}
                               aria-label={`Select ${name}`}
@@ -719,7 +719,7 @@ export default function AdminUsers() {
                           <td className="max-w-[220px] px-4 py-3">
                             <span className="font-semibold text-slate-900">{name}</span>
                             {isSelf ? (
-                              <p className="mt-0.5 text-xs font-medium text-[#008060]">You</p>
+                              <p className="mt-0.5 text-xs font-medium text-[#2878b3]">You</p>
                             ) : null}
                           </td>
                           <td className="max-w-xs truncate px-4 py-3 text-slate-600" title={u.email}>
@@ -745,7 +745,7 @@ export default function AdminUsers() {
                               <div className="flex items-center justify-end gap-1">
                                 <button
                                   type="button"
-                                  className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#008060]"
+                                  className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#2878b3]"
                                   title="Edit role"
                                   onClick={() => openEdit(u)}
                                 >
@@ -795,7 +795,7 @@ export default function AdminUsers() {
                   <input
                     type="checkbox"
                     disabled={isSelf}
-                    className="mt-2 h-5 w-5 shrink-0 rounded border-slate-300 text-[#008060]"
+                    className="mt-2 h-5 w-5 shrink-0 rounded border-slate-300 text-[#2878b3]"
                     checked={sel}
                     onChange={() => toggleRow(u._id)}
                   />
@@ -832,7 +832,7 @@ export default function AdminUsers() {
                         </AdminButton>
                       </div>
                     ) : (
-                      <p className="mt-2 text-xs text-[#008060]">Your account</p>
+                      <p className="mt-2 text-xs text-[#2878b3]">Your account</p>
                     )}
                   </div>
                 </div>

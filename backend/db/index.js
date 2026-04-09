@@ -10,6 +10,7 @@ const Voucher = require('./models/voucher');
 const HomeSliderSettings = require('./models/HomeSliderSettings');
 const AppSettings = require('./models/AppSettings');
 const EmailTemplate = require('./models/EmailTemplate');
+const ComingSoonSubscriber = require('./models/ComingSoonSubscriber');
 
 const mongoUri = (process.env.MONGO_URI || process.env.DB_STRING || "").trim();
 if (mongoUri) {
@@ -40,5 +41,6 @@ module.exports = {
     Voucher,
     HomeSliderSettings,
     AppSettings,
-    EmailTemplate
+    EmailTemplate,
+    ComingSoonSubscriber,
 };

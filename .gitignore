@@ -31,6 +31,10 @@ dist/
 .cache/
 coverage/
 *.log
+
+# Smoke / audit output (generated locally)
+backend/script/reports/
+
 .DS_Store
 Thumbs.db
 

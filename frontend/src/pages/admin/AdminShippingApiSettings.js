@@ -273,7 +273,7 @@ export default function AdminShippingApiSettings() {
         <div className="py-12 text-center text-sm text-slate-500">Loading…</div>
       ) : (
         <div className="mx-auto max-w-4xl space-y-6">
-          <AdminCard title="Easyship & commission" subtitle="Stored encrypted on the server." action={<Truck className="h-5 w-5 text-[#008060]" />}>
+          <AdminCard title="Easyship & commission" subtitle="Stored encrypted on the server." action={<Truck className="h-5 w-5 text-[#2878b3]" />}>
             <p className="text-sm text-slate-600">
               Status:{' '}
               <strong>{configured ? 'Easyship key configured' : 'Not configured'}</strong>

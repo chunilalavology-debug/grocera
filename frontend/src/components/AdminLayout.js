@@ -45,11 +45,12 @@ const NAV_ITEMS_AFTER_PRODUCTS = [
 const SETTINGS_SUBLINKS = [
   { to: '/admin/settings/storefront', label: 'Storefront', end: true },
   { to: '/admin/settings/shipping-api', label: 'Shipping API (Easyship)', end: true },
+  { to: '/admin/settings/coming-soon', label: 'Coming soon', end: true },
   { to: '/admin/settings/general', label: 'General', end: true },
   { to: '/admin/settings/profile', label: 'Profile', end: true },
   { to: '/admin/settings', label: 'Notifications & homepage', end: true },
   { to: '/admin/settings/email', label: 'Email & SMTP', end: false },
-  { to: '/admin/settings/templates', label: 'Email templates', end: false },
+  { to: '/admin/settings/email-center', label: 'Email notifications & templates', end: false },
 ];
 
 function AdminLayout() {

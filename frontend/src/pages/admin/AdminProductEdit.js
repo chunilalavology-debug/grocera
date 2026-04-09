@@ -43,7 +43,7 @@ const emptyForm = () => ({
 });
 
 const inputClass =
-  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-[#008060] focus:outline-none focus:ring-2 focus:ring-[#008060]/20';
+  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-[#2878b3] focus:outline-none focus:ring-2 focus:ring-[#2878b3]/20';
 
 const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500';
 
@@ -328,7 +328,7 @@ function AdminProductEdit() {
             <AdminCard title="Media" subtitle="Paste an image URL or drop a file to embed as data (long URLs — prefer hosting then link).">
               <div
                 className={`relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 transition-colors ${
-                  dragOver ? 'border-[#008060] bg-emerald-50/50' : 'border-slate-200 bg-slate-50/50'
+                  dragOver ? 'border-[#2878b3] bg-sky-50/60' : 'border-slate-200 bg-slate-50/50'
                 }`}
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -390,7 +390,7 @@ function AdminProductEdit() {
                     name="inStock"
                     checked={formData.inStock}
                     onChange={handleInputChange}
-                    className="h-4 w-4 rounded border-slate-300 text-[#008060] focus:ring-[#008060]/30"
+                    className="h-4 w-4 rounded border-slate-300 text-[#2878b3] focus:ring-[#2878b3]/30"
                   />
                   Track as in stock
                 </label>
@@ -531,7 +531,7 @@ function AdminProductEdit() {
                     name="isDeal"
                     checked={formData.isDeal}
                     onChange={handleInputChange}
-                    className="h-4 w-4 rounded border-slate-300 text-[#008060] focus:ring-[#008060]/30"
+                    className="h-4 w-4 rounded border-slate-300 text-[#2878b3] focus:ring-[#2878b3]/30"
                   />
                   Hot deal (show on Hot Deals page)
                 </label>
@@ -559,7 +559,7 @@ function AdminProductEdit() {
                     name="isDisable"
                     checked={formData.isDisable}
                     onChange={handleInputChange}
-                    className="h-4 w-4 rounded border-slate-300 text-[#008060] focus:ring-[#008060]/30"
+                    className="h-4 w-4 rounded border-slate-300 text-[#2878b3] focus:ring-[#2878b3]/30"
                   />
                   Draft — hide from storefront
                 </label>

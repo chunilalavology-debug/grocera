@@ -2,6 +2,15 @@ const nodemailer = require("nodemailer");
 const AppSettings = require("../db/models/AppSettings");
 
 /**
+ * MAIL_TRANSPORT:
+ * - `smtp` (default): Nodemailer SMTP using DB + env (requires auth unless open relay).
+ * - `sendmail`: local sendmail pipe (typical on Linux servers).
+ */
+function mailTransportMode() {
+  return String(process.env.MAIL_TRANSPORT || "smtp").trim().toLowerCase();
+}
+
+/**
  * Build Nodemailer transport options from AppSettings doc + env fallbacks.
  * @param {object|null|undefined} settings lean AppSettings
  */
@@ -44,6 +53,58 @@ async function loadSettings() {
   }
 }
 
+function buildFromHeader(settings, mergedForSmtp) {
+  const smtpUser = String(
+    mergedForSmtp?.smtpUser || settings?.smtpUser || process.env.SMTP_USER || process.env.EMAIL_USER || ""
+  ).trim();
+  const fromEmail = String(
+    settings?.smtpFromEmail ||
+      mergedForSmtp?.smtpFromEmail ||
+      smtpUser ||
+      process.env.SMTP_FROM_EMAIL ||
+      process.env.EMAIL_USER ||
+      ""
+  ).trim();
+  const fromName = String(
+    settings?.smtpFromName || mergedForSmtp?.smtpFromName || process.env.SMTP_FROM_NAME || "Zippyyy"
+  ).trim();
+  if (!fromEmail) {
+    const err = new Error("From email is not configured (smtpFromEmail / smtpUser / EMAIL_USER).");
+    err.code = "FROM_NOT_CONFIGURED";
+    throw err;
+  }
+  return `"${fromName}" <${fromEmail}>`;
+}
+
+function createSendmailTransport() {
+  const path = String(process.env.SENDMAIL_PATH || "sendmail").trim();
+  return nodemailer.createTransport({
+    sendmail: true,
+    newline: "unix",
+    path,
+  });
+}
+
+function createSmtpTransport(settings) {
+  const opts = smtpOptsFromDoc(settings);
+  if (!opts.auth) {
+    const err = new Error(
+      "SMTP is not configured. Set MAIL_TRANSPORT=sendmail on hosts with sendmail, or add SMTP credentials under Admin → Email."
+    );
+    err.code = "SMTP_NOT_CONFIGURED";
+    throw err;
+  }
+  return nodemailer.createTransport(opts);
+}
+
+async function createMailTransport(settings) {
+  const mode = mailTransportMode();
+  if (mode === "sendmail") {
+    return { transporter: createSendmailTransport(), mode: "sendmail" };
+  }
+  return { transporter: createSmtpTransport(settings), mode: "smtp" };
+}
+
 async function sendMail({ to, subject, html, text }) {
   if (!to) {
     const err = new Error("No recipient email");
@@ -51,24 +112,8 @@ async function sendMail({ to, subject, html, text }) {
     throw err;
   }
   const settings = await loadSettings();
-  const opts = smtpOptsFromDoc(settings);
-  if (!opts.auth) {
-    const err = new Error(
-      "SMTP is not configured. Add credentials under Admin → Settings → Email or set EMAIL_USER / EMAIL_PASS."
-    );
-    err.code = "SMTP_NOT_CONFIGURED";
-    throw err;
-  }
-  const transporter = nodemailer.createTransport(opts);
-  const fromEmail = String(
-    settings?.smtpFromEmail ||
-      settings?.smtpUser ||
-      process.env.SMTP_FROM_EMAIL ||
-      process.env.EMAIL_USER ||
-      opts.auth.user
-  ).trim();
-  const fromName = String(settings?.smtpFromName || process.env.SMTP_FROM_NAME || "Zippyyy").trim();
-  const from = `"${fromName}" <${fromEmail}>`;
+  const { transporter } = await createMailTransport(settings);
+  const from = buildFromHeader(settings, settings);
   return transporter.sendMail({ from, to, subject, html, text });
 }
 
@@ -100,22 +145,14 @@ async function sendMailWithOverrides(overrides = {}, { to, subject, html, text }
   }
   const stored = await loadSettings();
   const merged = mergeSmtpSettings(stored, overrides);
-  const opts = smtpOptsFromDoc(merged);
-  if (!opts.auth) {
-    const err = new Error("SMTP username and password are required.");
-    err.code = "SMTP_NOT_CONFIGURED";
-    throw err;
+  const mode = mailTransportMode();
+  let transporter;
+  if (mode === "sendmail") {
+    transporter = createSendmailTransport();
+  } else {
+    transporter = createSmtpTransport(merged);
   }
-  const transporter = nodemailer.createTransport(opts);
-  const fromEmail = String(
-    merged?.smtpFromEmail ||
-      merged?.smtpUser ||
-      process.env.SMTP_FROM_EMAIL ||
-      process.env.EMAIL_USER ||
-      opts.auth.user
-  ).trim();
-  const fromName = String(merged?.smtpFromName || process.env.SMTP_FROM_NAME || "Zippyyy").trim();
-  const from = `"${fromName}" <${fromEmail}>`;
+  const from = buildFromHeader(stored, merged);
   return transporter.sendMail({ from, to, subject, html, text });
 }
 
@@ -126,4 +163,6 @@ module.exports = {
   smtpOptsFromDoc,
   loadSettings,
   mergeSmtpSettings,
+  mailTransportMode,
+  createMailTransport,
 };

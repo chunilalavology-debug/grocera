@@ -712,7 +712,7 @@ const CategoryDashboard = () => {
                       onClick={() => handleToggleCategoryActive(cat)}
                       className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide border-0 cursor-pointer transition-opacity disabled:opacity-60 disabled:cursor-not-allowed ${
                         cat.status === 'Active'
-                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200/90'
+                          ? 'bg-sky-100 text-sky-900 hover:bg-sky-200/90'
                           : 'bg-slate-100 text-slate-600 hover:bg-slate-200/90'
                       }`}
                       title={

@@ -1,0 +1,146 @@
+.coming-soon {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem;
+  background: linear-gradient(160deg, #0f172a 0%, #1e293b 42%, #0f766e 100%);
+  overflow: hidden;
+}
+
+.coming-soon__card {
+  position: relative;
+  width: 100%;
+  max-width: 32rem;
+  padding: 2.5rem 2rem;
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  animation: csFadeUp 420ms ease-out;
+}
+
+.coming-soon__pulse {
+  position: absolute;
+  right: -32px;
+  top: -32px;
+  width: 92px;
+  height: 92px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at center, rgba(0, 128, 96, 0.28), rgba(0, 128, 96, 0));
+  animation: csPulse 2.2s ease-in-out infinite;
+}
+
+.coming-soon__eyebrow {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #008060;
+}
+
+.coming-soon__title {
+  margin: 0 0 1rem;
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 700;
+  line-height: 1.2;
+  color: #0f172a;
+}
+
+.coming-soon__message {
+  margin: 0 0 1.75rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.coming-soon__message--muted {
+  color: #64748b;
+}
+
+.coming-soon__form {
+  margin-top: 0.5rem;
+}
+
+.coming-soon__label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.coming-soon__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.coming-soon__input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.65rem;
+  font-size: 1rem;
+  outline: none;
+}
+
+.coming-soon__input:focus {
+  border-color: #008060;
+  box-shadow: 0 0 0 3px rgba(0, 128, 96, 0.15);
+}
+
+.coming-soon__btn {
+  padding: 0.65rem 1.25rem;
+  border: none;
+  border-radius: 0.65rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #fff;
+  background: #008060;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.coming-soon__btn:hover:not(:disabled) {
+  background: #006b52;
+}
+
+.coming-soon__btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@keyframes csFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes csPulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(0.92);
+    opacity: 0.4;
+  }
+}
+
+@media (max-width: 640px) {
+  .coming-soon__card {
+    padding: 2rem 1.25rem;
+    border-radius: 1rem;
+  }
+}

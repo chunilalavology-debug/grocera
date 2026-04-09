@@ -11,6 +11,8 @@
     "kill-port": "kill-port $PORT",
     "start": "node app.js",
     "check-products": "node script/checkDbProducts.js",
+    "smoke:api": "node script/smokeApiFull.js",
+    "smoke:checkout": "node script/smokeCheckoutFlow.js",
     "smoke:branding": "node script/smokeBrandingMongo.js",
     "fix:branding-urls": "node script/fixOrphanBrandingUrls.js",
     "smoke:ships": "node script/smokeZippyShipsApis.mjs"

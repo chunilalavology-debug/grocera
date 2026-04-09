@@ -14,16 +14,27 @@ const { mongoBinaryToBuffer } = require("../../utils/mongoBinaryToBuffer");
 const Deal = require("../../db/models/deals");
 const Contact = require("../../db/models/Contact");
 const Address = require("../../db/models/Address");
-const { default: sendMail } = require("../../utils/sendEmail");
 const { sendOrderStatusChangeEmail, loadOrderForMail } = require("../../utils/orderEmails");
 const { verifySmtpConfig, sendMailWithOverrides } = require("../../utils/mailService");
+const {
+  invalidateEmailNotificationCache,
+  normalizeEmailNotificationsFromDoc,
+  sendTransactionalEmailIfEnabled,
+} = require("../../utils/emailService");
+const { buildEmailCatalog } = require("../../utils/emailCatalog");
+const { listAllTemplateKeys } = require("../../utils/emailTemplateDefaults");
+const { applyEmailShellIfNeeded } = require("../../utils/emailShell");
+const { resolvePublicAssetUrl } = require("../../utils/publicAssetUrl");
+const { invalidateComingSoonCache } = require("../middlewares/comingSoonApiGate");
 const { VALID_ADMIN_TRANSITION_STATUSES, ORDER_STATUSES } = require("../../utils/orderStatuses");
 const {
   ensureDefaultTemplates,
   applyVariables,
+  mergeTemplateVars,
   buildOrderTemplateVars,
   buildContactTemplateVars,
-  TEMPLATE_DEFAULTS,
+  buildMessageReplyTemplateVars,
+  renderTemplateKey,
 } = require("../../utils/emailTemplateService");
 const Category = require("../../db/models/categories");
 const {
@@ -890,27 +901,24 @@ const getOrderInvoicePdf = async (req, res) => {
       .replace(/\/+$/, "");
     const reqOrigin = `${(req.protocol || "https").replace(/:+$/, "")}://${req.get("host") || ""}`.replace(/\/+$/, "");
     const originForLogo = publicOrigin || reqOrigin;
-    /** Same asset as storefront GET /api/user/site-branding/logo — matches Mongo-hosted logo used on the site. */
-    if (!websiteLogoUrl && originForLogo) {
-      const p = `${apiSeg.startsWith("/") ? "" : "/"}${apiSeg}/user/site-branding/logo`;
-      websiteLogoUrl = `${originForLogo}${p}`;
-    }
     try {
       const s = await AppSettings.findOne().lean();
       if (s) {
         websiteName = String(s.websiteName || websiteName).trim() || websiteName;
-        const fallback = normalizeStoredUploadsUrl(String(s.websiteLogoUrl || "").trim());
-        if (!websiteLogoUrl && fallback) {
-          websiteLogoUrl = fallback;
-          if (!/^https?:\/\//i.test(websiteLogoUrl)) {
-            const proto = req.protocol || "http";
-            const host = req.get("host") || `localhost:${process.env.PORT || 5000}`;
-            websiteLogoUrl = `${proto}://${host}${websiteLogoUrl.startsWith("/") ? "" : "/"}${websiteLogoUrl}`;
+        if (!websiteLogoUrl) {
+          const stored = normalizeStoredUploadsUrl(String(s.websiteLogoUrl || "").trim());
+          if (stored) {
+            websiteLogoUrl = resolvePublicAssetUrl(stored, { requestBaseUrl: originForLogo });
           }
         }
       }
     } catch (_) {
       /* ignore */
+    }
+    /** Same asset as storefront GET /api/user/site-branding/logo when no env/DB logo. */
+    if (!websiteLogoUrl && originForLogo) {
+      const p = `${apiSeg.startsWith("/") ? "" : "/"}${apiSeg}/user/site-branding/logo`;
+      websiteLogoUrl = `${originForLogo}${p}`;
     }
 
     const pdf = await buildOrderInvoicePdfBuffer(order, { websiteName, websiteLogoUrl });
@@ -2131,31 +2139,43 @@ const replyToMessage = async (req, res) => {
     });
 
     setImmediate(async () => {
-
-      const displayName = (message.name && String(message.name).trim()) || message.email || 'Customer';
-      const userMailOptions = {
-        to: message.email,
-        subject: "Thank you for contacting Zippyy",
-        html: `<h2>Response to your query</h2>
-<p>Dear ${displayName},</p>
-<p>Thank you for reaching out to us. Here is the response to your message:</p>
-<br>
-<div style="background-color: #f4f4f4; padding: 15px; border-radius: 8px;">
-    <p><strong>Your original message:</strong></p>
-    <p><em>${message.subject}</em></p>
-    <p>${message.message.replace(/\n/g, '<br>')}</p>
-</div>
-<br>
-<div style="border-left: 4px solid #4f46e5; padding-left: 15px;">
-    <p><strong>Admin Response:</strong></p>
-    <p>${replyMessage.replace(/\n/g, '<br>')}</p>
-</div>
-<br>
-<p>Best regards,<br> Zippyy Team</p>`
-      };
-
-      await sendMail(userMailOptions)
-    })
+      try {
+        const displayName =
+          (message.name && String(message.name).trim()) || message.email || "Customer";
+        const vars = buildMessageReplyTemplateVars({
+          contactName: displayName,
+          originalSubject: message.subject,
+          originalMessage: message.message,
+          adminReply: replyMessage,
+        });
+        let subject = `Re: ${String(message.subject || "").trim() || "your message"}`;
+        let html;
+        try {
+          const rendered = await renderTemplateKey("message_admin_reply", vars);
+          if (rendered && rendered.html) {
+            subject = rendered.subject || subject;
+            html = rendered.html;
+          }
+        } catch (e) {
+          console.error("message_admin_reply template:", e?.message || e);
+        }
+        if (!html) {
+          html = `<p>Hi ${displayName},</p><p>Thank you for your message.</p><p><strong>Reply:</strong></p><p>${String(
+            replyMessage || "",
+          )
+            .replace(/</g, "&lt;")
+            .replace(/\n/g, "<br/>")}</p>`;
+        }
+        await sendTransactionalEmailIfEnabled({
+          emailType: "messageAdminReply",
+          to: message.email,
+          subject,
+          html,
+        });
+      } catch (e) {
+        console.error("replyToMessage email:", e?.message || e);
+      }
+    });
 
 
   } catch (error) {
@@ -2376,6 +2396,17 @@ const settingsResponse = (doc) => {
     snapchat: String(doc?.socialLinks?.snapchat || ''),
     whatsapp: String(doc?.socialLinks?.whatsapp || ''),
   },
+  emailNotifications: normalizeEmailNotificationsFromDoc(doc),
+  comingSoon: {
+    siteWideEnabled: Boolean(doc?.comingSoon?.siteWideEnabled),
+    zippyShipsPageEnabled: Boolean(doc?.comingSoon?.zippyShipsPageEnabled),
+    headline:
+      doc?.comingSoon?.headline != null && String(doc.comingSoon.headline).trim() !== ''
+        ? String(doc.comingSoon.headline).trim()
+        : 'Zippy Ships is coming soon',
+    message: String(doc?.comingSoon?.message || ''),
+    subscriptionEnabled: doc?.comingSoon?.subscriptionEnabled !== false,
+  },
 };
 };
 
@@ -2438,6 +2469,30 @@ const putAdminSettings = async (req, res) => {
       twitter: Joi.string().trim().max(2048).allow('', null).optional(),
       snapchat: Joi.string().trim().max(2048).allow('', null).optional(),
       whatsapp: Joi.string().trim().max(2048).allow('', null).optional(),
+    }).optional(),
+    emailNotifications: Joi.object({
+      orderConfirmationUser: Joi.boolean().optional(),
+      orderStatusProcessing: Joi.boolean().optional(),
+      orderStatusShipped: Joi.boolean().optional(),
+      orderStatusDelivered: Joi.boolean().optional(),
+      orderStatusCancelled: Joi.boolean().optional(),
+      adminNewOrder: Joi.boolean().optional(),
+      contactFormAdmin: Joi.boolean().optional(),
+      contactFormCustomerAck: Joi.boolean().optional(),
+      passwordReset: Joi.boolean().optional(),
+      messageAdminReply: Joi.boolean().optional(),
+      orderStatusEmail: Joi.object(
+        Object.fromEntries(
+          ORDER_STATUSES.filter((x) => x !== "session").map((s) => [s, Joi.boolean().optional()])
+        )
+      ).optional(),
+    }).optional(),
+    comingSoon: Joi.object({
+      siteWideEnabled: Joi.boolean().optional(),
+      zippyShipsPageEnabled: Joi.boolean().optional(),
+      headline: Joi.string().trim().max(200).allow('').optional(),
+      message: Joi.string().trim().max(2000).allow('').optional(),
+      subscriptionEnabled: Joi.boolean().optional(),
     }).optional(),
   });
   try {
@@ -2565,6 +2620,55 @@ const putAdminSettings = async (req, res) => {
       }
     }
 
+    if (has('emailNotifications') && body?.emailNotifications) {
+      const en = body.emailNotifications;
+      const keys = [
+        "orderConfirmationUser",
+        "orderStatusProcessing",
+        "orderStatusShipped",
+        "orderStatusDelivered",
+        "orderStatusCancelled",
+        "adminNewOrder",
+        "contactFormAdmin",
+        "contactFormCustomerAck",
+        "passwordReset",
+        "messageAdminReply",
+      ];
+      for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(en, key)) {
+          $set[`emailNotifications.${key}`] = Boolean(en[key]);
+        }
+      }
+      if (en.orderStatusEmail && typeof en.orderStatusEmail === "object") {
+        const allowed = new Set(ORDER_STATUSES.filter((x) => x !== "session"));
+        for (const [st, val] of Object.entries(en.orderStatusEmail)) {
+          if (allowed.has(st) && typeof val === "boolean") {
+            $set[`emailNotifications.orderStatusEmail.${st}`] = val;
+          }
+        }
+      }
+    }
+
+    if (has('comingSoon') && body?.comingSoon) {
+      const cs = body.comingSoon;
+      if (Object.prototype.hasOwnProperty.call(cs, 'siteWideEnabled')) {
+        $set['comingSoon.siteWideEnabled'] = Boolean(cs.siteWideEnabled);
+      }
+      if (Object.prototype.hasOwnProperty.call(cs, 'zippyShipsPageEnabled')) {
+        $set['comingSoon.zippyShipsPageEnabled'] = Boolean(cs.zippyShipsPageEnabled);
+      }
+      if (Object.prototype.hasOwnProperty.call(cs, 'headline')) {
+        const h = String(cs.headline ?? '').trim();
+        $set['comingSoon.headline'] = h || 'Zippy Ships is coming soon';
+      }
+      if (Object.prototype.hasOwnProperty.call(cs, 'message')) {
+        $set['comingSoon.message'] = String(cs.message ?? '').trim();
+      }
+      if (Object.prototype.hasOwnProperty.call(cs, 'subscriptionEnabled')) {
+        $set['comingSoon.subscriptionEnabled'] = Boolean(cs.subscriptionEnabled);
+      }
+    }
+
     if (Object.keys($set).length === 0 && Object.keys($unset).length === 0) {
       return res.status(400).json({ success: false, message: 'No fields to update' });
     }
@@ -2573,6 +2677,12 @@ const putAdminSettings = async (req, res) => {
     if (Object.keys($set).length) upd.$set = $set;
     if (Object.keys($unset).length) upd.$unset = $unset;
     const doc = await AppSettings.findOneAndUpdate({}, upd, { new: true, upsert: true, setDefaultsOnInsert: true });
+    if (has('emailNotifications')) {
+      invalidateEmailNotificationCache();
+    }
+    if (has('comingSoon')) {
+      invalidateComingSoonCache();
+    }
     res.set({
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       Pragma: "no-cache",
@@ -2826,8 +2936,8 @@ const putEmailTemplateByKey = async (req, res) => {
   try {
     const body = await schema.validateAsync(req.body || {}, { abortEarly: true });
     const { key } = req.params;
-    const allowed = TEMPLATE_DEFAULTS.map((t) => t.key);
-    if (!allowed.includes(key)) {
+    const allowed = new Set(listAllTemplateKeys());
+    if (!allowed.has(key)) {
       return res.status(400).json({ success: false, message: "Unknown template key" });
     }
     await ensureDefaultTemplates();
@@ -2863,14 +2973,26 @@ const postEmailTemplatePreview = async (req, res) => {
   });
   try {
     const body = await schema.validateAsync(req.body || {}, { abortEarly: true });
-    let vars;
-    if (body.key === "contact_form_admin") {
-      vars = buildContactTemplateVars({
+    let baseVars;
+    if (body.key === "contact_form_admin" || body.key === "contact_customer_ack") {
+      baseVars = buildContactTemplateVars({
         name: "Jane Doe",
         email: "jane@example.com",
         queryType: "Support",
         subject: "Sample subject",
         message: "This is a sample message.\nSecond line.",
+      });
+    } else if (body.key === "auth_password_reset") {
+      baseVars = {
+        userName: "Alex",
+        resetLink: "https://example.com/reset-password?token=demo-token",
+      };
+    } else if (body.key === "message_admin_reply") {
+      baseVars = buildMessageReplyTemplateVars({
+        contactName: "Jane",
+        originalSubject: "Question about my order",
+        originalMessage: "Hello,\nI need help with order #123.",
+        adminReply: "Thanks for writing in.\nWe have updated your shipment.",
       });
     } else {
       let sampleOrder = await Orders.findOne({ status: { $ne: "session" } })
@@ -2908,14 +3030,18 @@ const postEmailTemplatePreview = async (req, res) => {
           customerEmail: "alex@example.com",
         };
       }
-      vars = buildOrderTemplateVars(sampleOrder, { status: sampleOrder.status || "processing" });
+      const st = String(body.key || "").startsWith("order_status_")
+        ? body.key.replace(/^order_status_/, "")
+        : sampleOrder.status || "processing";
+      baseVars = buildOrderTemplateVars(sampleOrder, { status: st });
     }
+    const vars = await mergeTemplateVars(baseVars);
+    const subject = applyVariables(body.subject, vars);
+    const innerHtml = applyVariables(body.bodyHtml, vars);
+    const html = await applyEmailShellIfNeeded(innerHtml, { preheader: subject });
     return res.json({
       success: true,
-      data: {
-        subject: applyVariables(body.subject, vars),
-        html: applyVariables(body.bodyHtml, vars),
-      },
+      data: { subject, html },
     });
   } catch (error) {
     if (error.isJoi) {
@@ -2923,6 +3049,27 @@ const postEmailTemplatePreview = async (req, res) => {
     }
     console.error("postEmailTemplatePreview", error);
     return res.status(500).json({ success: false, message: "Preview failed" });
+  }
+};
+
+const getEmailWorkspace = async (req, res) => {
+  try {
+    await ensureDefaultTemplates();
+    let doc = await AppSettings.findOne().lean();
+    if (!doc) {
+      await AppSettings.create({});
+      doc = await AppSettings.findOne().lean();
+    }
+    const catalog = buildEmailCatalog();
+    const templates = await EmailTemplate.find().sort({ key: 1 }).lean();
+    const emailNotifications = normalizeEmailNotificationsFromDoc(doc);
+    return res.json({
+      success: true,
+      data: { catalog, templates, emailNotifications },
+    });
+  } catch (error) {
+    console.error("getEmailWorkspace", error);
+    return res.status(500).json({ success: false, message: "Failed to load email workspace" });
   }
 };
 
@@ -5097,6 +5244,7 @@ router.post(
 router.post('/settings/smtp/verify', adminAuth, postSmtpVerify);
 router.post('/settings/smtp/test', adminAuth, postSmtpTestEmail);
 
+router.get('/email/workspace', adminAuth, getEmailWorkspace);
 router.get('/email-templates', adminAuth, getEmailTemplatesAdmin);
 router.put('/email-templates/:key', adminAuth, putEmailTemplateByKey);
 router.post('/email-templates/preview', adminAuth, postEmailTemplatePreview);

@@ -38,6 +38,12 @@
   padding: 0;
 }
 
+.main-content--coming-soon {
+  min-height: 100vh;
+  flex: 1;
+  padding: 0;
+}
+
 .zippyyy-ships-embed {
   flex: 1;
   display: flex;

@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const Orders = require("../db/models/Order");
 const AppSettings = require("../db/models/AppSettings");
-const { sendMail } = require("./mailService");
 const { getCustomerEmail } = require("./orderEmailUtils");
 const OrderConform = require("./template/userOrderConform");
 const AdminNotification = require("./template/AdminNotification");
@@ -12,6 +11,7 @@ const {
   renderTemplateKey,
   buildOrderTemplateVars,
 } = require("./emailTemplateService");
+const { sendTransactionalEmailIfEnabled } = require("./emailService");
 
 async function getAdminOrderNotificationEmail() {
   try {
@@ -66,60 +66,89 @@ async function sendNewOrderEmails(orderId, { force = false } = {}) {
   const order = await loadOrderForMail(orderId);
   if (!order) return { ok: false, reason: "not_found" };
   if (order.isShippingOrder && !force) return { ok: true, skipped: true, reason: "shipping_order" };
-  if (order.emailSent === true && !force) return { ok: true, skipped: true };
+
+  const needCustomer = force || order.emailSent !== true;
+  const needAdmin = force || order.adminNewOrderEmailHandled !== true;
+
+  if (!needCustomer && !needAdmin) {
+    return { ok: true, skipped: true, reason: "already_handled" };
+  }
 
   const customerEmail = getCustomerEmail(order);
   const adminTo = await getAdminOrderNotificationEmail();
 
   let custRendered;
   let adminRendered;
-  try {
-    custRendered = await renderCustomerNew(order);
-  } catch (e) {
-    console.error("renderCustomerNew", e);
-    custRendered = {
-      subject: `Order confirmation – #${order.orderNumber}`,
-      html: OrderConform(order),
-    };
+  if (needCustomer) {
+    try {
+      custRendered = await renderCustomerNew(order);
+    } catch (e) {
+      console.error("renderCustomerNew", e);
+      custRendered = {
+        subject: `Order confirmation – #${order.orderNumber}`,
+        html: OrderConform(order),
+      };
+    }
   }
-  try {
-    adminRendered = await renderAdminNew(order);
-  } catch (e) {
-    console.error("renderAdminNew", e);
-    adminRendered = {
-      subject: `New order – #${order.orderNumber}`,
-      html: AdminNotification(order),
-    };
+  if (needAdmin) {
+    try {
+      adminRendered = await renderAdminNew(order);
+    } catch (e) {
+      console.error("renderAdminNew", e);
+      adminRendered = {
+        subject: `New order – #${order.orderNumber}`,
+        html: AdminNotification(order),
+      };
+    }
   }
 
-  const results = await Promise.allSettled([
-    customerEmail
-      ? sendMail({
+  let customerFailed = false;
+  let adminFailed = false;
+
+  if (needCustomer) {
+    if (!customerEmail) {
+      await Orders.updateOne({ _id: orderId }, { $set: { emailSent: true } });
+    } else {
+      try {
+        const r = await sendTransactionalEmailIfEnabled({
+          emailType: "orderConfirmationUser",
           to: customerEmail,
           subject: custRendered.subject,
           html: custRendered.html,
-        })
-      : Promise.resolve(null),
-    adminTo
-      ? sendMail({
+        });
+        if (r.sent || (r.skipped && (r.reason === "disabled" || r.reason === "no_recipient"))) {
+          await Orders.updateOne({ _id: orderId }, { $set: { emailSent: true } });
+        }
+      } catch (e) {
+        customerFailed = true;
+        console.error("sendNewOrderEmails customer:", e?.message || e);
+      }
+    }
+  }
+
+  if (needAdmin) {
+    if (!adminTo) {
+      await Orders.updateOne({ _id: orderId }, { $set: { adminNewOrderEmailHandled: true } });
+    } else {
+      try {
+        const r = await sendTransactionalEmailIfEnabled({
+          emailType: "adminNewOrder",
           to: adminTo,
           subject: adminRendered.subject,
           html: adminRendered.html,
-        })
-      : Promise.resolve(null),
-  ]);
-
-  const customerFailed = results[0].status === "rejected";
-  const adminFailed = results[1].status === "rejected";
-  if (customerFailed) console.error("sendNewOrderEmails customer:", results[0].reason);
-  if (adminFailed) console.error("sendNewOrderEmails admin:", results[1].reason);
-
-  if (!customerFailed || !adminTo) {
-    await Orders.updateOne({ _id: orderId }, { $set: { emailSent: true } });
+        });
+        if (r.sent || (r.skipped && (r.reason === "disabled" || r.reason === "no_recipient"))) {
+          await Orders.updateOne({ _id: orderId }, { $set: { adminNewOrderEmailHandled: true } });
+        }
+      } catch (e) {
+        adminFailed = true;
+        console.error("sendNewOrderEmails admin:", e?.message || e);
+      }
+    }
   }
 
   return {
-    ok: !customerFailed,
+    ok: !customerFailed && !adminFailed,
     customerEmail: customerEmail || null,
     adminTo: adminTo || null,
     customerFailed,
@@ -143,7 +172,8 @@ function subjectForStatus(orderNumber, status) {
     refunded: `Order refunded – #${n}`,
     failed: `Order update – #${n}`,
   };
-  return map[status] || `Order update – #${n}`;
+  const s = String(status || "").toLowerCase();
+  return map[s] || `Order update – #${n}`;
 }
 
 function htmlForStatus(order, status) {
@@ -152,35 +182,50 @@ function htmlForStatus(order, status) {
   return userOrderStatusUpdate(order, status);
 }
 
-/** Try keys in order: status-specific → shared → generic fallback. */
+/** Prefer specific status template, then delivered/cancelled variants, then generic. */
 function templateKeysForStatus(status) {
   const s = String(status || "").toLowerCase();
   const keys = [];
-  if (s === "delivered" || s === "completed") {
-    keys.push("order_completed");
-  } else if (s === "cancelled") {
-    keys.push("order_cancelled");
-  } else if (s) {
-    keys.push(`order_status_${s}`);
-  }
+  if (s) keys.push(`order_status_${s}`);
+  if (s === "delivered" || s === "completed") keys.push("order_completed");
+  if (s === "cancelled") keys.push("order_cancelled");
   keys.push("order_status_update");
   return [...new Set(keys)];
 }
 
+async function markOrderStatusEmailed(orderId, status) {
+  const s = String(status || "").toLowerCase();
+  if (!mongoose.Types.ObjectId.isValid(orderId) || !s) return;
+  await Orders.updateOne({ _id: orderId }, { $addToSet: { emailedOrderStatuses: s } });
+}
+
 async function sendOrderStatusChangeEmail(orderDocOrLean, status) {
+  const s = String(status || "").toLowerCase();
+  if (!s || s === "session") {
+    return { ok: true, skipped: true, reason: "no_status" };
+  }
+
   let order =
     orderDocOrLean && typeof orderDocOrLean.toObject === "function"
       ? orderDocOrLean.toObject()
       : orderDocOrLean;
 
   const oid = order && order._id;
-  if (oid) {
-    try {
-      const fresh = await loadOrderForMail(oid);
-      if (fresh) order = fresh;
-    } catch (e) {
-      console.warn("sendOrderStatusChangeEmail: reload order failed", e?.message || e);
-    }
+  if (!oid) {
+    return { ok: false, reason: "no_id" };
+  }
+
+  let fresh;
+  try {
+    fresh = await loadOrderForMail(oid);
+    if (fresh) order = fresh;
+  } catch (e) {
+    console.warn("sendOrderStatusChangeEmail: reload order failed", e?.message || e);
+  }
+
+  const emailed = Array.isArray(order.emailedOrderStatuses) ? order.emailedOrderStatuses.map(String) : [];
+  if (emailed.includes(s)) {
+    return { ok: true, skipped: true, reason: "duplicate_status" };
   }
 
   const to = getCustomerEmail(order);
@@ -189,25 +234,60 @@ async function sendOrderStatusChangeEmail(orderDocOrLean, status) {
     return { ok: false, reason: "no_email" };
   }
 
-  const vars = buildOrderTemplateVars(order, { status });
-  const keys = templateKeysForStatus(status);
+  const emailType = `orderStatus:${s}`;
+  const vars = buildOrderTemplateVars(order, { status: s });
+  const keys = templateKeysForStatus(s);
 
   for (const key of keys) {
     try {
       const r = await renderTemplateKey(key, vars);
       if (r && r.html && String(r.subject || "").trim()) {
-        await sendMail({ to, subject: r.subject, html: r.html });
-        return { ok: true, templateKey: key };
+        try {
+          const out = await sendTransactionalEmailIfEnabled({
+            emailType,
+            to,
+            subject: r.subject,
+            html: r.html,
+          });
+          if (out.skipped && out.reason === "disabled") {
+            return { ok: true, skipped: true, reason: "disabled", templateKey: key };
+          }
+          if (out.sent) {
+            await markOrderStatusEmailed(oid, s);
+            return { ok: true, templateKey: key };
+          }
+        } catch (e) {
+          console.error("sendOrderStatusChangeEmail send", key, e?.message || e);
+          return { ok: false, reason: "send_failed", templateKey: key };
+        }
       }
     } catch (e) {
       console.error("sendOrderStatusChangeEmail template", key, e);
     }
   }
 
-  const subject = subjectForStatus(order.orderNumber, status);
-  const html = htmlForStatus(order, status);
-  await sendMail({ to, subject, html });
-  return { ok: true, templateKey: "legacy_html" };
+  const subject = subjectForStatus(order.orderNumber, s);
+  const html = htmlForStatus(order, s);
+  try {
+    const out = await sendTransactionalEmailIfEnabled({
+      emailType,
+      to,
+      subject,
+      html,
+    });
+    if (out.skipped && out.reason === "disabled") {
+      return { ok: true, skipped: true, reason: "disabled", templateKey: "legacy_html" };
+    }
+    if (out.sent) {
+      await markOrderStatusEmailed(oid, s);
+      return { ok: true, templateKey: "legacy_html" };
+    }
+  } catch (e) {
+    console.error("sendOrderStatusChangeEmail legacy send", e?.message || e);
+    return { ok: false, reason: "send_failed", templateKey: "legacy_html" };
+  }
+
+  return { ok: false, reason: "send_not_completed", templateKey: "legacy_html" };
 }
 
 module.exports = {

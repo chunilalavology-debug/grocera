@@ -83,6 +83,7 @@ function isPublicJwtPath(req) {
       `${A}/user/featured-categories`,
       `${A}/user/home-slider-settings`,
       `${A}/user/site-settings`,
+      `${A}/user/coming-soon/subscribe`,
       `${A}/user/site-branding/logo`,
       `${A}/user/site-branding/favicon`,
       `${A}/user/site-branding/hero-banner`,
@@ -92,6 +93,7 @@ function isPublicJwtPath(req) {
   if (publicUserReads.has(pathname)) return true;
 
   if (pathname === normalizeJwtPathname(`${A}/settings`) && m === "GET") return true;
+  if (pathname === normalizeJwtPathname(`${A}/settings/zippy-coming-soon`) && m === "GET") return true;
 
   if (pathname === normalizeJwtPathname(`${A}/user/contactForm`) && m === "POST") return true;
   if (pathname === normalizeJwtPathname(`${A}/shipping/get-rates`) && m === "POST") return true;

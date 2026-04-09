@@ -102,15 +102,15 @@ export default function AdminSettings() {
       description={
         <span>
           Notification inboxes. Store name, logo, and favicon are under{' '}
-          <Link to="/admin/settings/general" className="font-semibold text-[#008060] hover:underline">
+          <Link to="/admin/settings/general" className="font-semibold text-[#2878b3] hover:underline">
             General settings
           </Link>
           . For SMTP, test send, and encryption use{' '}
-          <Link to="/admin/settings/email" className="font-semibold text-[#008060] hover:underline">
+          <Link to="/admin/settings/email" className="font-semibold text-[#2878b3] hover:underline">
             Email &amp; SMTP
           </Link>
           ; for message content use{' '}
-          <Link to="/admin/settings/templates" className="font-semibold text-[#008060] hover:underline">
+          <Link to="/admin/settings/templates" className="font-semibold text-[#2878b3] hover:underline">
             Email templates
           </Link>
           .
@@ -122,7 +122,7 @@ export default function AdminSettings() {
       ) : (
         <div className="space-y-8">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#ecfdf5] text-[#008060]">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f2fa] text-[#2878b3]">
               <Settings className="h-5 w-5" strokeWidth={2} aria-hidden />
             </span>
             <div className="min-w-0 flex-1 space-y-4">

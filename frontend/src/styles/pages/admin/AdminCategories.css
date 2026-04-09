@@ -52,7 +52,7 @@
   width: 48px;
   height: 48px;
   border-radius: 10px;
-  background: linear-gradient(135deg, var(--admin-primary, #008060) 0%, var(--admin-primary-hover, #006e52) 100%);
+  background: linear-gradient(135deg, var(--admin-primary, #2878b3) 0%, var(--admin-primary-hover, #1f6396) 100%);
   color: #fff;
   flex-shrink: 0;
   box-shadow: 0 2px 8px rgba(0, 128, 96, 0.22);
@@ -94,7 +94,7 @@
 }
 
 .admin-categories__btn-primary:hover {
-  background: var(--admin-primary-hover, #006e52);
+  background: var(--admin-primary-hover, #1f6396);
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07);
 }
 
@@ -147,15 +147,15 @@
 }
 
 .admin-categories__main-tab--active {
-  border-color: var(--admin-primary, #008060);
-  background: var(--admin-primary, #008060);
+  border-color: var(--admin-primary, #2878b3);
+  background: var(--admin-primary, #2878b3);
   color: #fff;
   box-shadow: 0 2px 8px rgba(0, 128, 96, 0.2);
 }
 
 .admin-categories__main-tab--active:hover {
-  background: var(--admin-primary-hover, #006e52);
-  border-color: var(--admin-primary-hover, #006e52);
+  background: var(--admin-primary-hover, #1f6396);
+  border-color: var(--admin-primary-hover, #1f6396);
   color: #fff;
 }
 
@@ -342,7 +342,7 @@ a.admin-categories__btn-primary {
 
 .admin-categories__count-btn:hover {
   background: rgba(0, 128, 96, 0.08);
-  color: var(--admin-primary-hover, #006e52);
+  color: var(--admin-primary-hover, #1f6396);
 }
 
 .admin-categories__action-btn {

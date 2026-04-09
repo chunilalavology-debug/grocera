@@ -19,7 +19,7 @@
   gap: 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--admin-primary, #008060);
+  color: var(--admin-primary, #2878b3);
   text-decoration: none;
 }
 
@@ -66,7 +66,7 @@
 .admin-cat-edit__input:focus,
 .admin-cat-edit__select:focus {
   outline: none;
-  border-color: var(--admin-primary, #008060);
+  border-color: var(--admin-primary, #2878b3);
   box-shadow: 0 0 0 3px rgba(0, 128, 96, 0.15);
 }
 
@@ -94,14 +94,14 @@
 }
 
 .admin-cat-edit__btn--primary {
-  background: var(--admin-primary, #008060);
-  border-color: var(--admin-primary, #008060);
+  background: var(--admin-primary, #2878b3);
+  border-color: var(--admin-primary, #2878b3);
   color: #fff;
 }
 
 .admin-cat-edit__btn--primary:hover:not(:disabled) {
-  background: var(--admin-primary-hover, #006e52);
-  border-color: var(--admin-primary-hover, #006e52);
+  background: var(--admin-primary-hover, #1f6396);
+  border-color: var(--admin-primary-hover, #1f6396);
 }
 
 .admin-cat-edit__btn--danger {

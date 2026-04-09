@@ -1,7 +1,9 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import './styles/App.css';
+import api from './services/api';
+import ComingSoonPage from './pages/ComingSoonPage';
 
 
 // Components (always loaded)
@@ -56,7 +58,6 @@ const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
 const AdminGeneralSettings = lazy(() => import('./pages/admin/AdminGeneralSettings'));
 const AdminProfileSettings = lazy(() => import('./pages/admin/AdminProfileSettings'));
 const AdminEmailSettings = lazy(() => import('./pages/admin/AdminEmailSettings'));
-const AdminEmailTemplates = lazy(() => import('./pages/admin/AdminEmailTemplates'));
 const AdminStorefrontSettings = lazy(() => import('./pages/admin/AdminStorefrontSettings'));
 const AdminShippingApiSettings = lazy(() => import('./pages/admin/AdminShippingApiSettings'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
@@ -68,6 +69,8 @@ const AdminVoucher = lazy(() => import('./pages/admin/AdminVoucher'));
 // Placeholder for Deals page (Assuming it will be separate from Pricing)
 const AdminDeals = lazy(() => import('./pages/admin/AdminDeals'));
 const AdminSliderSettings = lazy(() => import('./pages/admin/AdminSliderSettings'));
+const AdminEmailCenter = lazy(() => import('./pages/admin/AdminEmailCenter'));
+const AdminComingSoonSettings = lazy(() => import('./pages/admin/AdminComingSoonSettings'));
 // --- END NEW LAZY IMPORTS ---
 
 
@@ -81,9 +84,56 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 
 function App() {
     const location = useLocation();
+    const [zippyComingSoon, setZippyComingSoon] = useState(undefined);
+
+    useEffect(() => {
+        let cancelled = false;
+        const isShipsPath = (
+          location.pathname === '/zippy-ships' ||
+          location.pathname === '/zippyyy-ships'
+        );
+        if (!isShipsPath) return undefined;
+        (async () => {
+            try {
+                const res = await api.get('/settings/zippy-coming-soon');
+                if (!cancelled && res && res.success && res.data) {
+                    setZippyComingSoon(res.data);
+                } else if (!cancelled) {
+                    setZippyComingSoon(null);
+                }
+            } catch {
+                if (!cancelled) setZippyComingSoon(null);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [location.pathname]);
+
     const isAdminArea = location.pathname.startsWith('/admin') || location.pathname.startsWith('/co-admin');
-    const isShipsEmbed = location.pathname === '/zippyyy-ships';
+    const zippyShipsComingSoon = Boolean(zippyComingSoon?.enabled);
+    const isShipsEmbed =
+      (location.pathname === '/zippyyy-ships' || location.pathname === '/zippy-ships');
     const showSiteChrome = !isAdminArea && !isShipsEmbed;
+
+    const comingSoonProps = {
+        mode: 'zippy',
+        headline: zippyComingSoon?.headline || 'Zippy Ships is coming soon',
+        message:
+          zippyComingSoon?.message ||
+          "We're working hard to bring fast and reliable shipping to you.",
+        subscriptionEnabled: zippyComingSoon?.subscriptionEnabled !== false,
+        websiteName: 'Zippy Ships',
+    };
+
+    if (zippyComingSoon === undefined && isShipsEmbed) {
+        return (
+            <div className="App">
+                <Loader />
+                <Toaster position="top-right" />
+            </div>
+        );
+    }
 
     return (
         <div className="App">
@@ -99,41 +149,6 @@ function App() {
             >
                 <Suspense fallback={<Loader />}>
                     <Routes>
-                        {/* Public Routes */}
-                        <Route path="/" element={<Home />} />
-                        <Route path="/products" element={<Products />} />
-                        <Route path="/categories" element={<Category />} />
-                        <Route path="/products/:id" element={<ProductDetail />} />
-                        <Route path="/hot-deals" element={<HotDeals />} />
-                        <Route path="/zippyyy-ships" element={<ZippyyyShips />} />
-                        <Route path="/contact" element={<Contact />} />
-                        <Route path="/login" element={<Login />} />
-                        <Route path="/register" element={<Register />} />
-                        <Route path="/forgot-password" element={<ForgotPassword />} />
-                        <Route path="/reset-password" element={<ResetPassword />} />
-                        <Route path="/admin-info" element={<AdminInfo />} />
-                        <Route path="/about" element={<About />} />
-
-                        {/* Cart & Checkout – no login required */}
-                        <Route path="/cart" element={<Cart />} />
-                        <Route path="/checkout" element={<Checkout />} />
-                        <Route path="/order-success" element={<OrderSuccess />} />
-                        <Route path="/profile" element={
-                            <ProtectedRoute>
-                                <Profile />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/orders" element={
-                            <ProtectedRoute>
-                                <Orders />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/payment" element={<Payment />} />
-                        <Route path="/refund-policy" element={<Refundpolicy />} />
-                        <Route path="/shipping-policy" element={<ShippingPolicy />} />
-                        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-                        <Route path="/terms-and-conditions" element={<TermsConditions />} />
-
                         {/* Protected Admin Routes – own layout (no frontend Navbar/Footer) */}
                         <Route path="/admin" element={
                             <ProtectedRoute adminOnly>
@@ -151,8 +166,11 @@ function App() {
                             <Route path="orders" element={<AdminOrders />} />
                             <Route path="messages/:id" element={<AdminMessageDetail />} />
                             <Route path="messages" element={<AdminMessages />} />
-                            <Route path="settings/templates" element={<AdminEmailTemplates />} />
+                            <Route path="settings/templates" element={<AdminEmailCenter />} />
                             <Route path="settings/email" element={<AdminEmailSettings />} />
+                            <Route path="settings/email-notifications" element={<AdminEmailCenter />} />
+                            <Route path="settings/email-center" element={<AdminEmailCenter />} />
+                            <Route path="settings/coming-soon" element={<AdminComingSoonSettings />} />
                             <Route path="settings/storefront" element={<AdminStorefrontSettings />} />
                             <Route path="settings/shipping-api" element={<AdminShippingApiSettings />} />
                             <Route path="settings/general" element={<AdminGeneralSettings />} />
@@ -177,7 +195,44 @@ function App() {
                             </ProtectedRoute>
                         } />
 
-                        {/* 404 – Not Found */}
+                        <Route path="/" element={<Home />} />
+                        <Route path="/products" element={<Products />} />
+                        <Route path="/categories" element={<Category />} />
+                        <Route path="/products/:id" element={<ProductDetail />} />
+                        <Route path="/hot-deals" element={<HotDeals />} />
+                        <Route
+                            path="/zippyyy-ships"
+                            element={zippyShipsComingSoon ? <ComingSoonPage {...comingSoonProps} /> : <ZippyyyShips />}
+                        />
+                        <Route
+                            path="/zippy-ships"
+                            element={zippyShipsComingSoon ? <ComingSoonPage {...comingSoonProps} /> : <ZippyyyShips />}
+                        />
+                        <Route path="/contact" element={<Contact />} />
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/register" element={<Register />} />
+                        <Route path="/forgot-password" element={<ForgotPassword />} />
+                        <Route path="/reset-password" element={<ResetPassword />} />
+                        <Route path="/admin-info" element={<AdminInfo />} />
+                        <Route path="/about" element={<About />} />
+                        <Route path="/cart" element={<Cart />} />
+                        <Route path="/checkout" element={<Checkout />} />
+                        <Route path="/order-success" element={<OrderSuccess />} />
+                        <Route path="/profile" element={
+                            <ProtectedRoute>
+                                <Profile />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/orders" element={
+                            <ProtectedRoute>
+                                <Orders />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/payment" element={<Payment />} />
+                        <Route path="/refund-policy" element={<Refundpolicy />} />
+                        <Route path="/shipping-policy" element={<ShippingPolicy />} />
+                        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                        <Route path="/terms-and-conditions" element={<TermsConditions />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>
                 </Suspense>
@@ -198,19 +253,19 @@ function App() {
                   background: '#1e293b',
                   color: '#e2e8f0',
                   borderRadius: '10px',
-                  border: '1px solid rgba(0, 128, 96, 0.25)',
+                  border: '1px solid rgba(40, 120, 179, 0.25)',
                   padding: '14px 18px',
                   fontSize: '0.9375rem',
                   boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
                 },
                 success: {
-                  iconTheme: { primary: '#008060', secondary: '#1e293b' },
+                  iconTheme: { primary: '#2878b3', secondary: '#1e293b' },
                 },
                 error: {
                   iconTheme: { primary: '#f87171', secondary: '#1e293b' },
                 },
                 loading: {
-                  iconTheme: { primary: '#008060', secondary: '#334155' },
+                  iconTheme: { primary: '#2878b3', secondary: '#334155' },
                 },
               }}
             />
