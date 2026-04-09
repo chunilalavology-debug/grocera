@@ -64,9 +64,36 @@ function resolveStoreLogoUrlForOutbound(rawPathOrUrl) {
   return resolvePublicAssetUrl(raw, {});
 }
 
+/**
+ * Browser-facing origin for this API (Vercel/nginx: use X-Forwarded-* when API_PUBLIC_URL unset).
+ * @param {import("express").Request} req
+ */
+function publicOriginFromRequest(req) {
+  const env = firstOrigin(process.env.API_PUBLIC_URL);
+  if (env) return env.replace(/\/+$/, "");
+
+  const xfHost = String(req.get("x-forwarded-host") || "")
+    .split(",")[0]
+    .trim();
+  const host = xfHost || String(req.get("host") || "").trim();
+  if (!host) return "";
+
+  let proto = String(req.get("x-forwarded-proto") || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  if (proto !== "http" && proto !== "https") {
+    proto = String(req.protocol || "https").replace(/:+$/, "").toLowerCase();
+  }
+  if (proto !== "http" && proto !== "https") proto = "https";
+
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
 module.exports = {
   resolvePublicAssetUrl,
   firstOrigin,
   publicApiAssetRootFromEnv,
   resolveStoreLogoUrlForOutbound,
+  publicOriginFromRequest,
 };

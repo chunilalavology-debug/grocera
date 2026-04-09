@@ -24,7 +24,12 @@ const {
 const { buildEmailCatalog } = require("../../utils/emailCatalog");
 const { listAllTemplateKeys } = require("../../utils/emailTemplateDefaults");
 const { applyEmailShellIfNeeded } = require("../../utils/emailShell");
-const { resolvePublicAssetUrl, resolveStoreLogoUrlForOutbound } = require("../../utils/publicAssetUrl");
+const {
+  resolvePublicAssetUrl,
+  resolveStoreLogoUrlForOutbound,
+  publicOriginFromRequest,
+  firstOrigin,
+} = require("../../utils/publicAssetUrl");
 const { invalidateComingSoonCache } = require("../middlewares/comingSoonApiGate");
 const { VALID_ADMIN_TRANSITION_STATUSES, ORDER_STATUSES } = require("../../utils/orderStatuses");
 const {
@@ -907,52 +912,68 @@ const getOrderInvoicePdf = async (req, res) => {
     }
 
     let websiteName = "Zippyyy";
-    let websiteLogoUrl = String(process.env.INVOICE_LOGO_URL || "").trim();
     let logoBuffer = null;
+    let logoContentType = "";
+    const logoUrls = [];
+
     const apiSeg = String(process.env.API_END_POINT_V1 || "/api").replace(/\/+$/, "") || "/api";
-    const publicOrigin = String(process.env.API_PUBLIC_URL || "")
-      .trim()
-      .split(",")[0]
-      .trim()
-      .replace(/\/+$/, "");
-    const reqOrigin = `${(req.protocol || "https").replace(/:+$/, "")}://${req.get("host") || ""}`.replace(/\/+$/, "");
-    const originForLogo = publicOrigin || reqOrigin;
-    /** Routes are mounted under API_END_POINT_V1 (e.g. /api); paths like /user/site-branding/logo need this prefix. */
+    const originForLogo =
+      publicOriginFromRequest(req) ||
+      firstOrigin(process.env.API_PUBLIC_URL) ||
+      firstOrigin(process.env.FRONTEND_URL) ||
+      "";
     const apiRoot = originForLogo
-      ? `${originForLogo}${apiSeg.startsWith("/") ? "" : "/"}${apiSeg}`.replace(/\/+$/, "")
+      ? `${String(originForLogo).replace(/\/+$/, "")}${apiSeg.startsWith("/") ? "" : "/"}${apiSeg}`.replace(/\/+$/, "")
       : "";
+
     try {
       const s = await AppSettings.findOne()
         .select("+websiteLogoBinary websiteLogoContentType websiteName websiteLogoUrl")
         .lean();
       if (s) {
         websiteName = String(s.websiteName || websiteName).trim() || websiteName;
-        if (!websiteLogoUrl) {
-          const bin = mongoBinaryToBuffer(s.websiteLogoBinary);
-          if (bin.length > 0) {
-            logoBuffer = bin;
+        logoContentType = String(s.websiteLogoContentType || "").trim();
+        const bin = mongoBinaryToBuffer(s.websiteLogoBinary);
+        if (bin.length > 0) {
+          logoBuffer = bin;
+        }
+        const stored = normalizeStoredUploadsUrl(String(s.websiteLogoUrl || "").trim());
+        if (stored) {
+          if (/^https?:\/\//i.test(stored)) {
+            logoUrls.push(stored);
+          } else if (apiRoot) {
+            logoUrls.push(resolvePublicAssetUrl(stored, { requestBaseUrl: apiRoot }));
           } else {
-            const stored = normalizeStoredUploadsUrl(String(s.websiteLogoUrl || "").trim());
-            if (stored) {
-              websiteLogoUrl = apiRoot
-                ? resolvePublicAssetUrl(stored, { requestBaseUrl: apiRoot })
-                : resolveStoreLogoUrlForOutbound(stored);
-            }
+            const abs = resolveStoreLogoUrlForOutbound(stored);
+            if (abs) logoUrls.push(abs);
           }
         }
       }
     } catch (_) {
       /* ignore */
     }
-    /** Same asset as storefront GET .../user/site-branding/logo when no env/DB logo. */
-    if (!websiteLogoUrl && !logoBuffer && apiRoot) {
-      websiteLogoUrl = `${apiRoot}/user/site-branding/logo`;
+
+    const envInvoiceLogo = String(process.env.INVOICE_LOGO_URL || "").trim();
+    if (envInvoiceLogo) {
+      logoUrls.push(envInvoiceLogo);
     }
+    if (apiRoot) {
+      logoUrls.push(`${apiRoot}/user/site-branding/logo`);
+    }
+
+    const seen = new Set();
+    const logoUrlsDeduped = logoUrls.filter((u) => {
+      const k = String(u || "").trim();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
 
     const pdf = await buildOrderInvoicePdfBuffer(order, {
       websiteName,
-      websiteLogoUrl,
       logoBuffer,
+      logoUrls: logoUrlsDeduped,
+      logoContentType,
     });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(

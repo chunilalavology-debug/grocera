@@ -1,23 +1,91 @@
 const PDFDocument = require("pdfkit");
+const sharp = require("sharp");
 
 async function fetchUrlBuffer(url) {
   const u = String(url || "").trim();
   if (!/^https?:\/\//i.test(u)) return null;
   try {
     const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), 12_000);
+    const t = setTimeout(() => ac.abort(), 15_000);
     const res = await fetch(u, {
       signal: ac.signal,
       redirect: "follow",
-      headers: { Accept: "image/*,*/*;q=0.8" },
+      headers: {
+        Accept: "image/*,*/*;q=0.8",
+        "User-Agent": "Zippyyy-Invoice/1.0",
+      },
     });
     clearTimeout(t);
     if (!res.ok) return null;
+    const ct = String(res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("text/html")) return null;
     const ab = await res.arrayBuffer();
-    return Buffer.from(ab);
+    const buf = Buffer.from(ab);
+    return buf.length ? buf : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * PDFKit supports PNG/JPEG well; storefront logos are often WebP, SVG, or AVIF from Cloudinary.
+ */
+async function toPdfSafeImageBuffer(input) {
+  if (!Buffer.isBuffer(input) || !input.length) return null;
+  try {
+    const meta = await sharp(input).metadata();
+    const fmt = String(meta.format || "").toLowerCase();
+    if (fmt === "svg" || fmt === "svg+xml") {
+      return await sharp(input, { density: 144 }).png().toBuffer();
+    }
+    if (fmt === "jpeg" || fmt === "jpg" || fmt === "png") {
+      return await sharp(input).rotate().png({ compressionLevel: 9 }).toBuffer();
+    }
+    return await sharp(input).rotate().png({ compressionLevel: 9 }).toBuffer();
+  } catch {
+    try {
+      return await sharp(input).jpeg({ quality: 88 }).toBuffer();
+    } catch {
+      return null;
+    }
+  }
+}
+
+function mimeIsPdfKitNative(mime) {
+  const m = String(mime || "").toLowerCase();
+  return m.includes("png") || m.includes("jpeg") || m.includes("jpg");
+}
+
+/**
+ * Try Mongo buffer first, then each URL. PNG/JPEG from Mongo → PDFKit embeds directly (no Sharp round-trip).
+ * WebP/SVG/AVIF → Sharp → PNG.
+ */
+async function resolveLogoForPdf({ buffer, urls, mongoContentType }) {
+  const tryMongoBuffer = async (b, mimeHint) => {
+    if (!Buffer.isBuffer(b) || !b.length) return null;
+    if (mimeIsPdfKitNative(mimeHint)) {
+      return b;
+    }
+    const n = await toPdfSafeImageBuffer(b);
+    return n || b;
+  };
+
+  const tryFetchedBuffer = async (b) => {
+    if (!Buffer.isBuffer(b) || !b.length) return null;
+    const n = await toPdfSafeImageBuffer(b);
+    return n || b;
+  };
+
+  const first = await tryMongoBuffer(buffer, mongoContentType);
+  if (first) return first;
+
+  const urlList = Array.isArray(urls) ? [...new Set(urls.map((u) => String(u || "").trim()).filter(Boolean))] : [];
+  for (const u of urlList) {
+    const raw = await fetchUrlBuffer(u);
+    const t = await tryFetchedBuffer(raw);
+    if (t) return t;
+  }
+  return null;
 }
 
 function money(n) {
@@ -30,19 +98,23 @@ function safeText(s, max = 500) {
 }
 
 /**
- * @param {object} order — populated lean order (items.product, addressId, userId, guestShipping)
+ * @param {object} order
  * @param {{
  *   websiteName?: string,
- *   websiteLogoUrl?: string,
  *   logoBuffer?: Buffer | null,
- * }} branding — prefer logoBuffer (Mongo upload); else fetch absolute http(s) websiteLogoUrl
- * @returns {Promise<Buffer>}
+ *   logoUrls?: string[],
+ *   logoContentType?: string,
+ * }} branding
  */
 async function buildOrderInvoicePdfBuffer(order, branding = {}) {
   const storeName =
     String(branding.websiteName || process.env.STORE_NAME || "Zippyyy").trim() || "Zippyyy";
-  const logoUrl = String(branding.websiteLogoUrl || "").trim();
-  const fromDb = branding.logoBuffer;
+
+  const logoBuf = await resolveLogoForPdf({
+    buffer: branding.logoBuffer,
+    urls: branding.logoUrls,
+    mongoContentType: branding.logoContentType,
+  });
 
   const doc = new PDFDocument({ size: "LETTER", margin: 48, info: { Title: `Invoice ${order.orderNumber || ""}` } });
   const chunks = [];
@@ -52,14 +124,6 @@ async function buildOrderInvoicePdfBuffer(order, branding = {}) {
   const muted = "#64748b";
   const border = "#e2e8f0";
 
-  let logoBuf = null;
-  if (Buffer.isBuffer(fromDb) && fromDb.length > 0) {
-    logoBuf = fromDb;
-  } else if (logoUrl) {
-    logoBuf = await fetchUrlBuffer(logoUrl);
-  }
-
-  // Header band
   doc.save();
   doc.rect(0, 0, doc.page.width, 112).fill("#f8fafc");
   doc.restore();
@@ -70,15 +134,15 @@ async function buildOrderInvoicePdfBuffer(order, branding = {}) {
     try {
       doc.image(logoBuf, x, topY, { width: 72, height: 72, fit: [72, 72] });
       x += 84;
-    } catch (_) {
-      /* ignore bad image */
+    } catch {
+      /* fall through to text-only header */
     }
   }
 
-  doc.fillColor(primary).fontSize(20).font("Helvetica-Bold").text(storeName, x, topY + 8, {
+  doc.fillColor(primary).fontSize(logoBuf ? 14 : 20).font("Helvetica-Bold").text(storeName, x, topY + (logoBuf ? 10 : 8), {
     width: doc.page.width - x - 48,
   });
-  doc.fillColor(muted).fontSize(10).font("Helvetica").text("Sales invoice", x, topY + 34);
+  doc.fillColor(muted).fontSize(10).font("Helvetica").text("Sales invoice", x, topY + (logoBuf ? 30 : 34));
 
   doc.fillColor("#0f172a").fontSize(11).font("Helvetica-Bold").text("INVOICE", doc.page.width - 140, topY + 12, {
     width: 92,
@@ -97,7 +161,6 @@ async function buildOrderInvoicePdfBuffer(order, branding = {}) {
   doc.fillColor(muted).fontSize(9).text(`Payment: ${payMethod}`, 48, y);
   y += 22;
 
-  // Customer card
   const addr = order.addressId;
   const user = order.userId;
   const guest = order.guestShipping;
@@ -120,7 +183,6 @@ async function buildOrderInvoicePdfBuffer(order, branding = {}) {
 
   y += 124;
 
-  // Table header
   doc.fillColor("#f1f5f9").roundedRect(48, y, doc.page.width - 96, 22, 4).fill();
   doc.fillColor(primary).font("Helvetica-Bold").fontSize(9);
   doc.text("Product", 56, y + 7);
