@@ -86,6 +86,24 @@ Logs: `pm2 logs zippyyy-grocera`
 
 Stripe webhooks must use your public **HTTPS** URL: `https://zippyyy.com/api/orders/webhook`.
 
+### Homepage returns **500** (nginx) — usually no `frontend/build`
+
+Node is configured to serve the CRA output from **`frontend/build`**. If **`frontend/build/index.html` is missing**, `/` has no app to serve and the proxy often surfaces as **500**.
+
+On the server:
+
+```bash
+cd /var/www/grocera
+npm ci --prefix frontend
+REACT_APP_SAME_ORIGIN_API=1 npm run build --prefix frontend
+ls -la frontend/build/index.html
+pm2 restart grocera-backend --update-env
+```
+
+If `npm run build` dies with **JavaScript heap out of memory**, use:
+
+`NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend`
+
 ## 6. Smoke checks
 
 ```bash
