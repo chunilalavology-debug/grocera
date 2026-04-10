@@ -16,7 +16,7 @@ sudo systemctl enable --now redis-server
 redis-cli ping   # must print PONG
 ```
 
-In `backend/.env` set **`REDIS_URL=redis://127.0.0.1:6379`** and do **not** set `REDIS_DISABLED`. The Node app and Redis must run on the same machine (or point `REDIS_URL` at your managed Redis host).
+In `backend/.env` set **`REDIS_URL=redis://127.0.0.1:6379`** (recommended) and do **not** set `REDIS_DISABLED`. Do **not** also set `REDIS_HOST` / `REDIS_PORT` when using `REDIS_URL` — pick one connection style. The Node app and Redis must run on the same machine (or point `REDIS_URL` at your managed Redis host).
 
 ## 2. Clone and build
 

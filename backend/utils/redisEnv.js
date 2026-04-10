@@ -13,7 +13,7 @@ function isRedisExplicitlyDisabled() {
 
 /**
  * True when Redis is intended for catalog cache / invalidation (any explicit connection hint, not disabled).
- * Prefer REDIS_URL (Upstash) or REDIS_HOST + REDIS_PORT on a VPS.
+ * Use either REDIS_URL or REDIS_HOST/REDIS_PORT in .env — not both (URL wins in redisClient).
  */
 function isRedisConfiguredInEnv() {
   if (isRedisExplicitlyDisabled()) return false;
