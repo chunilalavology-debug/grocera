@@ -106,6 +106,8 @@ REACT_APP_SAME_ORIGIN_API=1 npm run build --prefix frontend
 pm2 reload ecosystem.config.cjs --env production
 ```
 
+After any `git pull`, **always** restart the Node process (`pm2 restart grocera-backend` or your app name). Until you restart, PM2 keeps the **old** code in memory, and `pm2 logs` may still show **old** stack traces (e.g. `xlsx` on line 8) mixed with new output. To confirm the new file on disk: `sed -n '1,12p' routes/controllers/controllerAdmin.js` — line 8 should be `const path = require("path");`, not `xlsx`.
+
 ## 8. Fix `ECONNREFUSED 127.0.0.1:6379` (Redis)
 
 The app expects **Redis on the same VPS** when `REDIS_URL=redis://127.0.0.1:6379` is set. This error means **nothing is listening on port 6379** (Redis not installed, stopped, or bound only to a socket).

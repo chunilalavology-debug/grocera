@@ -34,23 +34,19 @@ const cartSchema = new mongoose.Schema({
     }
   }],
   
-  // Cart Metadata — index only on path (no duplicate cartSchema.index)
   lastModified: {
     type: Date,
     default: Date.now,
-    index: true,
   },
   
   // Session tracking for analytics
   sessionId: String,
   
-  // Cart expiration — TTL via `expires` only (do not also call schema.index on expiresAt)
   expiresAt: {
     type: Date,
     default: function () {
       return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     },
-    expires: 0,
   },
   
   // Cart totals (calculated)
@@ -84,8 +80,11 @@ const cartSchema = new mongoose.Schema({
   }
 });
 
+/** All Cart indexes here only — no path-level index / expires (avoids Mongoose duplicate-index warnings). */
 cartSchema.index({ userId: 1 }, { unique: true });
 cartSchema.index({ guestId: 1 }, { sparse: true });
+cartSchema.index({ lastModified: 1 });
+cartSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Pre-save middleware to calculate totals
 cartSchema.pre('save', function(next) {
