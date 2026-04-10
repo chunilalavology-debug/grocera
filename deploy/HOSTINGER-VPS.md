@@ -106,7 +106,9 @@ REACT_APP_SAME_ORIGIN_API=1 npm run build --prefix frontend
 pm2 reload ecosystem.config.cjs --env production
 ```
 
-After any `git pull`, **always** restart the Node process (`pm2 restart grocera-backend` or your app name). Until you restart, PM2 keeps the **old** code in memory, and `pm2 logs` may still show **old** stack traces (e.g. `xlsx` on line 8) mixed with new output. To confirm the new file on disk: `sed -n '1,12p' routes/controllers/controllerAdmin.js` — line 8 should be `const path = require("path");`, not `xlsx`.
+After any `git pull`, **always** restart the Node process (`pm2 restart grocera-backend --update-env` or your app name). Until you restart, PM2 keeps the **old** code in memory, and `pm2 logs` may still show **old** stack traces (e.g. `xlsx` on line 8) mixed with new output. To confirm the new file on disk: `sed -n '1,12p' routes/controllers/controllerAdmin.js` — line 8 should be `const path = require("path");`, not `xlsx`.
+
+**Stale Mongoose warnings in `*-error.log`:** that file is append-only. Lines from old PIDs (e.g. `node:579928`) are **not** from the process you just restarted (see the new PID in `pm2 status`). Clear and re-check: `pm2 flush grocera-backend` then `pm2 restart grocera-backend` and `pm2 logs grocera-backend --lines 20` — new errors should show the **current** PID only.
 
 ## 8. Fix `ECONNREFUSED 127.0.0.1:6379` (Redis)
 
