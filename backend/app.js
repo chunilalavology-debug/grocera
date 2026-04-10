@@ -730,6 +730,11 @@ if (require.main === module) {
     console.log(`Health check: http://localhost:${PORT}${API_END_POINT_V1}/health`);
     if (serveProductionSpa) {
       console.log("Serving production SPA from FRONTEND_BUILD_PATH.");
+    } else if (process.env.NODE_ENV === "production") {
+      console.warn(
+        "[grocera] FRONTEND_BUILD_PATH is unset — nginx proxying / to this process will not serve the React build. " +
+          "Set FRONTEND_BUILD_PATH=../frontend/build in backend/.env or start via ecosystem.config.cjs --env production.",
+      );
     }
   };
   const listener = LISTEN_HOST

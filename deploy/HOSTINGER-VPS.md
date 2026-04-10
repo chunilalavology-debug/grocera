@@ -90,6 +90,23 @@ Stripe webhooks must use your public **HTTPS** URL: `https://zippyyy.com/api/ord
 
 Node is configured to serve the CRA output from **`frontend/build`**. If **`frontend/build/index.html` is missing**, `/` has no app to serve and the proxy often surfaces as **500**.
 
+**Also check `FRONTEND_BUILD_PATH`:** If PM2 was started with `pm2 start app.js` instead of `pm2 start ecosystem.config.cjs --env production`, the process may have **no** `FRONTEND_BUILD_PATH`. Then Node never mounts the SPA even after you run `npm run build`. Add to **`backend/.env`** (path is relative to the `backend/` folder):
+
+```env
+FRONTEND_BUILD_PATH=../frontend/build
+```
+
+Then `pm2 restart <your-app-name> --update-env`. On startup, logs should include **Serving production SPA from FRONTEND_BUILD_PATH.** — if you see the warning about FRONTEND_BUILD_PATH unset instead, the env is still wrong (`pm2 show <name>` → check **env**).
+
+Quick checks on the server:
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5000/
+curl -sS http://127.0.0.1:5000/ | head -c 80
+```
+
+Expect **200** and HTML (`<!doctype`…). If you get **200** and JSON (`"ok":true,"service":"grocera-api"`), the SPA is not mounted — set `FRONTEND_BUILD_PATH` as above.
+
 On the server:
 
 ```bash
