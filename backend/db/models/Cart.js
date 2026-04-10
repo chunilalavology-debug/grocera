@@ -2,12 +2,11 @@ const mongoose = require('mongoose');
 
 // Cart Schema for persistent shopping carts
 const cartSchema = new mongoose.Schema({
-  // User Reference
+  // User Reference — unique index declared once below (avoids duplicate with field unique + schema.index)
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: "User",
     required: true,
-    unique: true, // One cart per user (creates index; no duplicate schema.index)
   },
   
   // Cart Items
@@ -35,22 +34,23 @@ const cartSchema = new mongoose.Schema({
     }
   }],
   
-  // Cart Metadata
+  // Cart Metadata — index only on path (no duplicate cartSchema.index)
   lastModified: {
     type: Date,
     default: Date.now,
+    index: true,
   },
   
   // Session tracking for analytics
   sessionId: String,
   
-  // Cart expiration for cleanup
+  // Cart expiration — TTL via `expires` only (do not also call schema.index on expiresAt)
   expiresAt: {
     type: Date,
-    default: function() {
-      // Cart expires after 30 days of inactivity
+    default: function () {
       return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     },
+    expires: 0,
   },
   
   // Cart totals (calculated)
@@ -70,9 +70,9 @@ const cartSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // Sparse index declared once below (path-level sparse would duplicate schema.index)
   guestId: {
     type: String,
-    sparse: true,
   },
 }, {
   timestamps: true,
@@ -84,11 +84,8 @@ const cartSchema = new mongoose.Schema({
   }
 });
 
-// Indexes (avoid duplicate field index: true + schema.index)
+cartSchema.index({ userId: 1 }, { unique: true });
 cartSchema.index({ guestId: 1 }, { sparse: true });
-cartSchema.index({ lastModified: 1 });
-/** Single expiresAt index: TTL cleanup */
-cartSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Pre-save middleware to calculate totals
 cartSchema.pre('save', function(next) {
