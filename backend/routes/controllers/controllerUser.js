@@ -47,6 +47,7 @@ const {
   normalizeBadge,
 } = require("../../utils/storefrontProductPrice");
 const { connectDB } = require("../../lib/db");
+const { isRedisConfiguredInEnv } = require("../../utils/redisEnv");
 const jwt = require("jsonwebtoken");
 const getPublicSiteSettings = require("../publicSiteSettings");
 const {
@@ -345,12 +346,8 @@ const getProducts = async (req, res) => {
     const isFirstPage =
       !cursor && !search && !minPrice && !maxPrice && !hotDeals;
     const cacheKey = `products:${category}:v3-storefront`;
-    /** Without REDIS_URL, catalog cache is off. REDIS_DISABLED=1 skips Redis entirely (no ECONNREFUSED on VPS). */
-    const redisOff = ["1", "true", "yes"].includes(
-      String(process.env.REDIS_DISABLED || process.env.SKIP_REDIS || "").trim().toLowerCase(),
-    );
-    const useRedisCatalogCache =
-      Boolean(process.env.REDIS_URL && String(process.env.REDIS_URL).trim()) && !redisOff;
+    /** Catalog cache when Redis is configured (REDIS_URL and/or REDIS_HOST / REDIS_PORT), not REDIS_DISABLED. */
+    const useRedisCatalogCache = isRedisConfiguredInEnv();
 
     if (isFirstPage && useRedisCatalogCache) {
       const cachedData = await Promise.race([

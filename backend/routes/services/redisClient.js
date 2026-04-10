@@ -4,15 +4,13 @@
  *
  * VPS without Redis: REDIS_DISABLED=1 — no TCP; catalog cache skipped in controllerUser;
  * rate limits are weaker (see rateLimit middleware).
+ *
+ * Connection: REDIS_URL wins if set; else REDIS_HOST (default 127.0.0.1) + REDIS_PORT (default 6379).
  */
 const asyncRedis = require("async-redis");
+const { isRedisExplicitlyDisabled } = require("../../utils/redisEnv");
 
-function envFlagTrue(name) {
-  const v = String(process.env[name] || "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
-
-const redisExplicitlyDisabled = envFlagTrue("REDIS_DISABLED") || envFlagTrue("SKIP_REDIS");
+const redisExplicitlyDisabled = isRedisExplicitlyDisabled();
 
 /** No TCP — avoids ECONNREFUSED when Redis is not installed on the VPS. */
 function createNoopRedisClient() {

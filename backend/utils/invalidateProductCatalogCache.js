@@ -5,15 +5,10 @@
  * Featured categories are not cached in Redis — they always read MongoDB.
  */
 const client = require("../routes/services/redisClient");
-
-function redisDisabled() {
-  const v = String(process.env.REDIS_DISABLED || process.env.SKIP_REDIS || "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
+const { isRedisConfiguredInEnv } = require("./redisEnv");
 
 async function invalidateProductCatalogCache() {
-  const url = process.env.REDIS_URL && String(process.env.REDIS_URL).trim();
-  if (redisDisabled() || !url) return;
+  if (!isRedisConfiguredInEnv()) return;
   try {
     const keys = await client.keys("products:*:v1");
     if (keys && keys.length) await client.del(keys);
