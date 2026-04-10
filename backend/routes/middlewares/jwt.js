@@ -115,6 +115,16 @@ function isPublicJwtPath(req) {
   if (pathname === normalizeJwtPathname(`${A}/voucher/redeem`) && m === "POST") return true;
   if (pathname === normalizeJwtPathname(`${A}/subscription/subscribe`) && m === "POST") return true;
 
+  /**
+   * VPS / same-process SPA: HTML and static assets live outside the API prefix.
+   * Without this, express-jwt returns 401 for GET / and /static/* before the SPA is served.
+   */
+  const apiBase = A.endsWith("/") ? A.slice(0, -1) : A;
+  if (m === "GET" || m === "HEAD") {
+    if (pathname === apiBase) return true;
+    if (!pathname.startsWith(`${apiBase}/`)) return true;
+  }
+
   return false;
 }
 

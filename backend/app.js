@@ -62,6 +62,11 @@ if (stripeSecret) {
   }
 }
 const PORT = process.env.PORT || 5000;
+/** Optional: bind only to this host (e.g. 127.0.0.1 behind nginx). Unset = all interfaces. */
+const LISTEN_HOST = String(process.env.LISTEN_HOST || "").trim();
+/** Absolute or path relative to this file’s directory; when set and build exists, serve CRA production build. */
+const FRONTEND_BUILD_PATH = String(process.env.FRONTEND_BUILD_PATH || "").trim();
+const serveProductionSpa = Boolean(FRONTEND_BUILD_PATH);
 /** Set STRIPE_WEBHOOK_DEBUG=1 to log Stripe event handling (off in production by default). */
 const stripeWhLog = (...args) => {
   if (String(process.env.STRIPE_WEBHOOK_DEBUG || "").trim() === "1") {
@@ -127,14 +132,16 @@ app.use(express.static("public"));
 
 const mongoose = require("mongoose");
 
-app.get("/", (_req, res) => {
-  res.status(200).json({
-    ok: true,
-    service: "grocera-api",
-    health: `${API_END_POINT_V1}/health`,
-    note: "Root is public; most /api/* routes require a Bearer token.",
+if (!serveProductionSpa) {
+  app.get("/", (_req, res) => {
+    res.status(200).json({
+      ok: true,
+      service: "grocera-api",
+      health: `${API_END_POINT_V1}/health`,
+      note: "Root is public; most /api/* routes require a Bearer token.",
+    });
   });
-});
+}
 
 app.get(`${API_END_POINT_V1}/health`, async (_req, res) => {
   const labels = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
@@ -678,6 +685,36 @@ async function markPaidAndSendMail(orderId, session, webhookReq) {
   }
 }
 
+if (serveProductionSpa) {
+  const buildPath = path.isAbsolute(FRONTEND_BUILD_PATH)
+    ? path.normalize(FRONTEND_BUILD_PATH)
+    : path.resolve(__dirname, FRONTEND_BUILD_PATH);
+  const indexHtml = path.join(buildPath, "index.html");
+  if (fs.existsSync(indexHtml)) {
+    const staticMaxAge = process.env.NODE_ENV === "production" ? "7d" : 0;
+    app.use(
+      express.static(buildPath, {
+        maxAge: staticMaxAge,
+        index: "index.html",
+        fallthrough: true,
+      }),
+    );
+    app.get("*", (req, res, next) => {
+      if (req.method !== "GET" && req.method !== "HEAD") return next();
+      const p = req.path || "";
+      if (p.startsWith(API_END_POINT_V1)) return next();
+      if (p.startsWith("/upload") || p.startsWith("/uploads")) return next();
+      if (p.startsWith("/verify-session")) return next();
+      res.sendFile(indexHtml);
+    });
+  } else {
+    console.warn(
+      `[grocera] FRONTEND_BUILD_PATH is set but index.html is missing: ${indexHtml}. ` +
+        "Build the frontend (npm run build --prefix frontend) or unset FRONTEND_BUILD_PATH.",
+    );
+  }
+}
+
 app.use(errorHandler);
 
 /**
@@ -686,11 +723,18 @@ app.use(errorHandler);
  * Do not gate on `process.env.VERCEL` alone: some dev shells set VERCEL=1 and would skip listen incorrectly.
  */
 if (require.main === module) {
-  server
-    .listen(PORT, () => {
-      console.log(`Server is up and running on port ${PORT}.`);
-      console.log(`Health check: http://localhost:${PORT}${API_END_POINT_V1}/health`);
-    })
+  const onListen = () => {
+    const hostLabel = LISTEN_HOST || "0.0.0.0 (all interfaces)";
+    console.log(`Server is up on ${hostLabel}, port ${PORT}.`);
+    console.log(`Health check: http://localhost:${PORT}${API_END_POINT_V1}/health`);
+    if (serveProductionSpa) {
+      console.log("Serving production SPA from FRONTEND_BUILD_PATH.");
+    }
+  };
+  const listener = LISTEN_HOST
+    ? server.listen(PORT, LISTEN_HOST, onListen)
+    : server.listen(PORT, onListen);
+  listener
     .on("error", (err) => {
       console.error("Could not start the HTTP server:", err.message);
       if (err.code === "EADDRINUSE") {

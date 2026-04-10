@@ -5,10 +5,16 @@
   "scripts": {
     "dev": "concurrently -k -n backend,frontend -c blue,magenta \"npm start --prefix backend\" \"wait-on -t 120000 tcp:127.0.0.1:5000 && npm start --prefix frontend\"",
     "dev:backend": "npm start --prefix backend",
-    "dev:frontend": "npm start --prefix frontend"
+    "dev:frontend": "npm start --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend",
+    "build:vps": "cross-env REACT_APP_SAME_ORIGIN_API=1 npm run build --prefix frontend",
+    "vps:install": "npm ci --prefix backend --omit=dev",
+    "vps:pm2:start": "pm2 start ecosystem.config.cjs --env production",
+    "vps:pm2:reload": "pm2 reload ecosystem.config.cjs --env production"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
     "wait-on": "^8.0.1"
   }
 }
