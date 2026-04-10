@@ -66,8 +66,23 @@ const PORT = process.env.PORT || 5000;
 /** Optional: bind only to this host (e.g. 127.0.0.1 behind nginx). Unset = all interfaces. */
 const LISTEN_HOST = String(process.env.LISTEN_HOST || "").trim();
 /** Absolute or path relative to this file’s directory; when set and build exists, serve CRA production build. */
-const FRONTEND_BUILD_PATH = String(process.env.FRONTEND_BUILD_PATH || "").trim();
-const serveProductionSpa = Boolean(FRONTEND_BUILD_PATH);
+const FRONTEND_BUILD_PATH_ENV = String(process.env.FRONTEND_BUILD_PATH || "").trim();
+/** Default sibling folder when env is unset (standard monorepo: backend/ + frontend/build/). */
+const FRONTEND_BUILD_AUTO_REL = "../frontend/build";
+const autoBuildIndex = path.join(__dirname, FRONTEND_BUILD_AUTO_REL, "index.html");
+let effectiveFrontendBuildPath = FRONTEND_BUILD_PATH_ENV;
+if (
+  !effectiveFrontendBuildPath &&
+  !isVercel &&
+  fs.existsSync(autoBuildIndex) &&
+  (process.env.NODE_ENV === "production" || LISTEN_HOST)
+) {
+  effectiveFrontendBuildPath = FRONTEND_BUILD_AUTO_REL;
+  console.log(
+    `[grocera] FRONTEND_BUILD_PATH not set; using ${FRONTEND_BUILD_AUTO_REL} (index.html found).`,
+  );
+}
+const serveProductionSpa = Boolean(effectiveFrontendBuildPath);
 /** Set STRIPE_WEBHOOK_DEBUG=1 to log Stripe event handling (off in production by default). */
 const stripeWhLog = (...args) => {
   if (String(process.env.STRIPE_WEBHOOK_DEBUG || "").trim() === "1") {
@@ -687,9 +702,9 @@ async function markPaidAndSendMail(orderId, session, webhookReq) {
 }
 
 if (serveProductionSpa) {
-  const buildPath = path.isAbsolute(FRONTEND_BUILD_PATH)
-    ? path.normalize(FRONTEND_BUILD_PATH)
-    : path.resolve(__dirname, FRONTEND_BUILD_PATH);
+  const buildPath = path.isAbsolute(effectiveFrontendBuildPath)
+    ? path.normalize(effectiveFrontendBuildPath)
+    : path.resolve(__dirname, effectiveFrontendBuildPath);
   const indexHtml = path.join(buildPath, "index.html");
   if (fs.existsSync(indexHtml)) {
     const staticMaxAge = process.env.NODE_ENV === "production" ? "7d" : 0;
@@ -710,7 +725,7 @@ if (serveProductionSpa) {
     });
   } else {
     console.warn(
-      `[grocera] FRONTEND_BUILD_PATH is set but index.html is missing: ${indexHtml}. ` +
+      `[grocera] FRONTEND_BUILD_PATH / auto build path set but index.html is missing: ${indexHtml}. ` +
         "Build the frontend (npm run build --prefix frontend) or unset FRONTEND_BUILD_PATH.",
     );
   }
@@ -729,11 +744,13 @@ if (require.main === module) {
     console.log(`Server is up on ${hostLabel}, port ${PORT}.`);
     console.log(`Health check: http://localhost:${PORT}${API_END_POINT_V1}/health`);
     if (serveProductionSpa) {
-      console.log("Serving production SPA from FRONTEND_BUILD_PATH.");
+      console.log(
+        `Serving production SPA from ${path.isAbsolute(effectiveFrontendBuildPath) ? effectiveFrontendBuildPath : path.resolve(__dirname, effectiveFrontendBuildPath)}.`,
+      );
     } else if (process.env.NODE_ENV === "production") {
       console.warn(
-        "[grocera] FRONTEND_BUILD_PATH is unset — nginx proxying / to this process will not serve the React build. " +
-          "Set FRONTEND_BUILD_PATH=../frontend/build in backend/.env or start via ecosystem.config.cjs --env production.",
+        "[grocera] No production SPA: frontend/build/index.html missing and FRONTEND_BUILD_PATH unset. " +
+          "Run: REACT_APP_SAME_ORIGIN_API=1 npm run build --prefix frontend",
       );
     }
   };

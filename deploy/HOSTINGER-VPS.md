@@ -90,13 +90,13 @@ Stripe webhooks must use your public **HTTPS** URL: `https://zippyyy.com/api/ord
 
 Node is configured to serve the CRA output from **`frontend/build`**. If **`frontend/build/index.html` is missing**, `/` has no app to serve and the proxy often surfaces as **500**.
 
-**Also check `FRONTEND_BUILD_PATH`:** If PM2 was started with `pm2 start app.js` instead of `pm2 start ecosystem.config.cjs --env production`, the process may have **no** `FRONTEND_BUILD_PATH`. Then Node never mounts the SPA even after you run `npm run build`. Add to **`backend/.env`** (path is relative to the `backend/` folder):
+**Also check `FRONTEND_BUILD_PATH`:** If PM2 was started with `pm2 start app.js` instead of `pm2 start ecosystem.config.cjs --env production`, the process may have **no** `FRONTEND_BUILD_PATH`. As of recent `app.js`, if **`frontend/build/index.html` exists** and you run with **`NODE_ENV=production`** or **`LISTEN_HOST`** set (typical nginx setup), the server **auto-serves** `../frontend/build` even when the variable is unset. You can still set it explicitly in **`backend/.env`**:
 
 ```env
 FRONTEND_BUILD_PATH=../frontend/build
 ```
 
-Then `pm2 restart <your-app-name> --update-env`. On startup, logs should include **Serving production SPA from FRONTEND_BUILD_PATH.** — if you see the warning about FRONTEND_BUILD_PATH unset instead, the env is still wrong (`pm2 show <name>` → check **env**).
+Then `pm2 restart <your-app-name> --update-env`. On startup, logs should include **Serving production SPA from** … — if `curl http://127.0.0.1:5000/` returns JSON (`grocera-api`), the SPA is not mounted: confirm `ls frontend/build/index.html`, `NODE_ENV` / `LISTEN_HOST` in **`backend/.env`**, and `git pull` so `app.js` is current (`pm2 show <name>` → **env**).
 
 Quick checks on the server:
 
