@@ -69,7 +69,6 @@ const userSchema = new mongoose.Schema({
       },
       message: 'Please provide a valid email address'
     },
-    index: true // Index for faster queries
   },
   password: {
     type: String,
@@ -123,7 +122,6 @@ const userSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true,
-    index: true,
   },
   referredBy: {
     type: mongoose.Schema.Types.ObjectId,

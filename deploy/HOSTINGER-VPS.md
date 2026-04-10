@@ -101,6 +101,7 @@ You should see JSON from `/api/health` and `200` for `/` (HTML).
 cd /path/to/grocera
 git pull
 npm ci --prefix backend --omit=dev
+# If you see MODULE_NOT_FOUND (e.g. xlsx), dependencies are incomplete — run: npm install --prefix backend
 REACT_APP_SAME_ORIGIN_API=1 npm run build --prefix frontend
 pm2 reload ecosystem.config.cjs --env production
 ```

@@ -7,8 +7,7 @@ const cartSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true,
-    unique: true // One cart per user
+    unique: true, // One cart per user (creates index; no duplicate schema.index)
   },
   
   // Cart Items
@@ -40,7 +39,6 @@ const cartSchema = new mongoose.Schema({
   lastModified: {
     type: Date,
     default: Date.now,
-    index: true
   },
   
   // Session tracking for analytics
@@ -53,7 +51,6 @@ const cartSchema = new mongoose.Schema({
       // Cart expires after 30 days of inactivity
       return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     },
-    index: true
   },
   
   // Cart totals (calculated)
@@ -76,8 +73,7 @@ const cartSchema = new mongoose.Schema({
   guestId: {
     type: String,
     sparse: true,
-    index: true
-  }
+  },
 }, {
   timestamps: true,
   toJSON: {
@@ -88,13 +84,10 @@ const cartSchema = new mongoose.Schema({
   }
 });
 
-// Indexes for performance
-cartSchema.index({ userId: 1 }, { unique: true });
+// Indexes (avoid duplicate field index: true + schema.index)
 cartSchema.index({ guestId: 1 }, { sparse: true });
 cartSchema.index({ lastModified: 1 });
-cartSchema.index({ expiresAt: 1 }); // For TTL cleanup
-
-// TTL index for automatic cart cleanup
+/** Single expiresAt index: TTL cleanup */
 cartSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Pre-save middleware to calculate totals

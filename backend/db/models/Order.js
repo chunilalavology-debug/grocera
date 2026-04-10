@@ -7,7 +7,6 @@ const orderSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true,
-    index: true,
     trim: true,
   },
   /** Backward-compatible alias used across existing admin/front-end/email code paths. */
@@ -15,7 +14,6 @@ const orderSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true,
-    index: true,
     trim: true,
   },
 
@@ -24,7 +22,6 @@ const orderSchema = new mongoose.Schema({
     ref: 'User',
     required: false,
     default: null,
-    index: true,
   },
 
   addressId: {

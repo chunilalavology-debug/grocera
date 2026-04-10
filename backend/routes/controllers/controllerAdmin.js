@@ -5,8 +5,27 @@ const { Message, Products, Orders, User, ContactUs, Voucher, HomeSliderSettings,
 const { authorize } = require("../middlewares/rbacMiddleware");
 const multer = require("multer");
 const Product = require("../../db/models/Product");
-const XLSX = require("xlsx");
 const path = require("path");
+
+/** Lazy load so the API boots if node_modules is incomplete; run `npm install` in backend for Excel import. */
+let _xlsxCache;
+function getXlsx() {
+  if (!_xlsxCache) {
+    try {
+      _xlsxCache = require("xlsx");
+    } catch (e) {
+      if (e && e.code === "MODULE_NOT_FOUND") {
+        const err = new Error(
+          "Missing npm package 'xlsx'. On the server: cd /var/www/grocera/backend && npm install",
+        );
+        err.code = "XLSX_MISSING";
+        throw err;
+      }
+      throw e;
+    }
+  }
+  return _xlsxCache;
+}
 const fs = require("fs");
 const mongoose = require("mongoose");
 const { useMongoForBranding } = require("../../utils/useMongoBranding");
@@ -1302,6 +1321,7 @@ const importOrdersCsv = async (req, res) => {
       });
     }
 
+    const XLSX = getXlsx();
     const workbook = XLSX.readFile(req.file.path);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
@@ -1865,6 +1885,7 @@ const uploadBulkExcelProducts = async (req, res) => {
       });
     }
 
+    const XLSX = getXlsx();
     const workbook = XLSX.readFile(req.file.path);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet);
@@ -5044,6 +5065,7 @@ const importProductsCsv = async (req, res) => {
   }
 
   try {
+    const XLSX = getXlsx();
     const workbook = XLSX.readFile(req.file.path);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
