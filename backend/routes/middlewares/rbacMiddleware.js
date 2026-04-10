@@ -1,7 +1,6 @@
 const { apiErrorRes } = require('../../utils/globalFunction');
 const { INVALID_TOKEN, DATA_NULL, ACCESS_DENIED, SUCCESS } = require('../../utils/constants');
-require('dotenv').config();
-const { JWT_SECRET_KEY } = process.env
+const { JWT_SECRET_KEY } = process.env;
 const serviceRedis = require('../services/serviceRedis')
 
 

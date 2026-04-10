@@ -1,4 +1,6 @@
-require("dotenv").config();
+const path = require("path");
+/** Always load backend/.env (PM2 cwd is not always the backend folder). */
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const cors = require("cors");
 const errorHandler = require("./utils/errorHandler");
@@ -7,7 +9,6 @@ const { apiSuccessRes, apiErrorRes } = require("./utils/globalFunction");
 const jwt = require("./routes/middlewares/jwt");
 const http = require("http");
 const cloudinary = require("cloudinary").v2;
-const path = require("path");
 /** Vercel serverless: only /tmp is writable; local uses backend folders */
 const isVercel = Boolean(process.env.VERCEL);
 const dir = isVercel ? path.join("/tmp", "upload") : path.join(__dirname, "upload");

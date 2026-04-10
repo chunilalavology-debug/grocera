@@ -6,9 +6,14 @@
  */
 const client = require("../routes/services/redisClient");
 
+function redisDisabled() {
+  const v = String(process.env.REDIS_DISABLED || process.env.SKIP_REDIS || "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 async function invalidateProductCatalogCache() {
   const url = process.env.REDIS_URL && String(process.env.REDIS_URL).trim();
-  if (!url) return;
+  if (redisDisabled() || !url) return;
   try {
     const keys = await client.keys("products:*:v1");
     if (keys && keys.length) await client.del(keys);

@@ -7,7 +7,16 @@ This stack is **Node 20** + **Express** (API + optional production SPA) + **Mong
 - Ubuntu 22.04/24.04 (or Debian) on the VPS  
 - Node.js **20.x** — [NodeSource](https://github.com/nodesource/distributions) or `nvm install 20`  
 - `build-essential` — recommended for native modules (`bcrypt`, `sharp`):  
-  `sudo apt update && sudo apt install -y build-essential`
+  `sudo apt update && sudo apt install -y build-essential`  
+- **Redis** — the app uses Redis for product-list cache and rate limits. Install on the same VPS (default: listens on `127.0.0.1:6379`):
+
+```bash
+sudo apt update && sudo apt install -y redis-server
+sudo systemctl enable --now redis-server
+redis-cli ping   # must print PONG
+```
+
+In `backend/.env` set **`REDIS_URL=redis://127.0.0.1:6379`** and do **not** set `REDIS_DISABLED`. The Node app and Redis must run on the same machine (or point `REDIS_URL` at your managed Redis host).
 
 ## 2. Clone and build
 
@@ -37,6 +46,7 @@ Set at least:
 | `JWT_SECRET_KEY` | Strong secret; required in production |
 | `FRONTEND_URL` | `https://zippyyy.com` (no trailing slash). If you use **www**, add `https://www.zippyyy.com` via `FRONTEND_URLS` (comma-separated) |
 | `API_PUBLIC_URL` | `https://zippyyy.com` — used for invoice/email asset URLs behind nginx |
+| `REDIS_URL` | `redis://127.0.0.1:6379` when Redis runs on this VPS (after `redis-server` install). Omit `REDIS_DISABLED` |
 | Stripe, SMTP, Cloudinary | As in `.env.example` |
 
 **Single Node process (API + React build):**
@@ -95,6 +105,35 @@ REACT_APP_SAME_ORIGIN_API=1 npm run build --prefix frontend
 pm2 reload ecosystem.config.cjs --env production
 ```
 
-## 8. Optional: Zippyyy Ships API
+## 8. Fix `ECONNREFUSED 127.0.0.1:6379` (Redis)
+
+The app expects **Redis on the same VPS** when `REDIS_URL=redis://127.0.0.1:6379` is set. This error means **nothing is listening on port 6379** (Redis not installed, stopped, or bound only to a socket).
+
+**One-shot install (as root):**
+
+```bash
+cd /var/www/grocera
+chmod +x deploy/ensure-redis.sh
+sudo ./deploy/ensure-redis.sh
+```
+
+**Or manually:**
+
+```bash
+sudo apt update && sudo apt install -y redis-server
+sudo systemctl enable --now redis-server
+redis-cli ping    # PONG
+ss -tlnp | grep 6379
+```
+
+Then: `pm2 restart zippyyy-api --update-env`
+
+**Redis runs but Node still logs `ECONNREFUSED`:** the app loads `backend/.env` from the **`app.js` folder** (not from PM2’s current working directory). Ensure **`/var/www/grocera/backend/.env`** exists and contains `REDIS_URL=redis://127.0.0.1:6379`. After updating the repo, restart: `pm2 restart zippyyy-api --update-env`. If it persists, start PM2 with **`cwd` set to `backend`** (see `ecosystem.config.cjs`) or run: `cd /var/www/grocera/backend && pm2 start app.js --name zippyyy-api`.
+
+If `redis-cli ping` still fails, check `sudo systemctl status redis-server` and that `/etc/redis/redis.conf` has `bind 127.0.0.1` (or `0.0.0.0`) and `port 6379`.
+
+**Temporary workaround without Redis:** in `backend/.env` set `REDIS_DISABLED=1` and remove or comment `REDIS_URL` (weaker rate limits, no Redis catalog cache).
+
+## 9. Optional: Zippyyy Ships API
 
 If you use the separate ships server under `backend/zippyyy-ships-server`, run it as a second PM2 app or document your own port; the main grocery app can work without it if shipping falls back in your configuration.
