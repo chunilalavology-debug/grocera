@@ -16,8 +16,6 @@ import ScrollReveal from '../components/ScrollReveal';
 import StarRating from '../components/StarRating';
 import { getProductCardDiscountPercent } from '../utils/productDiscountDisplay';
 import { productCardBadgeFromApi } from '../utils/productCardBadge';
-import { filterProductsBySearch } from '../utils/fuzzyProductMatch';
-
 function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -305,9 +303,8 @@ function Products() {
       ? mainTabSubcategories
       : getSubcategories(selectedMain);
 
-  const fuzzyMatchedProducts = filterProductsBySearch(products, debouncedSearch);
-
-  const filteredProducts = fuzzyMatchedProducts
+  /** Server applies search; do not re-filter with Fuse (it caused wrong/irrelevant rows and empty-query fallbacks). */
+  const filteredProducts = products
     .filter((p) => {
       const price = p.hasDeal ? p.finalPrice : p.price;
       const numPrice = parseFloat(price);

@@ -85,19 +85,48 @@ function escapeRegexForSearch(input) {
   return String(input || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function compressRepeatedChars(input) {
-  return String(input || "").replace(/(.)\1+/g, "$1");
-}
+/**
+ * Storefront product search: case-insensitive regex on name, description, category, tags.
+ * Multi-word queries use AND (each word must match at least one field) to avoid irrelevant hits.
+ * Single-word numeric-only queries also match price within a small band.
+ */
+function buildProductSearchCondition(searchTrim) {
+  const words = searchTrim.split(/\s+/).map((w) => w.trim()).filter(Boolean);
+  if (!words.length) return null;
 
-function oneCharDeletionVariants(input) {
-  const s = String(input || "");
-  const out = [];
-  if (s.length < 4) return out;
-  for (let i = 0; i < s.length; i += 1) {
-    const v = `${s.slice(0, i)}${s.slice(i + 1)}`;
-    if (v.length >= 3) out.push(v);
+  const wordMatchesProduct = (word) => ({
+    $or: [
+      { name: new RegExp(escapeRegexForSearch(word), "i") },
+      { description: new RegExp(escapeRegexForSearch(word), "i") },
+      { category: new RegExp(escapeRegexForSearch(word), "i") },
+      { tags: new RegExp(escapeRegexForSearch(word), "i") },
+    ],
+  });
+
+  if (words.length === 1) {
+    const w = words[0];
+    const r = new RegExp(escapeRegexForSearch(w), "i");
+    const clauses = [
+      { name: r },
+      { description: r },
+      { category: r },
+      { tags: r },
+    ];
+    if (/^\d+(\.\d+)?$/.test(w)) {
+      const p = Number(w);
+      if (Number.isFinite(p) && p >= 0) {
+        const delta = Math.max(0.5, p * 0.05);
+        clauses.push(
+          { price: { $gte: p - delta, $lte: p + delta } },
+          { salePrice: { $gte: p - delta, $lte: p + delta } },
+          { dealPrice: { $gte: p - delta, $lte: p + delta } },
+        );
+      }
+    }
+    return { $or: clauses };
   }
-  return [...new Set(out)];
+
+  return { $and: words.map(wordMatchesProduct) };
 }
 
 /** Same region filter as admin GET /admin/getCategories?main=… (Categories dashboard table). */
@@ -250,6 +279,7 @@ const getProducts = async (req, res) => {
       limit = 12,
       cursor,
       hotDealsOnly,
+      main: mainFromQuery,
     } = req.query;
 
     const hotDeals =
@@ -272,65 +302,31 @@ const getProducts = async (req, res) => {
       filter.isDeal = true;
     }
 
-    if (category !== "All") {
-      filter.category = category;
-    }
+    const categoryParam =
+      category != null && String(category).trim() !== ""
+        ? String(category).trim()
+        : "All";
+    const mainParam = String(mainFromQuery || "")
+      .toLowerCase()
+      .trim();
 
-    // if (search) {
-    //   filter.$text = { $search: search };
-    // }
-
-    const searchTrim = search != null ? String(search).trim() : "";
-    if (searchTrim) {
-      const direct = new RegExp(escapeRegexForSearch(searchTrim), "i");
-      const compressed = compressRepeatedChars(searchTrim);
-      const fuzzyPattern = compressed
-        .split("")
-        .map((ch) => escapeRegexForSearch(ch))
-        .join(".*");
-      const fuzzy = fuzzyPattern ? new RegExp(fuzzyPattern, "i") : null;
-      const words = searchTrim.split(/\s+/).map((w) => w.trim()).filter(Boolean);
-      const wordRegexes = words.map((w) => new RegExp(escapeRegexForSearch(w), "i"));
-      const typoRegexes = oneCharDeletionVariants(searchTrim).map(
-        (w) => new RegExp(escapeRegexForSearch(w), "i"),
-      );
-
-      const or = [
-        { name: direct },
-        { category: direct },
-        { tags: direct },
-      ];
-
-      if (fuzzy) {
-        or.push({ name: fuzzy });
-        or.push({ category: fuzzy });
-        or.push({ tags: fuzzy });
-      }
-
-      for (const wr of wordRegexes) {
-        or.push({ name: wr });
-        or.push({ category: wr });
-        or.push({ tags: wr });
-      }
-
-      for (const tr of typoRegexes) {
-        or.push({ name: tr });
-        or.push({ category: tr });
-        or.push({ tags: tr });
-      }
-
-      const priceToken = words.find((w) => /^(\d+(\.\d+)?)$/.test(w));
-      if (priceToken) {
-        const p = Number(priceToken);
-        if (Number.isFinite(p) && p >= 0) {
-          const delta = Math.max(0.5, p * 0.05);
-          or.push({ price: { $gte: p - delta, $lte: p + delta } });
-          or.push({ salePrice: { $gte: p - delta, $lte: p + delta } });
-          or.push({ dealPrice: { $gte: p - delta, $lte: p + delta } });
+    if (mainParam && mainParam !== "all" && FEATURED_MAIN_IDS.includes(mainParam)) {
+      const allowed = getValuesForMain(mainParam);
+      if (allowed.length) {
+        if (categoryParam === "All") {
+          filter.category = { $in: allowed };
+        } else {
+          filter.category = categoryParam;
         }
       }
+    } else if (categoryParam !== "All") {
+      filter.category = categoryParam;
+    }
 
-      filter.$or = or;
+    const searchTrim = search != null ? String(search).trim() : "";
+    const searchCond = searchTrim ? buildProductSearchCondition(searchTrim) : null;
+    if (searchCond) {
+      filter.$and = [...(filter.$and || []), searchCond];
     }
 
     if (minPrice || maxPrice) {
@@ -343,9 +339,13 @@ const getProducts = async (req, res) => {
       filter._id = { $lt: new mongoose.Types.ObjectId(cursor) };
     }
 
+    const mainCacheKey =
+      mainParam && mainParam !== "all" && FEATURED_MAIN_IDS.includes(mainParam)
+        ? mainParam
+        : "all";
     const isFirstPage =
       !cursor && !search && !minPrice && !maxPrice && !hotDeals;
-    const cacheKey = `products:${category}:v3-storefront`;
+    const cacheKey = `products:${categoryParam}:v4-storefront:main:${mainCacheKey}`;
     /** Catalog cache when Redis is configured (REDIS_URL and/or REDIS_HOST / REDIS_PORT), not REDIS_DISABLED. */
     const useRedisCatalogCache = isRedisConfiguredInEnv();
 
