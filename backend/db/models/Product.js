@@ -109,7 +109,11 @@ productSchema.index({
   category: 1,
   createdAt: -1
 });
-productSchema.index({ name: 'text', description: 'text', tags: 'text', category: "text" });
+/** One text index per collection; includes sku for $text search. If you upgrade from an older index, drop the previous text index in MongoDB then restart so this can be created. */
+productSchema.index(
+  { name: "text", description: "text", tags: "text", category: "text", sku: "text" },
+  { name: "storefront_product_text_v2" },
+);
 
 productSchema.pre('save', function (next) {
   const qty = this.quantity || 0;

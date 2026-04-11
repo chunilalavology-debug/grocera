@@ -85,10 +85,71 @@ function escapeRegexForSearch(input) {
   return String(input || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const GET_PRODUCTS_LIST_FIELDS = [
+  "name",
+  "price",
+  "comparePrice",
+  "salePrice",
+  "dealPrice",
+  "image",
+  "category",
+  "inStock",
+  "quantity",
+  "unit",
+  "badge",
+  "isDeal",
+  "tags",
+  "createdAt",
+  "sku",
+];
+
+/** Joi-validated GET /user/products query (strip junk; coerce numbers). */
+const getProductsQuerySchema = Joi.object({
+  category: Joi.string().trim().max(200).allow("").optional(),
+  search: Joi.string().trim().max(200).allow("").optional(),
+  minPrice: Joi.number().min(0).optional(),
+  maxPrice: Joi.number().min(0).optional(),
+  limit: Joi.number().integer().min(1).max(5000).optional(),
+  cursor: Joi.string().length(24).hex().optional().allow("", null),
+  hotDealsOnly: Joi.alternatives()
+    .try(Joi.boolean(), Joi.string().valid("true", "false", "1", "0"))
+    .optional(),
+  deals: Joi.string().max(8).optional(),
+  main: Joi.string()
+    .lowercase()
+    .valid("all", "indian", "american", "chinese", "turkish", "")
+    .optional(),
+}).unknown(true);
+
+function sanitizeMongoTextSearch(input) {
+  return String(input || "")
+    .replace(/[\x00-\x1f\x7f]/g, " ")
+    .replace(/["\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+}
+
+function looksSkuLikeForTextExclusion(s) {
+  const t = String(s || "").trim();
+  if (!t || t.length > 48 || /\s/.test(t)) return false;
+  if (!/^[A-Za-z0-9-]+$/.test(t)) return false;
+  return /\d/.test(t);
+}
+
+/** Use MongoDB $text when safe (indexed fields: name, description, tags, category — not sku). Regex for numbers / regex chars / SKU-like codes. */
+function canUseMongoTextSearch(searchTrim) {
+  if (!searchTrim || searchTrim.length < 2 || searchTrim.length > 200) return false;
+  if (/^\d+(\.\d+)?$/.test(searchTrim)) return false;
+  if (!/[a-zA-Z0-9\u0080-\uFFFF]/.test(searchTrim)) return false;
+  if (/[.*+?^${}()|[\]\\]/.test(searchTrim)) return false;
+  if (looksSkuLikeForTextExclusion(searchTrim)) return false;
+  return true;
+}
+
 /**
- * Storefront product search: case-insensitive regex on name, description, category, tags.
- * Multi-word queries use AND (each word must match at least one field) to avoid irrelevant hits.
- * Single-word numeric-only queries also match price within a small band.
+ * Storefront product search (regex path): name, description, category, tags, sku.
+ * Multi-word: AND of per-word OR across fields. Single numeric word: also price band.
  */
 function buildProductSearchCondition(searchTrim) {
   const words = searchTrim.split(/\s+/).map((w) => w.trim()).filter(Boolean);
@@ -100,6 +161,7 @@ function buildProductSearchCondition(searchTrim) {
       { description: new RegExp(escapeRegexForSearch(word), "i") },
       { category: new RegExp(escapeRegexForSearch(word), "i") },
       { tags: new RegExp(escapeRegexForSearch(word), "i") },
+      { sku: new RegExp(escapeRegexForSearch(word), "i") },
     ],
   });
 
@@ -111,6 +173,7 @@ function buildProductSearchCondition(searchTrim) {
       { description: r },
       { category: r },
       { tags: r },
+      { sku: r },
     ];
     if (/^\d+(\.\d+)?$/.test(w)) {
       const p = Number(w);
@@ -271,6 +334,28 @@ const getProducts = async (req, res) => {
       });
     }
 
+    let qv;
+    try {
+      qv = await getProductsQuerySchema.validateAsync(req.query || {}, {
+        abortEarly: false,
+        convert: true,
+        stripUnknown: true,
+      });
+    } catch (e) {
+      if (e.isJoi) {
+        setCatalogNoCacheHeaders(res);
+        return res.status(400).json({
+          success: false,
+          message: e.details.map((d) => d.message).join("; ") || "Invalid query parameters",
+          data: [],
+          totalCount: 0,
+          nextCursor: null,
+          hasNextPage: false,
+        });
+      }
+      throw e;
+    }
+
     const {
       category = "All",
       search,
@@ -280,7 +365,7 @@ const getProducts = async (req, res) => {
       cursor,
       hotDealsOnly,
       main: mainFromQuery,
-    } = req.query;
+    } = qv;
 
     const hotDeals =
       String(hotDealsOnly || "").toLowerCase() === "true" ||
@@ -324,9 +409,14 @@ const getProducts = async (req, res) => {
     }
 
     const searchTrim = search != null ? String(search).trim() : "";
-    const searchCond = searchTrim ? buildProductSearchCondition(searchTrim) : null;
-    if (searchCond) {
-      filter.$and = [...(filter.$and || []), searchCond];
+    const textSearchSanitized = searchTrim ? sanitizeMongoTextSearch(searchTrim) : "";
+    if (searchTrim && textSearchSanitized && canUseMongoTextSearch(textSearchSanitized)) {
+      filter.$text = { $search: textSearchSanitized };
+    } else if (searchTrim) {
+      const searchCond = buildProductSearchCondition(searchTrim);
+      if (searchCond) {
+        filter.$and = [...(filter.$and || []), searchCond];
+      }
     }
 
     if (minPrice || maxPrice) {
@@ -378,28 +468,35 @@ const getProducts = async (req, res) => {
 
     if (!cursor) {
       total = await Products.countDocuments(filter);
-      if (category && category !== "All" && String(category).trim() !== "") {
+      if (categoryParam !== "All" && categoryParam !== "") {
         totalCountAll = await Products.countDocuments({
           ...PRODUCT_NOT_DELETED,
-          category: String(category).trim(),
+          category: categoryParam,
           quantity: { $gt: 0 },
           inStock: true,
         });
       }
     }
 
+    let productQuery = Products.find(filter).limit(limitNum);
+    if (filter.$text) {
+      const sel = Object.fromEntries(GET_PRODUCTS_LIST_FIELDS.map((f) => [f, 1]));
+      sel.score = { $meta: "textScore" };
+      productQuery = productQuery
+        .select(sel)
+        .sort({ score: { $meta: "textScore" }, _id: -1 });
+    } else {
+      productQuery = productQuery
+        .select(GET_PRODUCTS_LIST_FIELDS.join(" "))
+        .sort({ _id: -1 });
+    }
 
-    const products = await Products.find(filter)
-      .sort({ _id: -1 })
-      .limit(limitNum)
-      .select(
-        "name price comparePrice salePrice dealPrice image category inStock quantity unit badge isDeal tags createdAt"
-      )
-      .lean();
+    const products = await productQuery.lean();
 
-    const normalizedProducts = products.map((p) =>
-      normalizeProductForStorefrontList(p)
-    );
+    const normalizedProducts = products.map((p) => {
+      const { score: _textScore, ...rest } = p;
+      return normalizeProductForStorefrontList(rest);
+    });
 
     const response = {
       success: true,
