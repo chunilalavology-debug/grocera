@@ -27,8 +27,9 @@ function Products() {
   const [apiCategories, setApiCategories] = useState(['All']);
   /** Same ordered list as admin Categories tab + home featured strip (GET /user/featured-categories). */
   const [mainTabSubcategories, setMainTabSubcategories] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  /** Seed from URL so header navigate(?search=) is not wiped by URL→state sync on first paint. */
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") || "");
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get("search") || "");
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalData, setTotalData] = useState(0);
@@ -43,7 +44,9 @@ function Products() {
   const mainFromUrl = searchParams.get("main");
 
   useEffect(() => {
-    if (searchKeyword) setSearchTerm(searchKeyword);
+    const v = searchKeyword || "";
+    setSearchTerm(v);
+    setDebouncedSearch(v.trim());
   }, [searchKeyword]);
 
   useEffect(() => {
@@ -204,14 +207,19 @@ function Products() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  /** Keep ?search= in sync when typing on this page; functional update preserves category/main. */
   useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (searchTerm && searchTerm.trim()) next.set('search', searchTerm.trim());
-    else next.delete('search');
-    if (next.toString() !== searchParams.toString()) {
-      setSearchParams(next, { replace: true });
-    }
-  }, [searchTerm, searchParams, setSearchParams]);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        const q = (searchTerm || "").trim();
+        if (q) next.set("search", q);
+        else next.delete("search");
+        return next.toString() === prev.toString() ? prev : next;
+      },
+      { replace: true },
+    );
+  }, [searchTerm, setSearchParams]);
 
 
   const fetchCategories = async () => {
