@@ -38,6 +38,8 @@ function Products() {
   const [pagesCache, setPagesCache] = useState({});
   const [nextCursorByPage, setNextCursorByPage] = useState({});
   const [isMobileView, setIsMobileView] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
+  /** Bumps when filters/search change so in-flight catalog responses are ignored (fixes stale list after header search). */
+  const catalogFetchEpochRef = useRef(0);
 
   const searchKeyword = searchParams.get("search");
   const categoryFromUrl = searchParams.get("category");
@@ -118,8 +120,11 @@ function Products() {
 
   const perPage = isMobileView ? 6 : 12;
 
-  const fetchPage = async (page) => {
-    if (pagesCache[page]) {
+  const fetchPage = async (page, opts = {}) => {
+    const bypassCache = opts.bypassCache === true;
+    const fetchEpoch = opts.fetchEpoch;
+
+    if (!bypassCache && pagesCache[page]) {
       setProducts(pagesCache[page]);
       return;
     }
@@ -146,6 +151,10 @@ function Products() {
         }
       });
 
+      if (fetchEpoch != null && fetchEpoch !== catalogFetchEpochRef.current) {
+        return;
+      }
+
       if (!response?.success) {
         if (page === 1) {
           setProducts([]);
@@ -159,6 +168,10 @@ function Products() {
       const productsArrayRaw = response.data || [];
       const productsArray = Array.isArray(productsArrayRaw) ? productsArrayRaw.slice(0, perPage) : [];
 
+      if (fetchEpoch != null && fetchEpoch !== catalogFetchEpochRef.current) {
+        return;
+      }
+
       setPagesCache((prev) => ({ ...prev, [page]: productsArray }));
       setProducts(productsArray);
 
@@ -168,6 +181,9 @@ function Products() {
       setNextCursorByPage((prev) => ({ ...prev, [page]: response.nextCursor || null }));
 
     } catch {
+      if (fetchEpoch != null && fetchEpoch !== catalogFetchEpochRef.current) {
+        return;
+      }
       if (page === 1) {
         setProducts([]);
         setTotalData(0);
@@ -181,21 +197,25 @@ function Products() {
 
 
   useEffect(() => {
+    catalogFetchEpochRef.current += 1;
+    const epoch = catalogFetchEpochRef.current;
     setProducts([]);
     setPagesCache({});
     setNextCursorByPage({});
     setCurrentPage(1);
-    fetchPage(1);
+    fetchPage(1, { bypassCache: true, fetchEpoch: epoch });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional reset + page-1 fetch when filters change
   }, [selectedCategory, selectedMain, debouncedSearch, minPriceNum, maxPriceNum]);
 
   // When switching between mobile/desktop, reset cursor pagination so perPage stays correct (6 on mobile, 12 on desktop)
   useEffect(() => {
+    catalogFetchEpochRef.current += 1;
+    const epoch = catalogFetchEpochRef.current;
     setProducts([]);
     setPagesCache({});
     setNextCursorByPage({});
     setCurrentPage(1);
-    fetchPage(1);
+    fetchPage(1, { bypassCache: true, fetchEpoch: epoch });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional reset when perPage changes
   }, [perPage]);
 
@@ -237,17 +257,19 @@ function Products() {
     fetchCategories();
   }, []);
 
-  const updateUrlFromFilters = useCallback(
-    (main, category) => {
-      const next = new URLSearchParams(searchParams);
-      if (main && main !== 'all') next.set('main', main);
-      else next.delete('main');
-      if (category && category !== 'All') next.set('category', category);
-      else next.delete('category');
-      setSearchParams(next, { replace: true });
-    },
-    [searchParams, setSearchParams]
-  );
+  const updateUrlFromFilters = useCallback((main, category) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (main && main !== "all") next.set("main", main);
+        else next.delete("main");
+        if (category && category !== "All") next.set("category", category);
+        else next.delete("category");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
 
   useEffect(() => {
     if (selectedMain === 'all') {

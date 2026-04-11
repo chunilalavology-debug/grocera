@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
@@ -66,6 +66,7 @@ function Navbar() {
     setIsMobileMenuOpen(false);
   };
   const navigate = useNavigate();
+  const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
@@ -128,6 +129,15 @@ function Navbar() {
     setIsMobileMenuOpen(false);
   }, [navigate]);
 
+  /** Keep header search in sync with /products URL (shop bar + header share the same query). */
+  useEffect(() => {
+    if (location.pathname !== "/products") return;
+    const sp = new URLSearchParams(location.search);
+    setSearchQuery(sp.get("search") || "");
+    const cat = sp.get("category");
+    setSearchCategory(cat && cat.trim() ? cat.trim() : "");
+  }, [location.pathname, location.search]);
+
   const handleLogout = () => {
     logout();
     navigate('/');
@@ -138,9 +148,12 @@ function Navbar() {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     const params = new URLSearchParams();
-    if (searchQuery.trim()) params.set('search', searchQuery.trim());
-    if (searchCategory) params.set('category', searchCategory);
-    navigate(`/products${params.toString() ? `?${params.toString()}` : ''}`);
+    if (searchQuery.trim()) params.set("search", searchQuery.trim());
+    if (searchCategory) params.set("category", searchCategory);
+    const qs = params.toString();
+    navigate(`/products${qs ? `?${qs}` : ""}`, {
+      replace: location.pathname === "/products",
+    });
     setIsMobileMenuOpen(false);
   };
 
