@@ -40,6 +40,8 @@ function Products() {
   const [isMobileView, setIsMobileView] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
   /** Bumps when filters/search change so in-flight catalog responses are ignored (fixes stale list after header search). */
   const catalogFetchEpochRef = useRef(0);
+  /** After empty-in-category search we widen to All + skip one redundant filter effect (avoids flash/clear). */
+  const skipNextFilterEffectRef = useRef(false);
 
   const searchKeyword = searchParams.get("search");
   const categoryFromUrl = searchParams.get("category");
@@ -166,7 +168,56 @@ function Products() {
       }
 
       const productsArrayRaw = response.data || [];
-      const productsArray = Array.isArray(productsArrayRaw) ? productsArrayRaw.slice(0, perPage) : [];
+      let productsArray = Array.isArray(productsArrayRaw) ? productsArrayRaw.slice(0, perPage) : [];
+      let totalForList =
+        response.totalCount !== null && response.totalCount !== undefined
+          ? response.totalCount
+          : null;
+      let nextCursorForPage = response.nextCursor || null;
+
+      const hadCategoryOrMainNarrow =
+        (selectedCategory && selectedCategory !== "All") ||
+        (selectedMain && selectedMain !== "all");
+      const q = (debouncedSearch || "").trim();
+
+      if (
+        page === 1 &&
+        q &&
+        hadCategoryOrMainNarrow &&
+        productsArray.length === 0
+      ) {
+        const fb = await api.get("/user/products", {
+          params: {
+            search: q,
+            ...(hasValidMin && { minPrice: minPriceNum }),
+            ...(hasValidMax && { maxPrice: maxPriceNum }),
+            limit: perPage,
+          },
+        });
+        if (fetchEpoch != null && fetchEpoch !== catalogFetchEpochRef.current) {
+          return;
+        }
+        if (fb?.success && Array.isArray(fb.data) && fb.data.length > 0) {
+          productsArray = fb.data.slice(0, perPage);
+          totalForList =
+            fb.totalCount !== null && fb.totalCount !== undefined ? fb.totalCount : productsArray.length;
+          nextCursorForPage = fb.nextCursor || null;
+          skipNextFilterEffectRef.current = true;
+          setSelectedMain("all");
+          setSelectedCategory("All");
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("main");
+              next.delete("category");
+              next.set("search", q);
+              return next;
+            },
+            { replace: true },
+          );
+          toast.success("No matches in that category — showing results from all categories.");
+        }
+      }
 
       if (fetchEpoch != null && fetchEpoch !== catalogFetchEpochRef.current) {
         return;
@@ -175,10 +226,10 @@ function Products() {
       setPagesCache((prev) => ({ ...prev, [page]: productsArray }));
       setProducts(productsArray);
 
-      if (response.totalCount !== null && response.totalCount !== undefined) {
-        setTotalData(response.totalCount);
+      if (totalForList !== null && totalForList !== undefined) {
+        setTotalData(totalForList);
       }
-      setNextCursorByPage((prev) => ({ ...prev, [page]: response.nextCursor || null }));
+      setNextCursorByPage((prev) => ({ ...prev, [page]: nextCursorForPage }));
 
     } catch {
       if (fetchEpoch != null && fetchEpoch !== catalogFetchEpochRef.current) {
@@ -197,6 +248,10 @@ function Products() {
 
 
   useEffect(() => {
+    if (skipNextFilterEffectRef.current) {
+      skipNextFilterEffectRef.current = false;
+      return;
+    }
     catalogFetchEpochRef.current += 1;
     const epoch = catalogFetchEpochRef.current;
     setProducts([]);
